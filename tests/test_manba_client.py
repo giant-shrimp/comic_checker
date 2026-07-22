@@ -105,3 +105,65 @@ def test_enter_raises_and_cleans_up_when_challenge_not_passed(api_key_env):
     fake_context.close.assert_called_once()
     fake_browser.close.assert_called_once()
     fake_playwright.stop.assert_called_once()
+
+
+def test_bootstrap_top_page_polls_without_reload_in_no_headless_mode(api_key_env):
+    top_page = make_fake_page()
+    top_page.title.side_effect = [
+        "Just a moment...",  # 初回遷移直後のチェック
+        "Just a moment...",  # ポーリング1回目（まだ未解決）
+        "manba.co.jp",  # ポーリング2回目で人間がクリックして解決
+    ]
+    search_page = make_fake_page(title="manba.co.jp")
+
+    fake_context = MagicMock()
+    fake_context.new_page.side_effect = [top_page, search_page]
+
+    fake_browser = MagicMock()
+    fake_browser.new_context.return_value = fake_context
+
+    fake_playwright = MagicMock()
+    fake_playwright.chromium.launch.return_value = fake_browser
+
+    with patch("comic_checker.manba_client.sync_playwright") as mock_sync_playwright, patch(
+        "comic_checker.manba_client.time.sleep"
+    ):
+        mock_sync_playwright.return_value.start.return_value = fake_playwright
+
+        with ManbaClient(headless=False):
+            pass
+
+    # ポーリング中はページを一度もリロードしていない（goto()は最初の1回だけ）。
+    assert top_page.goto.call_count == 1
+
+
+def test_bootstrap_top_page_gives_up_after_timeout_in_no_headless_mode(api_key_env):
+    # チェックボックスが最後までクリックされないケース。
+    stuck_page = make_fake_page(title="Just a moment...")
+
+    fake_context = MagicMock()
+    fake_context.new_page.return_value = stuck_page
+
+    fake_browser = MagicMock()
+    fake_browser.new_context.return_value = fake_context
+
+    fake_playwright = MagicMock()
+    fake_playwright.chromium.launch.return_value = fake_browser
+
+    client = ManbaClient(headless=False)
+
+    with patch("comic_checker.manba_client.sync_playwright") as mock_sync_playwright, patch(
+        "comic_checker.manba_client.time.sleep"
+    ), patch(
+        "comic_checker.manba_client.time.monotonic", side_effect=[0.0, 10.0, 20.0, 200.0]
+    ):
+        mock_sync_playwright.return_value.start.return_value = fake_playwright
+
+        with pytest.raises(RuntimeError):
+            client.__enter__()
+
+    # ポーリング中はページを一度もリロードしていない（goto()は最初の1回だけ）。
+    assert stuck_page.goto.call_count == 1
+    fake_context.close.assert_called_once()
+    fake_browser.close.assert_called_once()
+    fake_playwright.stop.assert_called_once()

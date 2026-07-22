@@ -69,12 +69,23 @@ Three modules under `comic_checker/`, each with one job:
     widgets elsewhere on the page and are unreliable to scope correctly; the `<title>`
     tag is a single, authoritative source.
   - `_goto_with_retry(page, url)` detects the Cloudflare challenge page (`page.title() ==
-    "Just a moment..."`) and retries up to 3 times with backoff (8s/16s/24s) before
-    giving up and returning `False`. `fetch_status()` treats `False` as `不明` and moves
-    on. `__enter__()` treats `False` (for either of the two pages above) as fatal: it
-    raises `RuntimeError` and tears down the browser/context/playwright itself (since
-    `__exit__` is never called when `__enter__` raises) — see "Known limitations" below
-    for why this can't just retry harder.
+    "Just a moment..."`) and retries up to 3 times with backoff (8s/16s/24s), reloading
+    (`page.goto()`) on every attempt, before giving up and returning `False`.
+    `fetch_status()` treats `False` as `不明` and moves on.
+  - `__enter__()` bootstraps both pages via `_bootstrap_top_page(page)`, not
+    `_goto_with_retry()` directly. In headless mode it just delegates to
+    `_goto_with_retry()` (nobody's there to click anything, so reload-retry is fine). In
+    `--no-headless` mode it does exactly one `goto()`, then — if still challenged — hands
+    off to `_wait_for_manual_challenge(page)`, which polls `page.title()` every
+    `MANUAL_CHALLENGE_POLL_INTERVAL`s for up to `MANUAL_CHALLENGE_TIMEOUT`s (90s)
+    *without ever reloading the page*. This split exists because `_goto_with_retry()`'s
+    reload-every-attempt behavior actively destroys a human's in-progress click on an
+    interactive "Verify you are human" checkbox — observed in practice: the checkbox
+    challenge never has a real chance to be solved through the reload loop, since each
+    retry wipes whatever the human was doing. `__enter__()` treats a `False` result (from
+    either path, for either page) as fatal: it raises `RuntimeError` and tears down the
+    browser/context/playwright itself (since `__exit__` is never called when `__enter__`
+    raises) — see "Known limitations" below for the two challenge types this is about.
   - `_sleep()` inserts a random delay (`min_delay`–`max_delay`, default 3–6s) before
     every request — rapid sequential requests re-trigger the Cloudflare challenge even
     mid-session, so this pacing is load-bearing, not cosmetic.
@@ -109,11 +120,20 @@ Three modules under `comic_checker/`, each with one job:
   auto-solvable: the `Just a moment...` interstitial resolves itself after a few seconds
   (what `_goto_with_retry()`'s wait-and-retry loop is built for), but it can also present
   an *interactive* "Verify you are human" checkbox that requires an actual click —
-  observed in practice, not hypothetical. No amount of retrying/waiting gets past that
-  one. The only real fix is a human: run with `--no-headless`, click the checkbox once,
-  and the resulting Cloudflare clearance cookie gets saved to `state_path`
+  observed in practice, not hypothetical. No amount of retrying/waiting through
+  `_goto_with_retry()` gets past that one — worse, its reload-every-attempt behavior
+  actively wipes out a human's in-progress click, so `--no-headless` alone doesn't help
+  if the bootstrap navigation is still going through that path. That's why
+  `__enter__()`'s bootstrap (`_bootstrap_top_page()`) branches on `headless`: in
+  `--no-headless` mode it does a single `goto()` and then polls the title for up to
+  `MANUAL_CHALLENGE_TIMEOUT` (90s) without reloading, giving a real window to click. Once
+  solved, the resulting Cloudflare clearance cookie gets saved to `state_path`
   (`.manba_state.json` by default) for reuse on subsequent headless runs. If this starts
-  happening often, widen `--min-delay`/`--max-delay` or space runs out further apart.
+  happening often, widen `--min-delay`/`--max-delay` or space runs out further apart. Note
+  this bootstrap-time handling doesn't extend to `fetch_status()`'s per-row navigation,
+  which still only goes through the reload-based `_goto_with_retry()` — an interactive
+  challenge appearing mid-run there still just degrades to `不明`, not a manual-solve
+  window.
 
 ## 最終目的
 
