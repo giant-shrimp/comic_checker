@@ -49,27 +49,46 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    excel_path = Path(args.excel_path)
-    if not excel_path.exists():
-        print(f"ファイルが見つかりません: {excel_path}", file=sys.stderr)
-        return 1
+def run(
+    excel_path,
+    sheet=None,
+    header_row=1,
+    title_column="タイトル",
+    status_column="連載状況",
+    matched_title_column="マンバ上のタイトル",
+    url_column="マンバURL",
+    skip_filled=True,
+    headless=True,
+    state_file=DEFAULT_STATE_FILE,
+    min_delay=3.0,
+    max_delay=6.0,
+    save_every=5,
+    on_progress=None,
+):
+    """Excelを読み込み、manba.co.jpを検索して連載状況を書き戻す。
 
+    1行処理するごとに on_progress(index, total, title, status, matched_title, error=None)
+    を呼び出す。成功時は error=None、行単位で例外が起きた場合は捕捉した例外を渡す。
+    on_progress が None の場合は何もしない。戻り値は処理対象だった行数。
+    """
+    if on_progress is None:
+        on_progress = lambda *args, **kwargs: None
+
+    excel_path = Path(excel_path)
     wb = open_workbook(excel_path)
-    ws = wb[args.sheet] if args.sheet else wb.active
+    ws = wb[sheet] if sheet else wb.active
 
-    title_col = find_column(ws, args.title_column, args.header_row)
-    status_col = ensure_column(ws, args.status_column, args.header_row)
-    matched_col = ensure_column(ws, args.matched_title_column, args.header_row)
-    url_col = ensure_column(ws, args.url_column, args.header_row)
+    title_col = find_column(ws, title_column, header_row)
+    status_col = ensure_column(ws, status_column, header_row)
+    matched_col = ensure_column(ws, matched_title_column, header_row)
+    url_col = ensure_column(ws, url_column, header_row)
 
     rows = []
-    for row in range(args.header_row + 1, ws.max_row + 1):
+    for row in range(header_row + 1, ws.max_row + 1):
         title = ws.cell(row=row, column=title_col).value
         if title is None or str(title).strip() == "":
             continue
-        if args.skip_filled and ws.cell(row=row, column=status_col).value:
+        if skip_filled and ws.cell(row=row, column=status_col).value:
             continue
         rows.append((row, str(title).strip()))
 
@@ -77,35 +96,70 @@ def main(argv=None):
         print("処理対象の行がありません（タイトル未入力、または既に判定済み）")
         return 0
 
-    print(f"{len(rows)}件を処理します")
+    total = len(rows)
+    print(f"{total}件を処理します")
 
     with ManbaClient(
-        headless=args.headless,
-        state_path=args.state_file,
-        min_delay=args.min_delay,
-        max_delay=args.max_delay,
+        headless=headless,
+        state_path=state_file,
+        min_delay=min_delay,
+        max_delay=max_delay,
     ) as client:
         for i, (row, title) in enumerate(rows, start=1):
+            error = None
             try:
                 result = client.lookup(title)
                 status = result.status
                 matched_title = result.matched_title or ""
                 url = result.url or ""
-            except Exception:
-                print(f"[{i}/{len(rows)}] {title} -> エラー", file=sys.stderr)
-                traceback.print_exc()
+            except Exception as exc:
                 status, matched_title, url = "エラー", "", ""
+                error = exc
 
             ws.cell(row=row, column=status_col, value=status)
             ws.cell(row=row, column=matched_col, value=matched_title)
             ws.cell(row=row, column=url_col, value=url)
-            print(f"[{i}/{len(rows)}] {title} -> {status} ({matched_title})")
+            on_progress(i, total, title, status, matched_title, error=error)
 
-            if i % args.save_every == 0:
+            if i % save_every == 0:
                 wb.save(excel_path)
 
     wb.save(excel_path)
     print("完了しました")
+    return total
+
+
+def _print_progress(index, total, title, status, matched_title, error=None):
+    if error is not None:
+        print(f"[{index}/{total}] {title} -> エラー", file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__)
+    else:
+        print(f"[{index}/{total}] {title} -> {status} ({matched_title})")
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    excel_path = Path(args.excel_path)
+    if not excel_path.exists():
+        print(f"ファイルが見つかりません: {excel_path}", file=sys.stderr)
+        return 1
+
+    run(
+        excel_path,
+        sheet=args.sheet,
+        header_row=args.header_row,
+        title_column=args.title_column,
+        status_column=args.status_column,
+        matched_title_column=args.matched_title_column,
+        url_column=args.url_column,
+        skip_filled=args.skip_filled,
+        headless=args.headless,
+        state_file=args.state_file,
+        min_delay=args.min_delay,
+        max_delay=args.max_delay,
+        save_every=args.save_every,
+        on_progress=_print_progress,
+    )
     return 0
 
 
