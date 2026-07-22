@@ -6,6 +6,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+TOP_URL = "https://manba.co.jp/"
 SEARCH_URL = "https://search.manba.co.jp/multi-search"
 # manba.co.jp のトップページのキーワード検索ボックス(オートコンプリート)が
 # 実際に使っている公開検索キー。訪問者のブラウザが毎回叩くのと同じもの。
@@ -55,34 +56,69 @@ class ManbaClient:
         self._browser = None
         self._context = None
         self._page = None
+        self._search_page = None
 
     def __enter__(self):
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self.headless)
         storage_state = str(self.state_path) if self.state_path and self.state_path.exists() else None
         self._context = self._browser.new_context(user_agent=USER_AGENT, storage_state=storage_state)
-        self._page = self._context.new_page()
-        self._goto_with_retry("https://manba.co.jp/")
+
+        try:
+            self._page = self._context.new_page()
+            if not self._goto_with_retry(self._page, TOP_URL):
+                raise RuntimeError(self._challenge_error_message())
+
+            # search()はトップページ（オートコンプリートの検索ボックスがあるページ）でしか
+            # search.manba.co.jpへのfetchが許可されない(CSPの都合と見られる)。fetch_status()が
+            # self._pageを作品詳細ページへ遷移させても影響を受けないよう、検索専用のページを
+            # トップページに固定したまま別途確保しておく。
+            self._search_page = self._context.new_page()
+            if not self._goto_with_retry(self._search_page, TOP_URL):
+                raise RuntimeError(self._challenge_error_message())
+        except Exception:
+            self._cleanup()
+            raise
+
         return self
 
     def __exit__(self, exc_type, exc, tb):
         if self.state_path:
             self._context.storage_state(path=str(self.state_path))
-        self._context.close()
-        self._browser.close()
-        self._playwright.stop()
+        self._cleanup()
+
+    def _cleanup(self):
+        if self._context is not None:
+            self._context.close()
+        if self._browser is not None:
+            self._browser.close()
+        if self._playwright is not None:
+            self._playwright.stop()
+
+    @staticmethod
+    def _challenge_error_message():
+        return (
+            "manba.co.jpのCloudflareチャレンジを自動突破できませんでした。"
+            "「Verify you are human」のようなチェックボックスをクリックする必要がある"
+            "インタラクティブなチャレンジが表示されている場合、待っても自動では解決しません。"
+            "--no-headless を付けて実行し、表示されたブラウザで手動でチェックボックスを"
+            "クリックしてください。一度突破すればCookieが state_path "
+            "（デフォルト: .manba_state.json）に保存され、次回以降のヘッドレス実行で"
+            "再利用されます。頻発する場合は --min-delay / --max-delay を広げて"
+            "アクセス頻度を下げることも検討してください。"
+        )
 
     def _sleep(self):
         time.sleep(random.uniform(self.min_delay, self.max_delay))
 
-    def _is_challenge(self):
-        return self._page.title().strip() in CHALLENGE_TITLES
+    def _is_challenge(self, page):
+        return page.title().strip() in CHALLENGE_TITLES
 
-    def _goto_with_retry(self, url, retries=3):
+    def _goto_with_retry(self, page, url, retries=3):
         for attempt in range(retries):
-            self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            self._page.wait_for_timeout(1500)
-            if not self._is_challenge():
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(1500)
+            if not self._is_challenge(page):
                 return True
             time.sleep(8 * (attempt + 1))
         return False
@@ -100,7 +136,7 @@ class ManbaClient:
                 }
             ]
         }
-        result_text = self._page.evaluate(
+        result_text = self._search_page.evaluate(
             """
             async ({url, apiKey, body}) => {
                 const res = await fetch(url, {
@@ -123,7 +159,7 @@ class ManbaClient:
     def fetch_status(self, board_id):
         """作品ページの<title>タグが「[完結] 」で始まるかどうかで連載状況を判定する。"""
         url = f"https://manba.co.jp/boards/{board_id}"
-        ok = self._goto_with_retry(url)
+        ok = self._goto_with_retry(self._page, url)
         if not ok:
             return "不明", url
         page_title = self._page.title()
