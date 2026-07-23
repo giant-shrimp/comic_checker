@@ -5,12 +5,31 @@ from pathlib import Path
 
 from comic_checker import wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
-from comic_checker.manba_client import ManbaClient
 
 DEFAULT_STATE_FILE = ".manba_state.json"
 
 WIKIPEDIA_SOURCE = "Wikipedia"
 MANBA_SOURCE = "manba.co.jp"
+
+
+def _import_manba_client():
+    """ManbaClientを遅延importする。
+
+    manba_clientはplaywrightに依存する。軽量ビルド（Wikipedia経路のみ、
+    Playwright/Chromium非同梱）では起動時に落ちないよう、--fallback-to-manba使用時に
+    実際に必要になった時点でのみimportする（main.pyの先頭で無条件importすると、
+    軽量ビルドではplaywright自体が同梱されないため、既定経路しか使わない場合でも
+    起動できなくなってしまう）。
+    """
+    try:
+        from comic_checker.manba_client import ManbaClient
+    except ImportError as exc:
+        raise RuntimeError(
+            "manba.co.jpフォールバック（--fallback-to-manba）にはplaywrightが必要です。"
+            "pip install -r requirements-fallback.txt を実行するか、"
+            "Playwright/Chromium同梱ビルドを使用してください。"
+        ) from exc
+    return ManbaClient
 
 
 def parse_args(argv=None):
@@ -170,11 +189,15 @@ def run(
     total = len(rows)
     print(f"{total}件を処理します")
 
+    # fallback_to_manba時のみ、ここでimportを試みて即座に失敗させる（行処理中に
+    # 初めて発覚するのではなく、playwright未同梱ならこの時点でRuntimeErrorにする）。
+    manba_client_cls = _import_manba_client() if fallback_to_manba else None
+
     manba_client_holder = {"client": None}
 
     def get_manba_client():
         if manba_client_holder["client"] is None:
-            client = ManbaClient(
+            client = manba_client_cls(
                 headless=headless,
                 state_path=state_file,
                 min_delay=min_delay,

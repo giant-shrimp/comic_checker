@@ -26,9 +26,19 @@ Cloudflare situation when the fallback path is used.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt   # includes pytest; use requirements.txt for runtime-only
+pip install -r requirements-dev.txt   # dev/test: includes pytest + playwright (full test suite needs it)
 playwright install chromium
 ```
+
+Three requirements files, each `-r`-chaining into the next: `requirements.txt` (light —
+`openpyxl` + `requests`, matches the M3 light EXE build and everyday Wikipedia-only usage)
+→ `requirements-fallback.txt` (adds `playwright`, needed for `--fallback-to-manba`) →
+`requirements-dev.txt` (adds `pytest`). Use `requirements.txt` alone for a runtime-only,
+Wikipedia-path-only install (no Playwright/Chromium needed at all). The full test suite
+needs `playwright` importable even though `manba_client.py` tests mock `sync_playwright`
+— `tests/test_manba_client.py` still does `from comic_checker.manba_client import
+ManbaClient` at collection time, which needs the real package installed — so always use
+`requirements-dev.txt` (not `requirements.txt`) for development.
 
 Chromium needs OS shared libraries (`libnspr4`, `libnss3`, `libatk1.0-0`, etc.) that are
 not installed by pip. Check what's missing without changing the system:
@@ -170,6 +180,22 @@ Modules under `comic_checker/`, each with one job:
   rather than aborting the run; the workbook is saved every `--save-every` rows (default
   5) plus once at the end, so an interrupted run doesn't lose prior progress.
 
+  `from comic_checker.manba_client import ManbaClient` is **not** a top-level import —
+  it lives inside `_import_manba_client()`, called from `run()` only when
+  `fallback_to_manba` is true, and only once (eagerly, before the row loop, so a missing
+  `playwright` install fails fast with a clear `RuntimeError` instead of surfacing as a
+  generic per-row `エラー` deep in the loop). This is load-bearing for the M3 light
+  PyInstaller build (`comic_checker.spec`, see `docs/build_windows.md`), which excludes
+  `playwright`/`comic_checker.manba_client` from the bundle — if this import moves back to
+  module level, the light build stops starting up at all (crashes on `import
+  comic_checker.main`) even for users who never touch `--fallback-to-manba`, not just
+  loses the fallback feature. Confirmed empirically: PyInstaller's own dependency-graph
+  warnings log the exclusion as `excluded module named comic_checker.manba_client -
+  imported by comic_checker.main (delayed, optional)` — "delayed" is exactly what depends
+  on this import staying inside a function. `tests/test_main_run.py` patches
+  `comic_checker.manba_client.ManbaClient` (the source module), not
+  `comic_checker.main.ManbaClient` — there's no such module-level attribute anymore.
+
 ## Known limitations worth knowing before "fixing" something
 
 ### Wikipedia path (default)
@@ -265,6 +291,12 @@ GUIツールにする。
 - EXEビルド・動作確認：Windows側（PyInstallerはクロスコンパイル不可）
 - したがって、コードはWindows/Linux両方で動くように書く
   （パス区切りは os.path / pathlib を使い、`/` をハードコードしない）
+- ビルド手順は`docs/build_windows.md`、ビルド設定は`comic_checker.spec`を参照
+  （M3: 軽量ビルド。Playwright/Chromiumは同梱しない）。WSL側では実際のWindows向け
+  EXEは作れないが、`comic_checker.spec`をそのまま使ってLinux向けバイナリを
+  ビルドすることで、依存関係グラフの健全性（`playwright`/`manba_client`が正しく
+  除外されているか等）だけは事前に確認できる。生成物（`build/`・`dist/`）は
+  確認用途のみでコミットしない（`.gitignore`済み）。
 
 ## 作業ルール
 

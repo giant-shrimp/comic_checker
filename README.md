@@ -17,13 +17,15 @@ Cloudflareのボット対策下にあるため、こちらはPlaywright（ヘッ
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt   # 開発・テストする場合
+pip install -r requirements-dev.txt   # 開発・テストする場合（フォールバック分も含む）
 # または
-pip install -r requirements.txt        # 実行のみの場合
+pip install -r requirements.txt        # 実行のみ・Wikipedia経路だけで良い場合（軽量）
 ```
 
-Wikipedia経由の判定のみを使う場合、セットアップはここまでで完了です。以下の
-2〜4は `--fallback-to-manba` を使う場合にのみ必要です。
+Wikipedia経由の判定のみを使う場合、セットアップはここまでで完了です（`requirements.txt`
+には`playwright`を含めていない）。以下の2〜4は `--fallback-to-manba` を使う場合にのみ
+必要です。`--fallback-to-manba`を使いたいが開発はしない場合は、代わりに
+`pip install -r requirements-fallback.txt`（`playwright`を追加で含む）を使ってください。
 
 ### 2. （フォールバック使用時のみ）Playwright用Chromiumの取得
 
@@ -160,3 +162,9 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+## Windows向けEXEとして配布する場合
+
+Pythonをインストールしていないwindows PCでもダブルクリックで動くように、PyInstallerで
+EXE化する手順を[docs/build_windows.md](docs/build_windows.md)にまとめています
+（Windows上でのビルドが必須。WSL/Linux上ではWindows向けEXEは生成できません）。

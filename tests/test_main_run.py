@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 from openpyxl import Workbook
 
 from comic_checker.main import run
@@ -60,7 +61,7 @@ def test_run_uses_wikipedia_and_never_touches_manba_by_default(tmp_path):
         calls.append((index, total, title, status, matched_title, error))
 
     with patch("comic_checker.main.wikipedia_client.judge", side_effect=wiki_results), patch(
-        "comic_checker.main.ManbaClient"
+        "comic_checker.manba_client.ManbaClient"
     ) as mock_manba_client_cls:
         total = run(excel_path, on_progress=on_progress)
 
@@ -87,7 +88,7 @@ def test_run_records_unknown_status_without_fallback_by_default(tmp_path):
     wiki_result = WikipediaJudgment(query="謎の作品", status="判定不能")
 
     with patch("comic_checker.main.wikipedia_client.judge", return_value=wiki_result), patch(
-        "comic_checker.main.ManbaClient"
+        "comic_checker.manba_client.ManbaClient"
     ) as mock_manba_client_cls:
         total = run(excel_path)
 
@@ -128,7 +129,7 @@ def test_run_falls_back_to_manba_when_enabled_and_reuses_client(tmp_path):
     )
 
     with patch("comic_checker.main.wikipedia_client.judge", side_effect=wiki_results), patch(
-        "comic_checker.main.ManbaClient", return_value=fake_manba_client
+        "comic_checker.manba_client.ManbaClient", return_value=fake_manba_client
     ) as mock_manba_client_cls:
         total = run(excel_path, fallback_to_manba=True)
 
@@ -146,6 +147,25 @@ def test_run_falls_back_to_manba_when_enabled_and_reuses_client(tmp_path):
     assert row1["参照タイトル"] == "謎の作品1（マンバ）"
     assert row2["連載状況"] == "完結"
     assert row2["判定方法"] == "manba.co.jp"
+
+
+def test_run_fails_fast_when_fallback_requested_but_manba_client_unimportable(tmp_path):
+    # 軽量ビルド（playwright非同梱）を想定した回帰テスト: --fallback-to-manba指定時、
+    # manba_clientのimportに失敗したら、行処理を始める前に明確なRuntimeErrorで
+    # 即座に失敗する（1行ごとに「エラー」を積み重ねる形にはならない）。
+    excel_path = make_workbook(tmp_path, ["謎の作品"])
+
+    with patch(
+        "comic_checker.main._import_manba_client",
+        side_effect=RuntimeError("manba.co.jpフォールバック（--fallback-to-manba）にはplaywrightが必要です"),
+    ):
+        with pytest.raises(RuntimeError, match="playwright"):
+            run(excel_path, fallback_to_manba=True)
+
+    # 行処理そのものに到達していないこと（Wikipedia判定すら呼ばれない）を確認する。
+    wb = _reload(excel_path)
+    ws = wb.active
+    assert ws.cell(row=2, column=2).value is None
 
 
 def test_run_passes_error_to_on_progress_and_continues(tmp_path):
