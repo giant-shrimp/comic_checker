@@ -58,6 +58,42 @@ HUNTER_HUNTER_EXTRACT = (
     "第401話以降は冨樫の体調を考慮して「週刊連載ではない掲載形態での継続」を発表した。"
 )
 
+# M6-D-1（Issue #11）の実データ調査で確認したケース。「連載されている」という、既存の
+# フィクスチャ（「連載中」）とは異なる現在形の表現で連載中と判定できることを確認する。
+JOJO_EXTRACT = (
+    "『ジョジョの奇妙な冒険』は、荒木飛呂彦による日本の漫画作品。"
+    "集英社の『週刊少年ジャンプ』に1986年から2004年まで、2005年からは『ウルトラジャンプ』"
+    "に長期にわたって連載されている。"
+)
+
+# M6-D-1で確認したケース。作者急逝後も連載が続いているという実世界の事例で、通常の
+# 「連載中」判定がそのまま機能することの確認（regexの挙動としては目新しくないが、
+# 実際に確認した著名な事例として固定しておく）。
+BERSERK_EXTRACT = (
+    "『ベルセルク』は、三浦建太郎による日本の漫画作品。"
+    "白泉社発行の漫画誌『ヤングアニマル』にて連載中。"
+)
+
+# M6-D-1で確認したケース。「まで連載され、その後も約年1回のペースで新作が作られている」
+# という文言は、HUNTER×HUNTERと表面的には似た構造（週刊連載終了+その後の展開への言及）
+# だが、意図的にCONTINUATION_VETO_REの対象にしていない。週刊連載という一つの物語は
+# 完結しており、その後の新作は不定期のアニバーサリー的な追加作品という性質の違いが
+# あるため（詳細はCLAUDE.md参照）。この判断そのものが変わらないことを保証する回帰テスト。
+KOCHIKAME_EXTRACT = (
+    "『こちら葛飾区亀有公園前派出所』は、秋本治による日本の漫画作品。"
+    "『週刊少年ジャンプ』において1976年42号から2016年42号まで連載され、"
+    "その後も約年1回のペースで新作が作られている。"
+)
+
+# M6-D-1で確認したケース。「第一部」「第二部」という語は掲載号の内訳表記であり、
+# シリーズの一部だけの完結（M6-B-2で懸念されたパターン）ではない。将来M6-B-2に
+# 対応する際、この正当な完結判定を壊さないことを保証する回帰テスト。
+DEATH_NOTE_EXTRACT = (
+    "『DEATH NOTE』は、大場つぐみ・小畑健による日本の漫画作品。"
+    "『週刊少年ジャンプ』（集英社、第一部：2004年1号 - 2005年11号、"
+    "第二部：2005年20号 - 2006年24号）において、2003年12月から2006年5月まで連載された。"
+)
+
 # 幽☆遊★白書のケース: COMPLETED_WEAK_RE（「まで連載された」）が実際に完結を意味する
 # 場合は、継続を示す語が無ければ従来通り完結と判定できることの確認（HUNTER×HUNTERの
 # 修正が過剰に厳格化していないことの回帰テスト）。
@@ -116,6 +152,37 @@ def test_yu_yu_hakusho_still_completed_without_continuation_veto():
     status, evidence = _judge_extract(YU_YU_HAKUSHO_EXTRACT)
     assert status == "完結"
     assert "連載された" in evidence
+
+
+def test_jojo_is_ongoing_via_present_progressive_form():
+    # 「連載されている」という、既存フィクスチャの「連載中」とは異なる現在形表現でも
+    # 連載中と判定できることの確認（M6-D-1）。
+    status, evidence = _judge_extract(JOJO_EXTRACT)
+    assert status == "連載中"
+    assert "連載されている" in evidence
+
+
+def test_berserk_is_ongoing():
+    # 作者急逝後も連載が継続している実世界の事例（M6-D-1）。
+    status, evidence = _judge_extract(BERSERK_EXTRACT)
+    assert status == "連載中"
+
+
+def test_kochikame_original_serialization_completion_is_not_vetoed():
+    # 回帰テスト（M6-D-1・Issue #11）: 「まで連載され、その後も新作が作られている」は
+    # HUNTER×HUNTERと表面的に似た構造だが、意図的にCONTINUATION_VETO_REの対象にして
+    # いない。週刊連載という一つの物語は完結しており、その後の新作は不定期の
+    # アニバーサリー的な追加作品という性質の違いがあるため（詳細はCLAUDE.md参照）。
+    status, evidence = _judge_extract(KOCHIKAME_EXTRACT)
+    assert status == "完結"
+    assert "新作が作られている" in evidence
+
+
+def test_death_note_part_numbers_are_not_mistaken_for_partial_completion():
+    # 回帰テスト（M6-D-1）: 「第一部」「第二部」は掲載号の内訳表記であり、シリーズの
+    # 一部だけの完結ではない。将来M6-B-2に対応する際もこの完結判定を壊してはならない。
+    status, evidence = _judge_extract(DEATH_NOTE_EXTRACT)
+    assert status == "完結"
 
 
 def test_multimedia_work_with_no_manga_specific_sentence_is_unknown():
