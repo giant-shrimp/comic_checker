@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(scripts/verify.sh)",
+      "Write(scripts/verify.sh)"
+    ]
+  }
+}
