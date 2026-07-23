@@ -94,6 +94,24 @@ DEATH_NOTE_EXTRACT = (
     "第二部：2005年20号 - 2006年24号）において、2003年12月から2006年5月まで連載された。"
 )
 
+# M6-B-1: 実際の記事（「ゴタ消し -示談交渉人 白井虎次郎-」）から取得した文言そのまま。
+# 「打ち切り」を完結として扱う仕様の回帰テスト。判定根拠に「打ち切り」だった事実が
+# そのまま残ることも確認する（新ステータスは追加しない仕様のため）。
+GOTAKESHI_EXTRACT = (
+    "『ゴタ消し -示談交渉人 白井虎次郎-』は、真鍋昌平による日本の漫画作品。"
+    "2011年21・22合併号での同誌の休刊をもって連載は打ち切りとなった。"
+)
+
+# M6-B-1: 「打ち切りの危機に瀕したが連載は継続した」のような、打ち切られなかった文脈の
+# 回帰テスト。COMPLETED_WEAK_REの「打ち切り」は、同一文に継続を示す語（継続/再開/
+# 引き続き等）があれば無効化される（Issue #8の設計指針をそのまま適用）。
+# 意図的に他の連載中/完結シグナルを含めていない（無効化が効かなくても別の文で
+# たまたま正しい結果になる、という誤ったテストにならないようにするため）。
+NEAR_CANCELLATION_EXTRACT = (
+    "『例の作品』は、某作者による日本の漫画作品。"
+    "人気低迷により打ち切りの危機に瀕したが、読者アンケートの巻き返しにより連載は継続した。"
+)
+
 # 幽☆遊★白書のケース: COMPLETED_WEAK_RE（「まで連載された」）が実際に完結を意味する
 # 場合は、継続を示す語が無ければ従来通り完結と判定できることの確認（HUNTER×HUNTERの
 # 修正が過剰に厳格化していないことの回帰テスト）。
@@ -183,6 +201,21 @@ def test_death_note_part_numbers_are_not_mistaken_for_partial_completion():
     # 一部だけの完結ではない。将来M6-B-2に対応する際もこの完結判定を壊してはならない。
     status, evidence = _judge_extract(DEATH_NOTE_EXTRACT)
     assert status == "完結"
+
+
+def test_gotakeshi_cancellation_is_treated_as_completed():
+    # 仕様確定済み（M6-B-1）: 「打ち切り」は円満な完結と同じ「完結」ステータスに含める。
+    # ただし判定根拠には打ち切りだった事実がそのまま残る。
+    status, evidence = _judge_extract(GOTAKESHI_EXTRACT)
+    assert status == "完結"
+    assert "打ち切り" in evidence
+
+
+def test_near_cancellation_that_was_avoided_is_not_completed():
+    # 回帰テスト（M6-B-1）: 「打ち切りの危機に瀕したが連載は継続した」のように、
+    # 打ち切られなかった文脈では完結と判定してはならない（継続語による無効化）。
+    status, evidence = _judge_extract(NEAR_CANCELLATION_EXTRACT)
+    assert status == STATUS_UNKNOWN
 
 
 def test_multimedia_work_with_no_manga_specific_sentence_is_unknown():
