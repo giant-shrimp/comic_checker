@@ -159,8 +159,38 @@ def _search_titles(title, limit=5):
     return [hit["title"] for hit in hits]
 
 
+def _redirects_to(title, expected_target):
+    """titleがWikipediaの正規のリダイレクトでexpected_targetへ解決されるかどうか。
+
+    prop=extractsを使わない軽量な問い合わせ（リダイレクト解決の確認のみが目的）。
+    """
+    data = _api_get(
+        {
+            "action": "query",
+            "titles": title,
+            "redirects": "1",
+        }
+    )
+    redirects = data.get("query", {}).get("redirects")
+    if not redirects:
+        return False
+    return redirects[-1].get("to") == expected_target
+
+
 def _pick_article(title):
-    """判定対象の記事(タイトル・リード文・URL)を選ぶ。見つからなければNone。"""
+    """判定対象の記事(タイトル・リード文・URL)を選ぶ。見つからなければNone。
+
+    「{title} (漫画)」という曖昧さ回避表記は、Wikipedia編集者が意図的に「この作品の漫画版」
+    を指すために作った表記なので、直接一致・リダイレクトのどちらで解決してもそのまま
+    信用する。それ以外（`_search_titles`の関連度ランキングによる候補選定）は、
+    「ワンピース」（衣類の記事）のような無関係な同名記事を拾ってしまうリスクがあるため、
+    以下のいずれかで裏付けが取れる場合のみ信用する:
+      - 検索結果がクエリ文字列と完全一致するタイトルである（曖昧さの介在余地が小さい）
+      - クエリがWikipedia自身の正規リダイレクトでその候補へ解決する（編集者による
+        意図的な対応付けであり、検索の関連度ランキングだけを根拠にしていない）
+    どちらの裏付けも取れない場合は、無関係な記事を確信を持って誤答するより、
+    記事なし（Noneを返し判定不能に倒す）を優先する（Issue #8・#9で確立した設計指針）。
+    """
     direct = _fetch_extract(f"{title} (漫画)")
     if direct is not None:
         return direct
@@ -170,6 +200,9 @@ def _pick_article(title):
         return None
 
     chosen = next((c for c in candidates if "(漫画)" in c), candidates[0])
+    if chosen != title and not _redirects_to(title, chosen):
+        return None
+
     return _fetch_extract(chosen)
 
 

@@ -210,6 +210,10 @@ def _extract_response(title, extract, missing=False):
     return {"query": {"pages": {"1": page}}}
 
 
+def _redirect_response(from_title, to_title):
+    return {"query": {"redirects": [{"from": from_title, "to": to_title}]}}
+
+
 def test_judge_prefers_direct_manga_disambiguation_page():
     direct_response = MagicMock()
     direct_response.json.return_value = _extract_response("転生したらスライムだった件 (漫画)", TENSURA_EXTRACT)
@@ -226,6 +230,9 @@ def test_judge_prefers_direct_manga_disambiguation_page():
 
 
 def test_judge_falls_back_to_search_and_prefers_manga_candidate():
+    # 検索結果の候補("ダミー (漫画)")はクエリ("ダミー")と文字列が異なるため、
+    # Wikipedia自身のリダイレクトで裏付けが取れて初めて採用される
+    # （M6-A-1: 検索の関連度ランキングだけを根拠にしない）。
     missing_direct = MagicMock()
     missing_direct.json.return_value = _extract_response("ダミー (漫画)", "", missing=True)
     missing_direct.raise_for_status.return_value = None
@@ -234,19 +241,48 @@ def test_judge_falls_back_to_search_and_prefers_manga_candidate():
     search_response.json.return_value = _search_response(["ダミー", "ダミー (漫画)", "ダミー (小説)"])
     search_response.raise_for_status.return_value = None
 
+    redirect_confirmation = MagicMock()
+    redirect_confirmation.json.return_value = _redirect_response("ダミー", "ダミー (漫画)")
+    redirect_confirmation.raise_for_status.return_value = None
+
     extract_response = MagicMock()
     extract_response.json.return_value = _extract_response("ダミー (漫画)", ONE_PIECE_EXTRACT)
     extract_response.raise_for_status.return_value = None
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[missing_direct, search_response, extract_response],
+        side_effect=[missing_direct, search_response, redirect_confirmation, extract_response],
     ) as mock_get:
         result = judge("ダミー")
 
     assert result.matched_title == "ダミー (漫画)"
     assert result.status == "連載中"
-    assert mock_get.call_count == 3
+    assert mock_get.call_count == 4
+
+
+def test_judge_rejects_search_candidate_without_exact_match_or_redirect_backing():
+    # 回帰テスト（M6-A-1）: 検索結果の候補がクエリと文字列一致せず、かつリダイレクトの
+    # 裏付けも取れない場合、無関係な記事を確信を持って誤答するより判定不能に倒す。
+    missing_direct = MagicMock()
+    missing_direct.json.return_value = _extract_response("謎の作品 (漫画)", "", missing=True)
+    missing_direct.raise_for_status.return_value = None
+
+    search_response = MagicMock()
+    search_response.json.return_value = _search_response(["無関係な別の記事"])
+    search_response.raise_for_status.return_value = None
+
+    no_redirect = MagicMock()
+    no_redirect.json.return_value = {"query": {"pages": {"1": {"title": "謎の作品", "missing": ""}}}}
+    no_redirect.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[missing_direct, search_response, no_redirect],
+    ):
+        result = judge("謎の作品")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
 
 
 def test_judge_returns_not_found_when_no_article_exists():
