@@ -8,7 +8,18 @@ USER_AGENT = "comic-checker/0.1 (https://github.com/; local tool, contact via re
 REQUEST_TIMEOUT = 15
 
 ONGOING_RE = re.compile(r"連載中|連載されている")
-COMPLETED_RE = re.compile(r"完結(?:した)?|連載(?:が|を)?終了(?:した)?|連載された|まで連載(?:された)?")
+
+# 「完結」は日本語として「作品自体が終わった」ことをほぼ一意に意味する強いシグナル
+# として、そのまま信用する。
+COMPLETED_STRONG_RE = re.compile(r"完結(?:した)?")
+
+# 「連載(を)?終了」「連載された」「まで連載」は完結を示唆するが、「週刊連載を終了し、
+# 週刊連載ではない掲載形態で継続」のように、連載の頻度・掲載形態の変更を指しているに
+# 過ぎず、作品自体は終わっていないケースがある（HUNTER×HUNTERで実際に誤判定した
+# 事例）。そのため、同じ文中に継続を示す語（CONTINUATION_VETO_RE）がある場合は、
+# このシグナルを完結とはみなさない。
+COMPLETED_WEAK_RE = re.compile(r"連載(?:が|を)?終了(?:した)?|連載された|まで連載(?:された)?")
+CONTINUATION_VETO_RE = re.compile(r"継続|再開|引き続き|連載を?続け|掲載を?続け")
 
 MANGA_MARKERS = ("漫画", "コミカライズ", "コミック版", "漫画版")
 NOVEL_MARKERS = ("小説", "ライトノベル")
@@ -64,7 +75,10 @@ def _judge_extract(extract):
 
     for sentence in _split_sentences(extract):
         ongoing = bool(ONGOING_RE.search(sentence))
-        completed = bool(COMPLETED_RE.search(sentence))
+        weak_completed = bool(COMPLETED_WEAK_RE.search(sentence)) and not CONTINUATION_VETO_RE.search(
+            sentence
+        )
+        completed = bool(COMPLETED_STRONG_RE.search(sentence)) or weak_completed
         if ongoing == completed:
             continue
         status = "連載中" if ongoing else "完結"

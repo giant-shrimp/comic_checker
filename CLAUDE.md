@@ -87,12 +87,29 @@ Modules under `comic_checker/`, each with one job:
     (`prop=extracts&exintro=true&explaintext=true`). This mirrors the "曖昧さ回避・派生
     記事の優先探索" requirement — a manga-specific article should win over a franchise or
     novel article when one exists.
-  - `_judge_extract()` splits the lead text into sentences on `。` and applies two
-    regexes per sentence: `ONGOING_RE` (`連載中` / `連載されている`, present tense) vs
-    `COMPLETED_RE` (`完結(した)?` / `連載(が|を)?終了(した)?` / `連載された` /
-    `まで連載(された)?`, past tense). This split matters concretely: 「アオのハコ」's lead
-    says "…まで連載された" (past tense, completed) — a naive `連載` substring check would
-    misread that as ongoing.
+  - `_judge_extract()` splits the lead text into sentences on `。` and applies regexes per
+    sentence: `ONGOING_RE` (`連載中` / `連載されている`, present tense) vs completion, which
+    is itself split into two tiers, not one flat regex:
+    - `COMPLETED_STRONG_RE` (`完結(した)?`) is trusted unconditionally — in Japanese this
+      essentially only means "the work itself concluded."
+    - `COMPLETED_WEAK_RE` (`連載(が|を)?終了(した)?` / `連載された` / `まで連載(された)?`)
+      is *not* trusted unconditionally: it's vetoed by `CONTINUATION_VETO_RE` (`継続` /
+      `再開` / `引き続き` / `連載を?続け` / `掲載を?続け`) appearing in the same sentence.
+      This exists because of a real production false-positive: HUNTER×HUNTER's article
+      says "…週刊連載を終了し…「週刊連載ではない掲載形態での継続」を発表した" — ending
+      *weekly-cadence* serialization while explicitly continuing in another format, which
+      `連載(を)?終了` alone can't distinguish from the series actually ending. Do not
+      merge these two tiers back into one regex — `tests/test_wikipedia_client.py`'s
+      HUNTER×HUNTER case is a direct regression test for this, and its 幽☆遊★白書
+      companion test guards against over-correcting (a legitimate `連載された`-based
+      completion with no continuation language nearby must still resolve to `完結`, not
+      get swept into caution by a blanket veto). This tiering is also the general answer
+      if a similar false-`完結` shows up elsewhere: prefer moving the risky pattern into
+      the vetoed weak tier (or adding a narrower veto) over loosening/removing it outright
+      — a wrongly-`完結` row is worse than a `判定不能` row, so bias new fixes the same
+      way. This split matters concretely for tense too: 「アオのハコ」's lead says "…まで
+      連載された" (past tense, completed) — a naive `連載` substring check would misread
+      that as ongoing.
   - **Mediamix disambiguation** (the reason this isn't just "find a status word"): if the
     lead text mentions `小説` or `ライトノベル` anywhere, the article is treated as
     covering a franchise where the manga's status could differ from the original novel's

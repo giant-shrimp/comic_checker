@@ -47,6 +47,25 @@ TENSURA_NO_MANGA_SENTENCE_EXTRACT = (
     "コミカライズも展開されている。"
 )
 
+# 実際の記事から取得した文言（休載節）そのまま。「週刊連載を終了」という語だけを見ると
+# COMPLETED_WEAK_REにマッチするが、文の後半で「継続」を発表しており、作品自体は
+# 終わっていない（連載頻度・掲載形態が変わっただけ）。誤って「完結」と判定していた
+# 実際のバグの回帰テスト。
+HUNTER_HUNTER_EXTRACT = (
+    "『HUNTER×HUNTER』（ハンター×ハンター）は、冨樫義博による日本の漫画。"
+    "『週刊少年ジャンプ』にて1998年14号より連載を開始。"
+    "同年12月26日発売の2023年4・5合併号の第400話を最後に週刊連載を終了し、"
+    "第401話以降は冨樫の体調を考慮して「週刊連載ではない掲載形態での継続」を発表した。"
+)
+
+# 幽☆遊★白書のケース: COMPLETED_WEAK_RE（「まで連載された」）が実際に完結を意味する
+# 場合は、継続を示す語が無ければ従来通り完結と判定できることの確認（HUNTER×HUNTERの
+# 修正が過剰に厳格化していないことの回帰テスト）。
+YU_YU_HAKUSHO_EXTRACT = (
+    "『幽☆遊☆白書』は、冨樫義博による日本の漫画作品。"
+    "『週刊少年ジャンプ』（集英社）にて、1990年51号から1994年32号にかけて連載された。"
+)
+
 
 def test_one_piece_is_ongoing():
     status, evidence = _judge_extract(ONE_PIECE_EXTRACT)
@@ -80,6 +99,23 @@ def test_tensura_manga_status_is_not_confused_with_novel_status():
     status, evidence = _judge_extract(TENSURA_EXTRACT)
     assert status == "連載中"
     assert "漫画" in evidence
+
+
+def test_hunter_hunter_weekly_serialization_ending_is_not_completed():
+    # 回帰テスト（実際に本番で誤判定したケース）: 「週刊連載を終了」だけを見て完結と
+    # 判定していたが、同じ文で「継続」を発表しており、実際には連載中（休載を繰り返して
+    # いるだけで終了していない）。判定不能側に倒すのが正しい（記事内に「連載中」
+    # 「連載されている」という明確な現在形の表現が無いため、連載中と断定はできない）。
+    status, evidence = _judge_extract(HUNTER_HUNTER_EXTRACT)
+    assert status == STATUS_UNKNOWN
+
+
+def test_yu_yu_hakusho_still_completed_without_continuation_veto():
+    # HUNTER×HUNTERの修正（継続の語があるとCOMPLETED_WEAK_REを無効化する）が、
+    # 継続を示す語の無い正当な完結判定まで壊していないことの確認。
+    status, evidence = _judge_extract(YU_YU_HAKUSHO_EXTRACT)
+    assert status == "完結"
+    assert "連載された" in evidence
 
 
 def test_multimedia_work_with_no_manga_specific_sentence_is_unknown():
