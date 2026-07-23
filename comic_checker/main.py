@@ -3,15 +3,19 @@ import sys
 import traceback
 from pathlib import Path
 
+from comic_checker import wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
 from comic_checker.manba_client import ManbaClient
 
 DEFAULT_STATE_FILE = ".manba_state.json"
 
+WIKIPEDIA_SOURCE = "Wikipedia"
+MANBA_SOURCE = "manba.co.jp"
+
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Excelの漫画タイトル一覧をmanba.co.jpで検索し、完結/連載中をExcelに書き戻す"
+        description="Excelの漫画タイトル一覧をWikipediaで検索し、完結/連載中をExcelに書き戻す"
     )
     parser.add_argument("excel_path", help="対象のExcelファイルパス")
     parser.add_argument("--sheet", default=None, help="対象シート名（省略時はアクティブシート）")
@@ -19,11 +23,21 @@ def parse_args(argv=None):
     parser.add_argument("--title-column", default="タイトル", help="タイトルが入っている列のヘッダー名")
     parser.add_argument("--status-column", default="連載状況", help="判定結果を書き込む列のヘッダー名")
     parser.add_argument(
-        "--matched-title-column",
-        default="マンバ上のタイトル",
-        help="マンバでの一致タイトルを書き込む列のヘッダー名",
+        "--source-column",
+        default="判定方法",
+        help="判定に使った情報源（Wikipedia/manba.co.jp）を書き込む列のヘッダー名",
     )
-    parser.add_argument("--url-column", default="マンバURL", help="作品ページURLを書き込む列のヘッダー名")
+    parser.add_argument(
+        "--evidence-column",
+        default="判定根拠",
+        help="判定根拠（該当したリード文の抜粋など）を書き込む列のヘッダー名",
+    )
+    parser.add_argument(
+        "--matched-title-column",
+        default="参照タイトル",
+        help="判定に使った記事/作品ページ上のタイトルを書き込む列のヘッダー名",
+    )
+    parser.add_argument("--url-column", default="参照URL", help="判定に使ったページのURLを書き込む列のヘッダー名")
     parser.add_argument(
         "--skip-filled",
         action="store_true",
@@ -31,22 +45,71 @@ def parse_args(argv=None):
         help="判定結果が既に入っている行はスキップする（デフォルト:有効）",
     )
     parser.add_argument("--no-skip-filled", dest="skip_filled", action="store_false")
-    parser.add_argument("--headless", action="store_true", default=True)
+    parser.add_argument(
+        "--fallback-to-manba",
+        action="store_true",
+        default=False,
+        help=(
+            "Wikipediaで判定できなかった行（判定不能/記事なし）をmanba.co.jp経由で"
+            "判定し直す（デフォルト:無効）。有効にした場合のみ、以下のPlaywright関連"
+            "オプションとMANBA_SEARCH_API_KEY環境変数が必要になる"
+        ),
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=True,
+        help="（--fallback-to-manba有効時のみ使用）ヘッドレスブラウザで実行する",
+    )
     parser.add_argument(
         "--no-headless",
         dest="headless",
         action="store_false",
-        help="ブラウザを表示して実行する（動作確認に便利）",
+        help="（--fallback-to-manba有効時のみ使用）ブラウザを表示して実行する（動作確認に便利）",
     )
     parser.add_argument(
         "--state-file",
         default=DEFAULT_STATE_FILE,
-        help="Cloudflare通過後のセッション情報(Cookie)の保存先",
+        help="（--fallback-to-manba有効時のみ使用）Cloudflare通過後のセッション情報(Cookie)の保存先",
     )
-    parser.add_argument("--min-delay", type=float, default=3.0, help="リクエスト間の最小待機秒数")
-    parser.add_argument("--max-delay", type=float, default=6.0, help="リクエスト間の最大待機秒数")
+    parser.add_argument(
+        "--min-delay", type=float, default=3.0, help="（--fallback-to-manba有効時のみ使用）リクエスト間の最小待機秒数"
+    )
+    parser.add_argument(
+        "--max-delay", type=float, default=6.0, help="（--fallback-to-manba有効時のみ使用）リクエスト間の最大待機秒数"
+    )
     parser.add_argument("--save-every", type=int, default=5, help="何件ごとにExcelを保存するか")
     return parser.parse_args(argv)
+
+
+def _judge_row(title, fallback_to_manba, get_manba_client):
+    """1件分の判定を行い、(status, source, matched_title, url, evidence) を返す。
+
+    Wikipediaで完結/連載中が判定できればそれを採用する。判定不能/記事なしの場合、
+    fallback_to_manba が真であれば get_manba_client() 経由でmanba.co.jpにフォールバック
+    する。get_manba_client() はManbaClientを遅延生成し、以降の呼び出しでは使い回す。
+    """
+    wiki_result = wikipedia_client.judge(title)
+    wiki_row = (
+        wiki_result.status,
+        WIKIPEDIA_SOURCE,
+        wiki_result.matched_title or "",
+        wiki_result.url or "",
+        wiki_result.evidence or "",
+    )
+
+    if wiki_result.status in ("完結", "連載中") or not fallback_to_manba:
+        return wiki_row
+
+    manba_client = get_manba_client()
+    manba_result = manba_client.lookup(title)
+    return (
+        manba_result.status,
+        MANBA_SOURCE,
+        manba_result.matched_title or "",
+        manba_result.url or "",
+        "",
+    )
 
 
 def run(
@@ -55,9 +118,12 @@ def run(
     header_row=1,
     title_column="タイトル",
     status_column="連載状況",
-    matched_title_column="マンバ上のタイトル",
-    url_column="マンバURL",
+    source_column="判定方法",
+    evidence_column="判定根拠",
+    matched_title_column="参照タイトル",
+    url_column="参照URL",
     skip_filled=True,
+    fallback_to_manba=False,
     headless=True,
     state_file=DEFAULT_STATE_FILE,
     min_delay=3.0,
@@ -65,11 +131,14 @@ def run(
     save_every=5,
     on_progress=None,
 ):
-    """Excelを読み込み、manba.co.jpを検索して連載状況を書き戻す。
+    """Excelを読み込み、Wikipedia（必要に応じてmanba.co.jp）を検索して連載状況を書き戻す。
 
     1行処理するごとに on_progress(index, total, title, status, matched_title, error=None)
     を呼び出す。成功時は error=None、行単位で例外が起きた場合は捕捉した例外を渡す。
     on_progress が None の場合は何もしない。戻り値は処理対象だった行数。
+
+    fallback_to_manba が真の場合のみ、Wikipediaで判定不能だった行についてManbaClientを
+    （最初に必要になった時点で一度だけ）起動し、以降の該当行で使い回す。
     """
     if on_progress is None:
         on_progress = lambda *args, **kwargs: None
@@ -80,6 +149,8 @@ def run(
 
     title_col = find_column(ws, title_column, header_row)
     status_col = ensure_column(ws, status_column, header_row)
+    source_col = ensure_column(ws, source_column, header_row)
+    evidence_col = ensure_column(ws, evidence_column, header_row)
     matched_col = ensure_column(ws, matched_title_column, header_row)
     url_col = ensure_column(ws, url_column, header_row)
 
@@ -99,30 +170,43 @@ def run(
     total = len(rows)
     print(f"{total}件を処理します")
 
-    with ManbaClient(
-        headless=headless,
-        state_path=state_file,
-        min_delay=min_delay,
-        max_delay=max_delay,
-    ) as client:
+    manba_client_holder = {"client": None}
+
+    def get_manba_client():
+        if manba_client_holder["client"] is None:
+            client = ManbaClient(
+                headless=headless,
+                state_path=state_file,
+                min_delay=min_delay,
+                max_delay=max_delay,
+            )
+            client.__enter__()
+            manba_client_holder["client"] = client
+        return manba_client_holder["client"]
+
+    try:
         for i, (row, title) in enumerate(rows, start=1):
             error = None
             try:
-                result = client.lookup(title)
-                status = result.status
-                matched_title = result.matched_title or ""
-                url = result.url or ""
+                status, source, matched_title, url, evidence = _judge_row(
+                    title, fallback_to_manba, get_manba_client
+                )
             except Exception as exc:
-                status, matched_title, url = "エラー", "", ""
+                status, source, matched_title, url, evidence = "エラー", "", "", "", ""
                 error = exc
 
             ws.cell(row=row, column=status_col, value=status)
+            ws.cell(row=row, column=source_col, value=source)
+            ws.cell(row=row, column=evidence_col, value=evidence)
             ws.cell(row=row, column=matched_col, value=matched_title)
             ws.cell(row=row, column=url_col, value=url)
             on_progress(i, total, title, status, matched_title, error=error)
 
             if i % save_every == 0:
                 wb.save(excel_path)
+    finally:
+        if manba_client_holder["client"] is not None:
+            manba_client_holder["client"].__exit__(None, None, None)
 
     wb.save(excel_path)
     print("完了しました")
@@ -150,9 +234,12 @@ def main(argv=None):
         header_row=args.header_row,
         title_column=args.title_column,
         status_column=args.status_column,
+        source_column=args.source_column,
+        evidence_column=args.evidence_column,
         matched_title_column=args.matched_title_column,
         url_column=args.url_column,
         skip_filled=args.skip_filled,
+        fallback_to_manba=args.fallback_to_manba,
         headless=args.headless,
         state_file=args.state_file,
         min_delay=args.min_delay,
