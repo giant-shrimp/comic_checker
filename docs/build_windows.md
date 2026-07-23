@@ -20,9 +20,35 @@
 git clone <このリポジトリのURL>
 cd comic_checker
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 pip install pyinstaller
+```
+
+**PowerShellでの仮想環境の有効化について**: `.venv\Scripts\activate`（`.\`なし・拡張子なし）
+と入力すると、PowerShellは「`.venv`という名前のモジュールを読み込もうとして失敗する」
+（`モジュール '.venv' を読み込むことができませんでした`）。これはPowerShellの実行ファイル
+解決規則によるもので、`.venv`が壊れているわけではない。カレントディレクトリ内のスクリプト
+を実行するには`.\`を付け、かつPowerShell用のスクリプトは`Activate.ps1`（`.bat`ではなく）
+を使う必要がある。
+
+もし`.\.venv\Scripts\Activate.ps1`の実行時に
+`このシステムではスクリプトの実行が無効になっているため...`
+というエラーが出た場合（PowerShellの実行ポリシーによる制限）、そのPowerShellウィンドウ
+限定で許可する:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+それでも解決しない、または仮想環境を有効化せずに進めたい場合は、`.venv\Scripts\`配下の
+実行ファイルを毎回フルパスで直接呼び出す方法でも代替できる（有効化不要）:
+
+```powershell
+.venv\Scripts\pip.exe install -r requirements.txt
+.venv\Scripts\pip.exe install pyinstaller
+.venv\Scripts\pyinstaller.exe comic_checker.spec
 ```
 
 `requirements.txt`には`playwright`を含めていない（軽量ビルド用）。`playwright install
@@ -45,6 +71,18 @@ pyinstaller comic_checker.spec
 - 生成された.exeのファイルサイズを確認（軽量ビルドなので数十MB程度のはず。数百MBに
   なっている場合はplaywright等が意図せず同梱されている可能性があるため、後述の
   「除外できているかの確認」を参照）
+
+### 実機確認済み（2026-07-23、Windows 11 / Python 3.13.14）
+
+- `dist\comic_checker.exe`: 14,450 KB（約14.1MB。軽量ビルドとして妥当なサイズ）
+- `warn-comic_checker.txt`に`excluded module named comic_checker.manba_client -
+  imported by comic_checker.main (delayed, optional)`を確認（`playwright`への
+  言及なし＝そもそも同梱を試みていない）
+- SmartScreen等の警告は発生せず
+- `tests\test.xlsx`（ワンピース／進撃の巨人／ダンダダン／アオのハコ／
+  転生したらスライムだった件の5件）で実行し、Wikipedia側の単体検証時と同じ結果
+  （連載中／完結／連載中／完結／判定不能）を確認。ログ欄への進捗表示、完了後の
+  ボタン再有効化も含めて想定通り
 
 ### 4. 「Pythonをインストールしていないwindows PC」での検証（M4の対象、参考まで）
 
@@ -85,7 +123,11 @@ Defender SmartScreenや一部のウイルス対策ソフトに警告・誤検知
 - 誤検知の程度を見て、そのまま許容する（社内/個人利用限定であれば、警告を一度承認
   すれば以降は起動できることが多い）
 
-これは実機で試してみないと判断できないため、M4の結果を見てから決める。
+2026-07-23の実機ビルドではSmartScreen警告は出なかった（`git clone`で取得したソース
+から自分でビルドしたため、ダウンロードファイルに付与される「ゾーン識別子」が無い
+ことが影響している可能性がある）。ただし、他のPCへ`.exe`単体を配布した場合
+（ダウンロード・USB経由での受け渡し等）は改めて発生しうるため、楽観視せず
+M4（別マシンでの配布・実行確認）で確認すること。
 
 ## WSL側で行った事前検証（参考）
 
