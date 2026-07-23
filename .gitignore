@@ -5,3 +5,4 @@ __pycache__/
 .manba_state.json
 build/
 dist/
+CLAUDE.md
