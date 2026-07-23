@@ -110,6 +110,22 @@ Modules under `comic_checker/`, each with one job:
       way. This split matters concretely for tense too: 「アオのハコ」's lead says "…まで
       連載された" (past tense, completed) — a naive `連載` substring check would misread
       that as ongoing.
+    - **Guideline for adding any new completion pattern**: default it to the vetoed weak
+      tier, not the strong tier. Only put a pattern in `COMPLETED_STRONG_RE` if you can't
+      construct a plausible sentence where it's true but the work isn't actually over
+      (that's the bar `完結` clears and `連載終了` doesn't). The veto is intentionally
+      scoped to the weak tier only — it never suppresses `COMPLETED_STRONG_RE` — so a
+      sentence like "〜は完結した。アニメは継続する。" still resolves correctly even
+      though it contains `継続`; only weak-tier patterns sharing a sentence with
+      continuation language get suppressed. That asymmetry was checked deliberately (not
+      just assumed) after this fix: grepped all 7 titles verified so far for weak/strong
+      completion patterns co-occurring with `CONTINUATION_VETO_RE` in the same sentence —
+      HUNTER×HUNTER's is the only hit, and it's the correct one. If a future title turns
+      up a real "weak signal + unrelated continuation language" false-判定不能 (the
+      inverse failure — safe but annoying), the fix is a narrower veto condition (e.g.
+      requiring the continuation word be about the same subject), not widening the veto's
+      scope to the strong tier — that direction trades a rare annoyance for reintroducing
+      the dangerous failure mode this fix exists to prevent.
   - **Mediamix disambiguation** (the reason this isn't just "find a status word"): if the
     lead text mentions `小説` or `ライトノベル` anywhere, the article is treated as
     covering a franchise where the manga's status could differ from the original novel's
