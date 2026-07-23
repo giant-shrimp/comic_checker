@@ -120,6 +120,47 @@ YU_YU_HAKUSHO_EXTRACT = (
     "『週刊少年ジャンプ』（集英社）にて、1990年51号から1994年32号にかけて連載された。"
 )
 
+# Issue #13の実データ調査で確認したケース（is_multimedia=False、実際のWikipedia記事の
+# 冒頭文+「概要」節そのまま）。本編自身の完結文「2017年3月23日まで毎週木曜更新で連載。」
+# は「まで」と「連載」の間に語が挟まるため、当時のCOMPLETED_WEAK_REでは取りこぼされて
+# いた。その結果、本来は対象外のはずの番外編の連載終了文「番外編「とんかつDJアゲ太郎
+# B面〜ファッショニスタへの道〜」が本編と並行で連載された。」が代わりに本編の判定文として
+# 採用されてしまっていた（is_multimedia=False経路はMANGA_MARKERS等の主語チェックを
+# 行わないため）。この回では本編・番外編どちらも完結済みだったため結果的にステータス自体は
+# 正しかったが、両者の連載状況が食い違う作品では誤ったステータスを確信を持って返しうる、
+# 実在する不具合だった。SPINOFF_MARKERSによる除外と、「まで...連載」の間隔緩和の
+# 両方を確認する回帰テスト。
+TONKATSU_DJ_AGETARO_EXTRACT = (
+    "『とんかつDJアゲ太郎』（とんかつディージェイアゲたろう）は、イーピャオと"
+    "小山ゆうじろうによる日本の漫画。\n\n\n"
+    "== 概要 ==\n"
+    "とんかつ屋の跡取り息子揚太郎がクラブカルチャーに衝撃を受け、とんかつ屋とDJに"
+    "数多くの共通点を見出しながら、その両方を目指して奮闘するギャグ漫画。"
+    "『少年ジャンプ+』（以下『J+』、集英社）2014年9月22日より2017年3月23日まで"
+    "毎週木曜更新で連載。\n"
+    "『J+』創刊作品の一つであり、『J+』から最初に単行本化された作品の一つでもある。"
+    "『カラダ探し』などと並び初期『J+』を彩り、2016年には『J+』作品初となる"
+    "テレビアニメが放送された。2020年10月30日には実写映画が公開された。\n"
+    "制作においては、各話のタイトル・人物名は原案担当のイーピャオが考え、それに"
+    "漫画担当の小山がセリフを肉付けしていくという形が採られている。画やセリフなどは"
+    "ウェブコミックとしての読みやすさを重視して描かれている。単行本ではDJのYummyが"
+    "クラブカルチャーについて解説している。\n"
+    "『MEN'S NON-NO』（集英社）2015年1月号から12月号まで、番外編"
+    "「とんかつDJアゲ太郎 B面〜ファッショニスタへの道〜」が本編と並行で連載された。"
+    "また、『週刊少年ジャンプ』（集英社）2015年4・5合併号と12号に出張読切が"
+    "掲載された。\n\n\n"
+)
+
+# 合成フィクスチャ（実データでは未発見）。本編は連載中、番外編は完結済みという、
+# TONKATSU_DJ_AGETARO_EXTRACTとは逆に食い違うパターン。番外編の完結文を本編より先に
+# 配置し、番外編の文につられて誤った「完結」を返さないこと（スキップされ、本編自身の
+# 「連載中」文まで走査が続くこと）を確認する。
+SPINOFF_COMPLETED_MAIN_ONGOING_EXTRACT = (
+    "『例の連載作品』は、某作者による日本の漫画。"
+    "番外編「例の連載作品外伝」は2021年に連載された。"
+    "『週刊少年サンプル』（サンプル社）にて2020年から連載中。"
+)
+
 
 def test_one_piece_is_ongoing():
     status, evidence = _judge_extract(ONE_PIECE_EXTRACT)
@@ -170,6 +211,26 @@ def test_yu_yu_hakusho_still_completed_without_continuation_veto():
     status, evidence = _judge_extract(YU_YU_HAKUSHO_EXTRACT)
     assert status == "完結"
     assert "連載された" in evidence
+
+
+def test_tonkatsu_dj_agetaro_main_completion_not_confused_with_spinoff():
+    # 回帰テスト（実際に本番で誤判定していたケース、Issue #13）: 本編自身の完結文
+    # 「まで毎週木曜更新で連載。」は当時取りこぼされ、代わりに番外編の連載終了文が
+    # 本編の判定文として採用されていた。SPINOFF_MARKERSによる除外と「まで...連載」の
+    # 間隔緩和の両方が効いて、正しく本編自身の文から完結と判定できることを確認する。
+    status, evidence = _judge_extract(TONKATSU_DJ_AGETARO_EXTRACT)
+    assert status == "完結"
+    assert "番外編" not in evidence
+    assert "毎週木曜更新で連載" in evidence
+
+
+def test_spinoff_completion_does_not_override_main_series_ongoing_status():
+    # 合成フィクスチャ（実データでは未発見）: 本編が連載中、番外編が完結済みという、
+    # とんかつDJアゲ太郎の実例とは逆に食い違うパターン。番外編の完結文につられて
+    # 誤って「完結」を返さないことを確認する。
+    status, evidence = _judge_extract(SPINOFF_COMPLETED_MAIN_ONGOING_EXTRACT)
+    assert status == "連載中"
+    assert "番外編" not in evidence
 
 
 def test_jojo_is_ongoing_via_present_progressive_form():
