@@ -58,6 +58,25 @@ _PRIMARY_TYPE_RE = re.compile(r"日本の([^、。]+)")
 STATUS_NOT_FOUND = "記事なし"
 STATUS_UNKNOWN = "判定不能"
 
+# Issue #12: 本文解析（_judge_extract）が判定不能のときだけ参照する補助情報源。
+# {{Infobox animanga/Manga}}テンプレートの終了系フィールドが空欄かどうかは、本文解析より
+# 頑健な連載中/完結シグナルになりうることを実現可能性検証で確認した一方、記事内に
+# 本編とスピンオフ両方のインフォボックスが存在しうる（例: 転生したらスライムだった件は
+# 本編1件+スピンオフ8件、計9個）ため、本編ブロックを誤って取り違えると
+# HUNTER×HUNTERと同様の危険側の誤り（連載中の本編を完結と誤判定）になりうる。
+MANGA_INFOBOX_MARKER = "{{Infobox animanga/Manga"
+
+# 事前調査（転生したらスライムだった件・呪術廻戦・NARUTO -ナルト-の3作品、計11個の
+# インフォボックス）で一貫して確認した手がかり: 本編ブロックには`タイトル`フィールドが
+# 無く（記事タイトルと暗黙に一致するため）、スピンオフブロックには明示的な`タイトル`
+# フィールドがある。
+TITLE_FIELD_NAME = "タイトル"
+
+# 終了系フィールドの名称は記事によって揺れる。`終了号`・`終了日`は実データ
+# （HUNTER×HUNTER・こち亀等）で確認済み。`終了`は念のため追加した未確認の候補で、
+# 実際のインフォボックスで観測できたわけではない。
+END_FIELD_NAMES = ("終了号", "終了日", "終了")
+
 
 class WikipediaJudgment:
     def __init__(self, query, status, matched_title=None, url=None, evidence=None):
@@ -116,6 +135,95 @@ def _judge_extract(extract):
             return status, sentence.strip()
 
     return STATUS_UNKNOWN, None
+
+
+def _extract_braced_blocks(wikitext, marker):
+    """wikitext中に複数回出現しうるmarker（テンプレート開始文字列）ごとに、対応する
+    閉じ括弧までのブロックを切り出す。
+
+    テンプレート内に`{{small|...}}`等がネストしていても壊れないよう、単純な文字列
+    マッチではなく`{`/`}`の出現数で深さを数える。閉じ括弧が見つからない不正なwikitext
+    の場合、その出現はスキップして次を探す。
+    """
+    blocks = []
+    start = 0
+    while True:
+        idx = wikitext.find(marker, start)
+        if idx == -1:
+            break
+        depth = 0
+        end = None
+        for i in range(idx, len(wikitext)):
+            if wikitext[i] == "{":
+                depth += 1
+            elif wikitext[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end is None:
+            start = idx + len(marker)
+            continue
+        blocks.append(wikitext[idx:end])
+        start = end
+    return blocks
+
+
+def _infobox_has_field(block, field_name):
+    # 行内の空白（インデント・"="前後のスペース）だけを許容し、\sは使わない。\sは改行にも
+    # マッチするため、値が空欄で直後に改行が続く行（例:「|終了号 = 」の直後で改行）で、
+    # 次の行の内容まで巻き込んで一致してしまうバグを踏んだ経緯がある。
+    return bool(re.search(r"^\|[ \t]*" + re.escape(field_name) + r"[ \t]*=", block, re.MULTILINE))
+
+
+def _infobox_field(block, field_name):
+    """1ブロック内から`| フィールド名 = 値`形式の行を探し、値をstrip()して返す。
+
+    フィールド自体が存在しない場合、および存在するが値が空欄の場合のどちらも
+    Noneを返す（呼び出し側にとってはどちらも「値が無い」という点で同じ扱いのため）。
+    """
+    # _infobox_has_fieldと同じ理由で、行内の空白のみ（[ \t]*）を使い、\sは使わない。
+    match = re.search(
+        r"^\|[ \t]*" + re.escape(field_name) + r"[ \t]*=[ \t]*(.*)$", block, re.MULTILINE
+    )
+    if match is None:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def _find_main_manga_block(blocks):
+    """`タイトル`フィールドが無いブロックがちょうど1つの場合のみ、それを本編として返す。
+
+    0個・2個以上の場合は本編を確信を持って特定できないため、Noneを返す
+    （Issue #8以来のfail-closed方針。無理にどれかを本編とみなさない）。
+    """
+    titleless = [block for block in blocks if _infobox_field(block, TITLE_FIELD_NAME) is None]
+    if len(titleless) != 1:
+        return None
+    return titleless[0]
+
+
+def _judge_via_infobox(wikitext):
+    """wikitextから本編漫画のインフォボックスを特定し、連載中/完結を判定する。
+
+    本編を確信を持って特定できない場合、または終了系フィールドが1つも存在せず
+    判定材料が無い場合は、(None, None)を返す（呼び出し側は判定不能のまま維持する）。
+    """
+    blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
+    main_block = _find_main_manga_block(blocks)
+    if main_block is None:
+        return None, None
+
+    if not any(_infobox_has_field(main_block, field_name) for field_name in END_FIELD_NAMES):
+        return None, None
+
+    for field_name in END_FIELD_NAMES:
+        value = _infobox_field(main_block, field_name)
+        if value:
+            return "完結", f"インフォボックス: {field_name} = {value}"
+
+    return "連載中", "インフォボックス: 終了号/終了日等が空欄"
 
 
 def _api_get(params):
@@ -183,6 +291,29 @@ def _search_titles(title, limit=5):
     return [hit["title"] for hit in hits]
 
 
+def _fetch_wikitext(page_title):
+    """指定タイトルのraw wikitextを取得する。取得できなければNone。
+
+    Issue #12: インフォボックスのraw wikitextを取得するための専用エンドポイント
+    （action=parse&prop=wikitext）。prop=extractsとは別のAPI呼び出しになる。
+    """
+    data = _api_get(
+        {
+            "action": "parse",
+            "page": page_title,
+            "prop": "wikitext",
+            "redirects": "1",
+        }
+    )
+    parse = data.get("parse")
+    if parse is None:
+        return None
+    wikitext = parse.get("wikitext", {}).get("*")
+    if not wikitext:
+        return None
+    return wikitext
+
+
 def _redirects_to(title, expected_target):
     """titleがWikipediaの正規のリダイレクトでexpected_targetへ解決されるかどうか。
 
@@ -238,6 +369,14 @@ def judge(title):
 
     matched_title, extract, url = article
     status, evidence = _judge_extract(extract)
+
+    if status == STATUS_UNKNOWN:
+        wikitext = _fetch_wikitext(matched_title)
+        if wikitext is not None:
+            infobox_status, infobox_evidence = _judge_via_infobox(wikitext)
+            if infobox_status is not None:
+                status, evidence = infobox_status, infobox_evidence
+
     return WikipediaJudgment(
         query=title,
         status=status,

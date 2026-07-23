@@ -1,10 +1,13 @@
 from unittest.mock import MagicMock, patch
 
 from comic_checker.wikipedia_client import (
+    MANGA_INFOBOX_MARKER,
     STATUS_NOT_FOUND,
     STATUS_UNKNOWN,
     WikipediaJudgment,
+    _extract_braced_blocks,
     _judge_extract,
+    _judge_via_infobox,
     judge,
 )
 
@@ -291,6 +294,132 @@ def test_extract_with_no_status_sentence_is_unknown():
     assert evidence is None
 
 
+def _manga_infobox_block(fields):
+    lines = ["{{Infobox animanga/Manga"]
+    for key, value in fields:
+        lines.append(f"|{key} = {value}")
+    lines.append("}}")
+    return "\n".join(lines)
+
+
+# Issue #12: 事前調査（転生したらスライムだった件・呪術廻戦・NARUTO -ナルト-）で確認した
+# 構造を模した合成フィクスチャ。本編ブロックは`タイトル`欄が無く、スピンオフブロックは
+# 明示的な`タイトル`欄を持つ。
+MAIN_BLOCK_ONGOING = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2015年1号"),
+        ("終了号", ""),
+        ("終了日", ""),
+    ]
+)
+
+MAIN_BLOCK_COMPLETED = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2015年1号"),
+        ("終了号", "2020年30号"),
+        ("終了日", "2020年7月10日"),
+    ]
+)
+
+SPINOFF_BLOCK = _manga_infobox_block(
+    [
+        ("タイトル", "サンプル外伝"),
+        ("作者", "[[某作者]]"),
+        ("開始号", "2019年1号"),
+        ("終了号", "2019年12号"),
+    ]
+)
+
+SPINOFF_BLOCK_2 = _manga_infobox_block(
+    [
+        ("タイトル", "サンプル外伝2"),
+        ("作者", "[[某作者]]"),
+        ("終了号", "2021年5号"),
+    ]
+)
+
+NO_END_FIELDS_BLOCK = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+    ]
+)
+
+# {{small|...}}のようなネストしたテンプレートを含むブロックが、_extract_braced_blocksで
+# 壊れずに1ブロックとして切り出せることの確認用。
+NESTED_MAIN_BLOCK = (
+    "{{Infobox animanga/Manga\n"
+    "|作者 = [[某作者]]\n"
+    "|出版社 = {{small|[[集英社]]}}\n"
+    "|開始号 = 2015年1号\n"
+    "|終了号 = \n"
+    "|終了日 = \n"
+    "}}"
+)
+
+
+def test_judge_via_infobox_main_block_is_ongoing_when_end_fields_are_empty():
+    # HUNTER×HUNTER形: 本編ブロックの終了号/終了日が空欄なら連載中。
+    wikitext = MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status == "連載中"
+    assert "インフォボックス" in evidence
+
+
+def test_judge_via_infobox_main_block_is_completed_when_end_field_has_value():
+    # こち亀形: 本編ブロックの終了号に値があれば完結。
+    wikitext = MAIN_BLOCK_COMPLETED + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status == "完結"
+    assert "終了号 = 2020年30号" in evidence
+
+
+def test_judge_via_infobox_finds_main_block_among_multiple_spinoffs():
+    # 転スラ形: 本編1個+スピンオフ複数でも、本編ブロックが一意に特定できること。
+    wikitext = MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK + "\n\n" + SPINOFF_BLOCK_2
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status == "連載中"
+
+
+def test_judge_via_infobox_gives_up_when_two_titleless_blocks_exist():
+    # 回帰テスト（Issue #12の完了条件）: タイトル欄なしのブロックが2個ある場合、
+    # どちらが本編か確信を持てないため判定材料なしとして扱う。
+    wikitext = MAIN_BLOCK_ONGOING + "\n\n" + MAIN_BLOCK_COMPLETED
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status is None
+    assert evidence is None
+
+
+def test_judge_via_infobox_gives_up_when_no_titleless_block_exists():
+    # 回帰テスト（Issue #12の完了条件）: 全ブロックにタイトル欄がある（=本編が無い）場合も
+    # 同様に判定材料なしとして扱う。
+    wikitext = SPINOFF_BLOCK + "\n\n" + SPINOFF_BLOCK_2
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status is None
+    assert evidence is None
+
+
+def test_judge_via_infobox_gives_up_when_no_end_field_exists_at_all():
+    # 回帰テスト: 終了系フィールドが1つも存在しない（検証済みの3作品と異なるスキーマの）
+    # ブロックでは、連載中と決め付けず判定材料なしとして扱う。
+    wikitext = NO_END_FIELDS_BLOCK + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status is None
+    assert evidence is None
+
+
+def test_extract_braced_blocks_handles_nested_templates():
+    wikitext = NESTED_MAIN_BLOCK + "\n\n== 概要 ==\n本文の説明。"
+    blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
+    assert len(blocks) == 1
+    assert blocks[0] == NESTED_MAIN_BLOCK
+    assert "概要" not in blocks[0]
+
+
 def _search_response(titles):
     return {"query": {"search": [{"title": t} for t in titles]}}
 
@@ -396,3 +525,89 @@ def test_judge_returns_not_found_when_no_article_exists():
 
     assert result.status == STATUS_NOT_FOUND
     assert result.matched_title is None
+
+
+def _wikitext_response(wikitext):
+    return {"parse": {"title": "dummy", "wikitext": {"*": wikitext}}}
+
+
+def _wikitext_error_response():
+    return {"error": {"code": "missingtitle", "info": "The page you specified doesn't exist"}}
+
+
+# Issue #12: 地の文には判定文が無い（=本文解析だけでは判定不能になる）合成フィクスチャ。
+INFOBOX_PROBE_EXTRACT = "『インフォ実験作品』は、某作者による日本の漫画作品。"
+
+
+def test_judge_does_not_fetch_wikitext_when_text_judgment_already_resolved():
+    # 回帰テスト（Issue #12）: 本文解析で完結/連載中が確定している場合、
+    # インフォボックス（action=parse）へのAPI呼び出しは発生しない。
+    direct_response = MagicMock()
+    direct_response.json.return_value = _extract_response("ワンピース (漫画)", ONE_PIECE_EXTRACT)
+    direct_response.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get", return_value=direct_response
+    ) as mock_get:
+        result = judge("ワンピース")
+
+    assert result.status == "連載中"
+    assert mock_get.call_count == 1
+
+
+def test_judge_upgrades_unknown_to_ongoing_via_infobox():
+    direct_response = MagicMock()
+    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
+    direct_response.raise_for_status.return_value = None
+
+    wikitext_response = MagicMock()
+    wikitext_response.json.return_value = _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK)
+    wikitext_response.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[direct_response, wikitext_response],
+    ) as mock_get:
+        result = judge("インフォ実験作品")
+
+    assert result.status == "連載中"
+    assert "インフォボックス" in result.evidence
+    assert mock_get.call_count == 2
+
+
+def test_judge_stays_unknown_when_infobox_main_block_is_ambiguous():
+    direct_response = MagicMock()
+    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
+    direct_response.raise_for_status.return_value = None
+
+    wikitext_response = MagicMock()
+    wikitext_response.json.return_value = _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + MAIN_BLOCK_COMPLETED)
+    wikitext_response.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[direct_response, wikitext_response],
+    ):
+        result = judge("インフォ実験作品")
+
+    assert result.status == STATUS_UNKNOWN
+
+
+def test_judge_stays_unknown_when_wikitext_fetch_fails():
+    # 回帰テスト: action=parseがエラー応答を返した（_fetch_wikitextがNoneを返す）場合、
+    # 例外を発生させず判定不能のまま維持する。
+    direct_response = MagicMock()
+    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
+    direct_response.raise_for_status.return_value = None
+
+    wikitext_error_response = MagicMock()
+    wikitext_error_response.json.return_value = _wikitext_error_response()
+    wikitext_error_response.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[direct_response, wikitext_error_response],
+    ):
+        result = judge("インフォ実験作品")
+
+    assert result.status == STATUS_UNKNOWN
