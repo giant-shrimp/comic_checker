@@ -3,6 +3,8 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter.scrolledtext import ScrolledText
 
+from comic_checker.main import run
+
 
 class App(tk.Frame):
     """Excelファイルを選択して読み込みを実行するGUI画面。"""
@@ -46,10 +48,21 @@ class App(tk.Frame):
         threading.Thread(target=self._run_worker, daemon=True).start()
 
     def _run_worker(self):
-        # TODO(T1.2): main.pyの実処理ロジック（進捗コールバック化後）に接続する。
-        self._log_threadsafe(f"実行開始: {self.excel_path.get()}")
-        self._log_threadsafe("（処理ロジックは未接続です）")
-        self.after(0, lambda: self.run_button.config(state="normal"))
+        excel_path = self.excel_path.get()
+        self._log_threadsafe(f"実行開始: {excel_path}")
+        try:
+            total = run(excel_path, on_progress=self._on_progress)
+            self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
+        except Exception as exc:
+            self._log_threadsafe(f"エラーが発生しました: {exc}")
+        finally:
+            self.after(0, lambda: self.run_button.config(state="normal"))
+
+    def _on_progress(self, index, total, title, status, matched_title, error=None):
+        if error is not None:
+            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー ({error})")
+        else:
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})")
 
     def _log_threadsafe(self, message):
         # tkinterウィジェットはメインスレッド以外から直接操作できないため、
