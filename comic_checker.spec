@@ -21,11 +21,19 @@
 # EXE(..., exclude_binaries=True) + COLLECT(...) の形（onedir）に切り替える
 # ことを検討する。
 
+# tkinterdnd2（ドラッグ＆ドロップ）は、Pythonパッケージの中に tkdnd の
+# Tcl拡張（.dll/.so と .tcl）を同梱している。これらはimport解析では拾えない
+# データファイルなので、collect_data_files で明示的に集める必要がある。
+# 集め忘れると、EXE起動時に TkinterDnD.Tk() が失敗してD&Dだけが黙って
+# 無効になる（gui.py の _create_root() が素の Tk() にフォールバックするため、
+# アプリ自体は起動してしまい気づきにくい）。
+from PyInstaller.utils.hooks import collect_data_files
+
 a = Analysis(
     ['comic_checker/gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=collect_data_files('tkinterdnd2'),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
