@@ -3,6 +3,11 @@
 Excelに入っている漫画タイトル一覧を [Wikipedia](https://ja.wikipedia.org/)（日本語版）で
 検索し、完結しているか連載中かを判定してExcelに書き戻すツールです。
 
+> **配布された `comic_checker.exe` を使いたい方（Python 不要）** → まず
+> **[利用ガイド（docs/user_guide.md）](docs/user_guide.md)** をご覧ください。
+> ダブルクリックでの起動・SmartScreen 警告への対処・結果の見方・困ったときの対処を
+> まとめています。以下の README は、ソースから動かす・開発する方向けの内容です。
+
 WikipediaのMediaWiki APIにはCloudflare等のボット対策がなく、単純なHTTPアクセスで
 利用できます。そのため既定では、ブラウザもAPIキーも不要です。Wikipediaで判定できな
 かった行（判定不能・記事なし）だけ、`--fallback-to-manba` を付けた場合に限り
@@ -173,6 +178,7 @@ EXE化する手順を[docs/build_windows.md](docs/build_windows.md)にまとめ�
 
 | ファイル | 内容 |
 |---|---|
+| [docs/user_guide.md](docs/user_guide.md) | エンドユーザー向け利用ガイド（EXE の使い方・トラブルシューティング） |
 | [CLAUDE.md](CLAUDE.md) | 常に守る作業ルールと最小限の全体像（短く保つ） |
 | [docs/architecture.md](docs/architecture.md) | モジュール別の設計詳細 |
 | [docs/known_limitations.md](docs/known_limitations.md) | 既知の制限。挙動を「直す」前に読む |
