@@ -7,33 +7,34 @@ ISSUE="${1:?usage: ./scripts/work_loop.sh <issue-number>}"
 MAX_ITER="${MAX_ITER:-3}"
 MAX_TURNS="${MAX_TURNS:-20}"
 MAX_BUDGET="${MAX_BUDGET:-2.00}"
+CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-600}"  # claude呼び出し自体がハングした場合の保険（秒）
 ALLOWED="Read,Edit,Write,Glob,Grep,Bash(gh issue view:*),Bash(git diff:*),Bash(./scripts/verify.sh)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# git commit/push/addは、ALLOWEDから外すだけでは塞げない。permissions.allowは
+# git commit/push/add・python3任意実行・gh issueの破壊的操作・checkout・
+# 自分自身の再帰呼び出しは、ALLOWEDから外すだけでは塞げない。permissions.allowは
 # 発生源（--allowedTools／プロジェクトの.claude/settings.json／ローカルの
-# .claude/settings.local.json）に関わらず加算されるため、対話セッション用に
-# settings.local.jsonへ入っているgit add/commitのallowが、この非対話実行にも
-# 素通しで効いてしまう（Issue #14実行時に実際に無許可でcommitされ、判明した）。
+# .claude/settings.local.json）に関わらず加算されるため、settings.local.jsonに
+# 対話セッション用の広いallow（python3 * や gh issue * 等）が存在すると、
+# それがこの非対話実行にも素通しで効いてしまう（Issue #14実行時に実際に無許可で
+# commitされ、判明した）。
 # denyは発生源を問わず常にallowより優先される（Claude Code公式ドキュメント
 # permissions.mdで確認済み）ため、強制力を持たせるにはdenyを使う。
 # work_loop.settings.jsonをこの呼び出しにだけ追加で読み込ませ、
-# git commit/push/addを常にdenyする。
+# 「ファイル編集とverify.shの実行だけで完結するタスク」の範囲を超える操作を
+# 常にdenyする。
 #
 # 重要: これは「重要な変更かどうか」では分岐しない。非対話実行では、
-# 変更の大小に関わらずcommit自体を一律禁止する設計。
+# 変更の大小に関わらず、ALLOWEDに無いコマンド種別を一律禁止する設計。
 #
-# プロンプト文面で「commitして」と指示しても、このdenyは緩まない
-# （denyはプロンプト内容を見て判断するものではなく、モデルへの指示ではなく
-# 権限システム側の強制であることが、この設計の要）。commitを許可したい場合は、
-# work_loop.shの呼び出し元（人間）がALLOW_COMMIT=1を明示的に設定すること
-# （プロンプトではなく、スクリプト起動時の環境変数という帯域外の手段で
-# 許可する）。
-SETTINGS_ARGS=()
-if [ "${ALLOW_COMMIT:-0}" != "1" ]; then
-  SETTINGS_ARGS=(--settings "$SCRIPT_DIR/work_loop.settings.json")
-fi
+# プロンプト文面で「commitして」「pythonを実行して」等と指示しても、
+# このdenyは緩まない（denyはプロンプト内容を見て判断するものではなく、
+# モデルへの指示ではなく権限システム側の強制であることが、この設計の要）。
+# 許可したい場合は、work_loop.sh の呼び出し元（人間）が
+# work_loop.settings.json 自体を対話セッションで見直すこと
+# （プロンプトではなく、スクリプト起動時の帯域外の手段で許可する）。
+SETTINGS_ARGS=(--settings "$SCRIPT_DIR/work_loop.settings.json")
 
 mkdir -p logs
 
@@ -63,11 +64,12 @@ for ((i = 1; i <= MAX_ITER; i++)); do
     ARGS+=(--resume "$SESSION")
   fi
 
-  claude "${ARGS[@]}" > "logs/run_${i}.json" 2> "logs/run_${i}.err" || true
+  timeout "$CLAUDE_TIMEOUT" claude "${ARGS[@]}" > "logs/run_${i}.json" 2> "logs/run_${i}.err" || true
 
   NEW_SESSION=$(jq -r '.session_id // empty' "logs/run_${i}.json" 2>/dev/null || true)
   if [ -z "$NEW_SESSION" ]; then
-    echo "実行に失敗しました（logs/run_${i}.err を確認）．中断します．" >&2
+    echo "実行に失敗しました（logs/run_${i}.err を確認。timeoutによる強制終了の可能性も含む）。中断します。" >&2
+    echo "failed" > "logs/outcome_${i}.txt"
     exit 1
   fi
   SESSION="$NEW_SESSION"
@@ -91,7 +93,9 @@ for ((i = 1; i <= MAX_ITER; i++)); do
   fi
 
   echo "検証失敗（詳細は logs/verify_${i}.log）"
+  echo "verify_failed" > "logs/outcome_${i}.txt"
 done
 
 echo "最大反復に到達しました．人間の確認が必要です．"
+echo "max_iterations" > "logs/outcome_${MAX_ITER}.txt"
 exit 1

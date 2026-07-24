@@ -50,12 +50,14 @@ Issue起票時に判断し，Issue本文に明記すること（「対話セッ�
     ・4. Verify）はそのまま進めてよい（重要な変更でも計画止まりにしない）。ただし
     **5. Commitには絶対に進まない**。これは「重要な変更かどうか」による分岐ではなく，非対話実行
     では変更の大小・重要度に関わらずcommit自体を行わない，という一律の制約である。
-    `scripts/work_loop.sh`は`--settings scripts/work_loop.settings.json`により
+    `scripts/work_loop.sh`は`--settings scripts/work_loop.settings.json`を常時読み込み，
     `git commit`/`git push`/`git add`を権限システム側で強制的に`deny`しており（モデルへの
     指示ではなく，プロンプト内容によって緩まない強制力を持つ），この節の記述はそのdeny設定と
     整合させたものである。プロンプトで「commitして」と明示されても，このdenyにより実行できない
-    （commitを許可する場合は，`work_loop.sh`呼び出し元が環境変数`ALLOW_COMMIT=1`を明示的に
-    設定する必要がある。詳細は`scripts/work_loop.sh`のコメントを参照）。
+    （環境変数等による迂回路は意図的に用意していない。commitを許可したい場合は，
+    `scripts/work_loop.settings.json`のdeny該当行を対話セッションで一時的に
+    コメントアウトしてから`work_loop.sh`を実行すること。詳細は`scripts/work_loop.sh`の
+    コメントを参照）。
 
 ### 3. Code（実装）
 - 計画に沿って実装とテストを書く．

@@ -6,7 +6,27 @@
       "Bash(git push)",
       "Bash(git push *)",
       "Bash(git add)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git checkout *)",
+      "Bash(python3 *)",
+      "Bash(sudo *)",
+      "Bash(apt *)",
+      "Bash(dpkg *)",
+      "Bash(gh issue create*)",
+      "Bash(gh issue close*)",
+      "Bash(gh issue delete*)",
+      "Bash(gh issue edit*)",
+      "Bash(gh issue reopen*)",
+      "Bash(gh issue comment*)",
+      "Bash(./scripts/work_loop.sh *)",
+      "Edit(scripts/work_loop.settings.json)",
+      "Write(scripts/work_loop.settings.json)",
+      "Edit(scripts/work_loop.sh)",
+      "Write(scripts/work_loop.sh)",
+      "Edit(.claude/skills/work/SKILL.md)",
+      "Write(.claude/skills/work/SKILL.md)",
+      "Edit(.claude/skills/decompose/SKILL.md)",
+      "Write(.claude/skills/decompose/SKILL.md)"
     ]
   }
 }

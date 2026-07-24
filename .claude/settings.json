@@ -2,7 +2,15 @@
   "permissions": {
     "deny": [
       "Edit(scripts/verify.sh)",
-      "Write(scripts/verify.sh)"
+      "Write(scripts/verify.sh)",
+      "Edit(scripts/work_loop.sh)",
+      "Write(scripts/work_loop.sh)",
+      "Edit(scripts/work_loop.settings.json)",
+      "Write(scripts/work_loop.settings.json)",
+      "Edit(.claude/skills/work/SKILL.md)",
+      "Write(.claude/skills/work/SKILL.md)",
+      "Edit(.claude/skills/decompose/SKILL.md)",
+      "Write(.claude/skills/decompose/SKILL.md)"
     ]
   }
 }
