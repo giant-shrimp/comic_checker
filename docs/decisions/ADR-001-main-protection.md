@@ -106,6 +106,15 @@ rulesetsならBypass listを空のままにする。classic branch protectionな
    これは `CLAUDE.md` 非追跡問題が実害を出した2件目である（1件目は、CI上で
    プロジェクト記憶がゼロになるというPhase 5のブロッカー）。別途扱う。
 
+   **追記（Issue #18 / 2026-07-25）**: `CLAUDE.md` を `.gitignore` から外し、
+   git 追跡対象に戻した（同時にv8計画6-3の目安150行まで剪定し、設計詳細は
+   `docs/architecture.md`、既知の制限は `docs/known_limitations.md`、過去に詰まった
+   失敗は `ERRORS.md` へ移動した）。これにより「周知先が `docs/` しかない」という
+   前提そのものが解消され、`CLAUDE.md` に手順を書けば新しいクローンにも付いて回る。
+   ただしIssue #18は移動と参照更新のみを範囲としたため、`CLAUDE.md` への
+   「クローン後に `setup_hooks.sh` を実行する」の追記自体はまだ行っていない。
+   このリスクは「周知先が無い」から「周知先はあるが未記載」に格下げされた状態である。
+
 ## この決定が縛るもの
 
 - **今後 `main` へは直接pushしない。** ブランチを切り、PRを作成してGitHub上で
