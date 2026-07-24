@@ -54,6 +54,20 @@ artifactとして上がることはない）。
 「[除外できているかの確認（トラブルシューティング）](#除外できているかの確認トラブルシューティング)」
 と同じである。
 
+#### CI実測（2026-07-25、run 30109272921 / windows-latest / Python 3.13.14）
+
+```
+(a) OK: excluded module named comic_checker.manba_client - imported by comic_checker.main (delayed, optional)
+(b) OK: build\comic_checker\warn-comic_checker.txt に playwright への言及なし
+(c) OK: dist\comic_checker.exe = 15.06 MB (< 100 MB / M3実測 14.1 MB)
+```
+
+ビルド所要時間は約1分（ジョブ全体で1分4秒）。**M3の実機ビルド（14.1MB）より約1MB
+大きい**が、これは `comic_checker.spec` の `upx=True` に対して、ランナーにUPXが
+入っていないため圧縮が省かれることが原因と考えられる（PyInstallerはUPXが無い場合、
+エラーにせず非圧縮のまま続行する）。Chromium同梱なら数百MBになるため、この程度の
+差は除外設定の失敗を示すものではない。
+
 ### 3. artifact をダウンロードする
 
 Actions の該当runのページ下部「Artifacts」から `comic_checker-exe` をダウンロードする
