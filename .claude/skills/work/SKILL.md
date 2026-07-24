@@ -34,7 +34,12 @@ Issue起票時に判断し，Issue本文に明記すること（「対話セッ�
 
 ### 1. Explore（調査）
 - `gh issue view $ARGUMENTS` で内容を取得する．
-- `CLAUDE.md`，関連する `docs/` を読む．
+- `CLAUDE.md` を読む．`CLAUDE.md` は常に守るルールだけの短いファイルに剪定されており，
+  詳細は用途別に分かれている．**全部読むのではなく，Issue に関係するものだけを読むこと．**
+  - `docs/architecture.md` … モジュール別の設計詳細
+  - `docs/known_limitations.md` … 既知の制限（挙動を「直す」前に読む）
+  - `ERRORS.md` … 過去に詰まった失敗と対応（似た仕組みを作る／触る前に読む）
+  - `docs/decisions/` … 関係する決定に触れるときだけ
 - 関係するコードを読む．**この段階ではまだコードを書かない．**
 
 ### 2. Plan（計画）
