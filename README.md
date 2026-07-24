@@ -139,7 +139,7 @@ python -m comic_checker.main path/to/対象.xlsx
   なチャレンジ**は、`Just a moment...`型と違って待っても自動では解決しません
   （このチャレンジ自体は自動操作を検知して出ている可能性が高く、`--no-headless`
   で手動クリックの猶予を与えても再発することが確認されています。詳しくは
-  `CLAUDE.md`を参照してください）。
+  [docs/known_limitations.md](docs/known_limitations.md)を参照してください）。
 - **セッション再利用**: `.manba_state.json`（gitignore対象、`--state-file`で変更可）
   にPlaywrightのbrowser contextの状態（Cloudflare通過後のCookie等）を保存し、
   次回実行時に再利用します。
@@ -168,3 +168,19 @@ python -m pytest
 Pythonをインストールしていないwindows PCでもダブルクリックで動くように、PyInstallerで
 EXE化する手順を[docs/build_windows.md](docs/build_windows.md)にまとめています
 （Windows上でのビルドが必須。WSL/Linux上ではWindows向けEXEは生成できません）。
+
+## 開発者向けドキュメント
+
+| ファイル | 内容 |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | 常に守る作業ルールと最小限の全体像（短く保つ） |
+| [docs/architecture.md](docs/architecture.md) | モジュール別の設計詳細 |
+| [docs/known_limitations.md](docs/known_limitations.md) | 既知の制限。挙動を「直す」前に読む |
+| [ERRORS.md](ERRORS.md) | 過去に詰まった失敗と、その対応 |
+| [docs/decisions/](docs/decisions/) | ADR（過去の決定と却下した案） |
+| [docs/build_windows.md](docs/build_windows.md) | Windows向けEXEのビルド手順 |
+| [docs/work_loop_testing.md](docs/work_loop_testing.md) | AI Loopの検証手順 |
+
+クローンした直後は `./scripts/setup_hooks.sh` を1回実行してください
+（`main` への直pushを止める pre-push フックを配線します。
+詳細は [docs/decisions/ADR-001-main-protection.md](docs/decisions/ADR-001-main-protection.md)）。
