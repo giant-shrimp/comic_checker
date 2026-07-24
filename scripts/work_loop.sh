@@ -104,7 +104,20 @@ if ! git check-ignore -q logs/ 2>/dev/null; then
   exit 1
 fi
 
-# プリフライト2: ループ開始時点で既に汚れているなら、その一覧を記録して警告する。
+# プリフライト2: pre-pushフック（mainへの直pushをブロック）が配線されているか。
+# これは中断ではなく警告にとどめる。work_loop.sh自身はpushを行わない
+# （--allowedToolsにgit pushが無く、work_loop.settings.jsonでもdenyしている）ため、
+# フックが未設定でもこのループの判定の正しさには影響しないからである。
+# プリフライト1を中断にしているのは、あちらがno-op検出の成立条件そのものを壊す
+# ためで、性質が異なる。
+# CI環境ではフックを設定しない運用のため、検査自体をスキップする。
+if [ -z "${CI:-}" ] && [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
+  echo "警告: core.hooksPath が .githooks に設定されていません。" >&2
+  echo "      mainへの直pushを止める pre-push フックが無効な状態です。" >&2
+  echo "      ./scripts/setup_hooks.sh を実行してください（クローンごとに1回必要）。" >&2
+fi
+
+# プリフライト3: ループ開始時点で既に汚れているなら、その一覧を記録して警告する。
 # 「どこからがエージェントの変更か」の基準を明示的に残すのが目的。中断はしない
 # （手元の作業途中でループを回すこと自体は禁止しない）。
 BASELINE_DIRTY="$(git status --porcelain)"

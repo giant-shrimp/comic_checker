@@ -24,7 +24,11 @@
       "Bash(git reset --hard)",
       "Bash(git reset --hard *)",
       "Bash(rm -rf)",
-      "Bash(rm -rf *)"
+      "Bash(rm -rf *)",
+      "Edit(.githooks/**)",
+      "Write(.githooks/**)",
+      "Edit(scripts/setup_hooks.sh)",
+      "Write(scripts/setup_hooks.sh)"
     ]
   }
 }
