@@ -194,6 +194,6 @@ git push --no-verify --dry-run origin HEAD:main
 
 ## 関連
 
-- `docs/decisions/ADR-001-main保護の方式選定.md` … なぜフック方式を選び、
+- `docs/decisions/ADR-001-main-protection.md` … なぜフック方式を選び、
   ブランチ保護・課金・`deny` を却下したか
 - `scripts/work_loop.sh` 冒頭 … 終了コードと `outcome_N.txt` の対応表

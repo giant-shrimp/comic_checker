@@ -20,7 +20,7 @@
 #
 # 前提: このフックは core.hooksPath が .githooks に設定されている場合のみ有効。
 # 設定はクローンごとに1回 ./scripts/setup_hooks.sh を実行する必要がある。
-# 詳細と却下した代替案は docs/decisions/ADR-001-main保護の方式選定.md を参照。
+# 詳細と却下した代替案は docs/decisions/ADR-001-main-protection.md を参照。
 
 PROTECTED_REF="refs/heads/main"
 blocked=0
