@@ -1,4 +1,7 @@
 {
+  "_note_deny_scope": "Edit/Write系のdenyはEditツールの経路のみを塞ぐ。シェル経由の書き込み（sed -i / tee / python等）は塞げず、経路が無数にあるため列挙で塞ぎ切ることは原理的にできない（列挙して塞いだつもりになる方が、Issue #14と同じ失敗の再演になる）。work_loop.sh経由では--allowedToolsに任意Bashが無いため実害はなく、対話セッションでは許可プロンプトが出るので人間が気づける。したがってdenyは最終防御ではなく、その手前の速度制限として位置づける。構造的な最終防御は差分レビューであり、ブランチ保護は現プラン（Freeのprivateリポジトリ）では利用不可のため未導入（docs/decisions/ のADR案を参照）。",
+  "_note_editing_this_file": "このファイル自身がdeny対象のため、Claude Codeからは編集できない。変更手順: (1) Claude Code以外のエディタで下の Edit/Write(.claude/settings.json) の2行を消す → (2) Claude Codeで編集する → (3) エディタで2行を戻す。JSONにコメント構文は無いため、この注記は通常のキーとして置いている（// を書くとファイル全体が読めなくなり、deny設定が丸ごと無効化される恐れがあるため）。",
+  "_note_notation": "Bashパターンは work_loop.settings.json と同じ「素の形」と「* 付きの形」の2行を並べる書き方に統一している。この記法はIssue #14で実際にブロックされることを確認済み。Edit/Write のパス記法（./ を付けない形）も反証テスト済み。",
   "permissions": {
     "deny": [
       "Edit(scripts/verify.sh)",
@@ -10,7 +13,22 @@
       "Edit(.claude/skills/work/SKILL.md)",
       "Write(.claude/skills/work/SKILL.md)",
       "Edit(.claude/skills/decompose/SKILL.md)",
-      "Write(.claude/skills/decompose/SKILL.md)"
+      "Write(.claude/skills/decompose/SKILL.md)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "Edit(.github/workflows/**)",
+      "Write(.github/workflows/**)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(secrets/**)",
+      "Bash(git reset --hard)",
+      "Bash(git reset --hard *)",
+      "Bash(rm -rf)",
+      "Bash(rm -rf *)",
+      "Edit(scripts/setup_hooks.sh)",
+      "Write(scripts/setup_hooks.sh)",
+      "Edit(.githooks/**)",
+      "Write(.githooks/**)"
     ]
   }
 }

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# main への直接pushをブロックする pre-push フック。
+#
+# gitはpush対象のrefを1行ずつ標準入力へ渡す:
+#   <local ref> <local oid> <remote ref> <remote oid>
+#
+# 削除push（git push origin :main / git push --delete origin main）の場合、
+# local oid が全ゼロ（0000...）になる。本フックは remote ref だけを見て判定し、
+# local oid の値には一切依存しないため、削除pushも同じくブロックされる。
+# （この挙動は docs/work_loop_testing.md の 5-a で実測確認している）
+#
+# 複数のrefを同時にpushする場合は複数行が渡される。1行でも main が含まれていれば
+# push全体をブロックする（gitはpushを ref 単位で部分実行できないため）。
+#
+# --no-verify で迂回できる。これは欠陥ではなく設計上の受け入れである。
+# このフックの目的は main へのpushを不可能にすることではなく、事故を「意図的な
+# 行為」に変えることにある。--no-verify を打つ人間は自分が何を迂回しているか
+# 理解している。
+#
+# 前提: このフックは core.hooksPath が .githooks に設定されている場合のみ有効。
+# 設定はクローンごとに1回 ./scripts/setup_hooks.sh を実行する必要がある。
+# 詳細と却下した代替案は docs/decisions/ADR-001-main-protection.md を参照。
+
+PROTECTED_REF="refs/heads/main"
+blocked=0
+
+while read -r _local_ref _local_oid remote_ref _remote_oid; do
+  [ -z "${remote_ref:-}" ] && continue
+  if [ "$remote_ref" = "$PROTECTED_REF" ]; then
+    blocked=1
+  fi
+done
+
+if [ "$blocked" -ne 0 ]; then
+  echo "pre-push: ${PROTECTED_REF} への直接pushはブロックされています。" >&2
+  echo "  本来の手順: ブランチを切り、PRを作成してGitHub上でマージしてください。" >&2
+  echo "  迂回する場合: git push --no-verify（何を迂回するか理解した上で使うこと）" >&2
+  exit 1
+fi
+
+exit 0
