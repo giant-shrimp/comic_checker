@@ -8,6 +8,28 @@ allowed-tools: Bash(gh issue view:*) Bash(git diff:*) Bash(./scripts/verify.sh) 
 
 GitHub Issue #$ARGUMENTS を処理してください．
 
+## `work_loop.sh`（非対話実行）が対応できるタスクの範囲
+
+`scripts/work_loop.sh`経由（`-p`）で実行する場合，`--allowedTools`は
+`Read,Edit,Write,Glob,Grep,Bash(gh issue view:*),Bash(git diff:*),Bash(./scripts/verify.sh)`
+に絞られている。これは意図的な制限であり，以下の基準で「非対話実行に向くタスクかどうか」を
+Issue起票時に判断し，Issue本文に明記すること（「対話セッションで実施」／
+`work_loop.sh`で実施」等）。
+
+- **向くタスク**: 上記のALLOWEDツールだけで完結できるもの。具体的には，ファイルの読み書き
+  （Read/Edit/Write/Glob/Grep）と`./scripts/verify.sh`（pytest）の実行だけでExplore→Plan→
+  Code→Verifyが完結する，通常のコード変更・テスト追加。
+- **向かないタスク**: 以下のいずれかに該当するもの。対話セッションで実施すること。
+  - 新規に作成したスクリプト・ツールを**単体で実行**する必要があるもの（`python3 foo.py`等，
+    `./scripts/verify.sh`以外のコマンド実行）。ALLOWEDには任意コマンド実行の手段が無いため，
+    実行しようとしても`Bash`が許可パターンに一致せず拒否され続け，ターン数上限で失敗する
+    （Issue #16で実際に発生。`git diff`と`gh issue view`以外の裸の`Bash`呼び出しは通らない）。
+  - ネットワークI/O（外部APIへの実アクセス等）を伴うもの。無人実行に開放してよいかは
+    レート制限・コスト・信頼性の観点で別途判断が必要なため，現時点では一律に対話セッション
+    で行う。
+  - `git add`/`git commit`/`git push`が必要なもの（`work_loop.settings.json`のdenyで
+    常にブロックされる。§2参照）。
+
 ## 手順（Explore → Plan → Code → Commit の順を守る）
 
 ### 1. Explore（調査）
@@ -21,11 +43,19 @@ GitHub Issue #$ARGUMENTS を処理してください．
   - 3ファイル以上に触る
   - 公開インターフェースやデータ構造を変更する
   - 取り消しにコストがかかる
-- 重要な変更に該当する場合の扱いは，実行形態によって分岐する．
-  - **対話セッション**: ここで止まって私の承認を待つ．承認が得られてから3. Codeに進む．
-  - **非対話実行（`-p`やCI等，承認する人間がその場にいない実行）**: 実装せず，計画（変更予定
-    ファイル・実装方針・テスト方針・想定リスク）だけを出力してそこで終了する．承認を待つために
-    停止したままにしない．
+- この「重要な変更」の判定基準は，**Plan Modeでの承認が必要かどうか**の基準として使う．
+  - **対話セッション**: 重要な変更に該当する場合，ここで止まって私の承認を待つ．承認が得られて
+    から3. Codeに進む．該当しない場合はそのまま3. Codeに進んでよい．
+  - **非対話実行（`-p`／`work_loop.sh`経由等，承認する人間がその場にいない実行）**: 実装（3. Code
+    ・4. Verify）はそのまま進めてよい（重要な変更でも計画止まりにしない）。ただし
+    **5. Commitには絶対に進まない**。これは「重要な変更かどうか」による分岐ではなく，非対話実行
+    では変更の大小・重要度に関わらずcommit自体を行わない，という一律の制約である。
+    `scripts/work_loop.sh`は`--settings scripts/work_loop.settings.json`により
+    `git commit`/`git push`/`git add`を権限システム側で強制的に`deny`しており（モデルへの
+    指示ではなく，プロンプト内容によって緩まない強制力を持つ），この節の記述はそのdeny設定と
+    整合させたものである。プロンプトで「commitして」と明示されても，このdenyにより実行できない
+    （commitを許可する場合は，`work_loop.sh`呼び出し元が環境変数`ALLOW_COMMIT=1`を明示的に
+    設定する必要がある。詳細は`scripts/work_loop.sh`のコメントを参照）。
 
 ### 3. Code（実装）
 - 計画に沿って実装とテストを書く．
