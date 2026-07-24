@@ -1,0 +1,128 @@
+# Windows向けEXE（軽量ビルド / M3のcomic_checker.specをそのまま使用）を
+# windows-latestランナー上でビルドし、artifactとしてアップロードする。
+#
+# 決定の経緯・却下した案・受け入れたリスクは
+# docs/decisions/ADR-002-windows-build-on-ci.md を参照。
+#
+# このワークフローはビルドとartifact生成のみを行い、一切pushしない。
+# ADR-001「受け入れたリスク」3の通り、CIからのpushは.githooks/pre-pushでは
+# 止められないため、CIにpush権限を伴う仕事をさせない方針である。
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+# 出力はartifactだけ。リポジトリの内容は書き換えない。
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # M3の実機ビルド環境（Windows 11 / Python 3.13.14）に合わせる。
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      # requirements.txt は軽量ビルド用（openpyxl + requests のみ）。
+      # requirements-fallback.txt（playwright）は意図的に入れない。
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller comic_checker.spec
+
+      # M3で人間が目視していた確認項目をそのままゲートにする。
+      # 満たさなければジョブを失敗させ、壊れたEXEがartifactに上がらないようにする。
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $warn   = 'build\comic_checker\warn-comic_checker.txt'
+          $exe    = 'dist\comic_checker.exe'
+          $needle = 'excluded module named comic_checker.manba_client'
+          $failed = $false
+
+          if (-not (Test-Path $warn)) {
+            Write-Host "::error::(a)(b) 検証不能: $warn が存在しない"
+            exit 1
+          }
+
+          $warnText = Get-Content $warn -Raw
+          if ($null -eq $warnText) { $warnText = '' }
+
+          # (a) manba_client が「遅延・任意import」として除外されていること。
+          #     main.py の _import_manba_client() による遅延importが壊れていない
+          #     ことの直接的な証拠。モジュール先頭のimportに戻るとこの行が消え、
+          #     同時に軽量ビルドが起動時クラッシュするようになる。
+          if ($warnText -like "*$needle*") {
+            $line = (Select-String -Path $warn -Pattern $needle -SimpleMatch |
+                     Select-Object -First 1).Line
+            Write-Host "(a) OK: $line"
+          } else {
+            Write-Host "::error::(a) NG: '$needle' が $warn に見つからない"
+            Write-Host "     comic_checker/main.py の manba_client import が"
+            Write-Host "     モジュール先頭に戻っていないか確認すること。"
+            $failed = $true
+          }
+
+          # (b) manba_client が除外されていれば playwright は依存グラフに到達しない。
+          #     言及があれば、除外が効かず同梱を試みている兆候。
+          $hits = Select-String -Path $warn -Pattern 'playwright' -SimpleMatch
+          if ($hits) {
+            Write-Host "::error::(b) NG: $warn に playwright への言及がある（$($hits.Count) 行）"
+            $hits | Select-Object -First 20 | ForEach-Object { Write-Host "     $($_.Line)" }
+            $failed = $true
+          } else {
+            Write-Host "(b) OK: $warn に playwright への言及なし"
+          }
+
+          # (c) M3実測は14.1MB。Chromium同梱なら数百MBになる。
+          #     サイズを14MBに保つ回帰テストではなく、混入の粗い検出器。
+          if (-not (Test-Path $exe)) {
+            Write-Host "::error::(c) NG: $exe が生成されていない"
+            $failed = $true
+          } else {
+            $bytes = (Get-Item $exe).Length
+            $mb    = [math]::Round($bytes / 1MB, 2)
+            if ($bytes -lt 100MB) {
+              Write-Host "(c) OK: $exe = $mb MB (< 100 MB / M3実測 14.1 MB)"
+            } else {
+              Write-Host "::error::(c) NG: $exe = $mb MB (>= 100 MB)"
+              Write-Host "     comic_checker.spec の excludes が効いていない可能性がある。"
+              $failed = $true
+            }
+            "| 項目 | 値 |"                  | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            "|---|---|"                      | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            "| EXEサイズ | $mb MB |"          | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+
+          if ($failed) {
+            Write-Host "::error::生成物の検証に失敗した。artifactはアップロードしない。"
+            exit 1
+          }
+          Write-Host "検証 (a)(b)(c) すべて通過"
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: comic_checker-exe
+          path: dist/comic_checker.exe
+          # 「成功したのに成果物が無い」状態を防ぐ。
+          if-no-files-found: error
+          # Freeプランのartifactストレージは500MB（14.1MB × 保持期間分）。
+          retention-days: 14

@@ -1,18 +1,89 @@
 # Windows向けEXEビルド手順（M3: 軽量ビルド）
 
-対象読者: Windows側でEXEをビルドする人（開発者本人）。エンドユーザー向けの使い方は
+対象読者: Windows向けEXEを入手する人（開発者本人）。エンドユーザー向けの使い方は
 [README.md](../README.md) を参照。
 
 ## 前提
 
 - PyInstallerはクロスコンパイル不可のため、Windows向けEXEは**Windows上でビルドする
-  必要がある**（WSL/Linux上ではビルドできない）。
+  必要がある**（WSL/Linux上ではビルドできない）。ただしこれは「**人間が**Windows機を
+  操作する必要がある」ことは意味しない。**標準手順はGitHub Actions
+  （`windows-latest`）でのビルドである**（[ADR-002](decisions/ADR-002-windows-build-on-ci.md)）。
 - この手順は「軽量ビルド」＝Wikipedia経路のみで、Playwright/Chromiumを同梱しない。
   `--fallback-to-manba`はこのビルドのEXEでは使えない（実行時に、起動直後ではなく
   `--fallback-to-manba`を指定した時点で明確なエラーメッセージが出る）。
   Playwright/Chromium同梱版は別途M2で扱う（現時点でv1の必須要件からは外れている）。
 
-## 手順
+## 標準手順: GitHub Actions でビルドして artifact を取得する
+
+`.github/workflows/build-windows.yml` が `windows-latest` ランナー上で
+`pyinstaller comic_checker.spec` を実行し、`dist/comic_checker.exe` を artifact として
+アップロードする。**Windows機もPython環境も用意する必要はない。**
+
+### 1. ワークフローを実行する
+
+- **手動**: GitHubの Actions タブ → 「Build Windows EXE」 → 「Run workflow」
+  （`workflow_dispatch`）
+- **タグ経由**: `v` で始まるタグをpushすると自動で走る
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+CLIから手動実行する場合:
+
+```bash
+gh workflow run build-windows.yml
+gh run watch                      # 進行を追う
+```
+
+### 2. 自動検証の内容を確認する
+
+ジョブ内の「Verify build output」ステップが、M3で人間が目視していた確認項目を
+そのままゲートにしている。**満たさなければジョブは失敗する**（＝壊れたEXEが
+artifactとして上がることはない）。
+
+| # | 検証内容 |
+|---|---|
+| (a) | `build\comic_checker\warn-comic_checker.txt` に `excluded module named comic_checker.manba_client` が含まれること |
+| (b) | 同ファイルに `playwright` への言及が無いこと |
+| (c) | `dist\comic_checker.exe` のサイズが 100MB 未満であること（M3実測は14.1MB） |
+
+いずれかが落ちた場合の読み解き方は、後述の
+「[除外できているかの確認（トラブルシューティング）](#除外できているかの確認トラブルシューティング)」
+と同じである。
+
+### 3. artifact をダウンロードする
+
+Actions の該当runのページ下部「Artifacts」から `comic_checker-exe` をダウンロードする
+（zip形式。展開すると `comic_checker.exe`）。CLIからは:
+
+```bash
+gh run download <run-id> -n comic_checker-exe
+```
+
+保持期間は **14日**（`retention-days: 14`）。それを過ぎたら再実行する。
+
+**このリポジトリはprivateのため、artifactのダウンロードにはリポジトリのアクセス権が
+必要である。** 第三者へ配布する場合は開発者が取得して受け渡す
+（[ADR-002](decisions/ADR-002-windows-build-on-ci.md)「受け入れたリスク」1）。
+
+### 4. 動作確認
+
+ダウンロードした `comic_checker.exe` を、下記
+「[3. 動作確認](#3-動作確認ビルドしたwindows機上)」のチェックリストで確認する。
+
+**ランナー上のビルドはダウンロード経由の配布になるため、M3の実機ビルドでは出なかった
+SmartScreen警告が発生しうる**（[ADR-002](decisions/ADR-002-windows-build-on-ci.md)
+「受け入れたリスク」3）。Issue #21（M4-2）で必ず確認すること。
+
+---
+
+## 代替手順: ローカルWindows機で手動ビルドする
+
+**CIが使えない場合の代替**である（Actions障害時、Freeプランの実行時間を使い切った場合、
+CI以前の挙動を再現して切り分けたい場合など）。標準手順は上記のCI経由。
 
 ### 1. Python環境の準備（Windows PowerShell）
 
@@ -64,6 +135,8 @@ pyinstaller comic_checker.spec
 
 ### 3. 動作確認（ビルドしたWindows機上）
 
+（CI経由で取得したEXEの確認にも、このチェックリストをそのまま使う。）
+
 - `dist\comic_checker.exe`をダブルクリックし、GUIウィンドウが表示されることを確認
 - 適当なExcelファイル（`タイトル`列があるもの）を選択し、「実行」を押して、ログ欄に
   進捗（`[1/N] タイトル -> 連載中 (...)`等）が流れ、完了メッセージが出ることを確認
@@ -92,6 +165,10 @@ pyinstaller comic_checker.spec
 （Windows実機検証）のスコープであり、本手順（M3）はそこまでを含まない。
 
 ## 除外できているかの確認（トラブルシューティング）
+
+CI経由の場合は「Verify build output」ステップが以下を自動で判定するため、
+手動で確認する必要があるのは代替手順（ローカルビルド）を使った場合と、
+CIの検証が落ちた原因を調べる場合である。
 
 `pyinstaller comic_checker.spec`実行時のログ、または`build\comic_checker\
 warn-comic_checker.txt`に以下の行があれば、`playwright`/`manba_client`が意図通り
@@ -128,6 +205,11 @@ Defender SmartScreenや一部のウイルス対策ソフトに警告・誤検知
 ことが影響している可能性がある）。ただし、他のPCへ`.exe`単体を配布した場合
 （ダウンロード・USB経由での受け渡し等）は改めて発生しうるため、楽観視せず
 M4（別マシンでの配布・実行確認）で確認すること。
+
+**標準手順（CI経由）ではこの条件が変わる。** artifactのダウンロードで入手する以上、
+ゾーン識別子が付いた状態で実行されるため、2026-07-23の「警告が出なかった」という
+結果はそのまま適用できない。Issue #21（M4-2）で必ず確認し、結果をこのファイルに
+記録すること。
 
 ## WSL側で行った事前検証（参考）
 
