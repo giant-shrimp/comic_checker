@@ -1,9 +1,10 @@
 import tkinter as tk
+from tkinter import ttk
 from unittest.mock import patch
 
 import pytest
 
-from comic_checker.gui import App
+from comic_checker.gui import App, _parse_dropped_paths
 
 
 @pytest.fixture
@@ -282,3 +283,187 @@ def test_dpi_awareness_does_not_raise_when_windows_api_is_unavailable():
     with patch.object(gui.sys, "platform", "win32"):
         with patch.dict("sys.modules", {"ctypes": None}):
             gui._enable_dpi_awareness()
+
+
+# ------------------------------------------- ドロップされたパスの解釈
+# OSレベルのD&D操作はXvfb上で再現できないため、tkdndから渡ってくる
+# event.data の解釈と、それを受けたハンドラの振る舞いだけを検証する。
+# 実際のドラッグ＆ドロップ操作そのものは実機確認に委ねる（Issue #26）。
+
+
+def test_parse_dropped_paths_handles_plain_path():
+    assert _parse_dropped_paths("/home/u/a.xlsx") == ["/home/u/a.xlsx"]
+
+
+def test_parse_dropped_paths_handles_braced_path_with_spaces():
+    # 空白を含むパスは中括弧で囲まれて渡ってくる。単純なsplitでは壊れる。
+    assert _parse_dropped_paths(r"{C:\My Files\蔵書 一覧.xlsx}") == [
+        r"C:\My Files\蔵書 一覧.xlsx"
+    ]
+
+
+def test_parse_dropped_paths_handles_multiple_mixed_entries():
+    data = r"{C:\My Files\a b.xlsx} D:\c.xlsx {E:\d e.txt}"
+    assert _parse_dropped_paths(data) == [
+        r"C:\My Files\a b.xlsx",
+        r"D:\c.xlsx",
+        r"E:\d e.txt",
+    ]
+
+
+def test_parse_dropped_paths_returns_empty_for_blank_input():
+    assert _parse_dropped_paths("") == []
+    assert _parse_dropped_paths(None) == []
+
+
+def test_parse_dropped_paths_accepts_list_input():
+    # tkdndの実装によってはPython側のリストで渡ることがある。
+    assert _parse_dropped_paths(["/a.xlsx", "/b.xlsx"]) == ["/a.xlsx", "/b.xlsx"]
+
+
+def test_handle_drop_selects_xlsx_file(app):
+    accepted = app._handle_drop("/home/u/蔵書リスト.xlsx")
+    app.master.update()
+
+    assert accepted == "/home/u/蔵書リスト.xlsx"
+    assert app.excel_path.get() == "/home/u/蔵書リスト.xlsx"
+    assert app.file_label.get() == "蔵書リスト.xlsx"
+    assert "ファイルを選択しました" in log_text(app)
+
+
+def test_handle_drop_rejects_non_xlsx_and_keeps_selection_unchanged(app):
+    app.excel_path.set("/home/u/元の.xlsx")
+
+    accepted = app._handle_drop("/home/u/メモ.txt")
+    app.master.update()
+
+    assert accepted is None
+    # 不正なファイルで既存の選択を壊さない。
+    assert app.excel_path.get() == "/home/u/元の.xlsx"
+    text = log_text(app)
+    assert "Excelファイル" in text
+    assert "メモ.txt" in text
+
+
+def test_handle_drop_rejects_non_xlsx_without_selecting_anything(app):
+    accepted = app._handle_drop("/home/u/メモ.txt")
+    app.master.update()
+
+    assert accepted is None
+    # 何も選択していない状態が維持される。
+    assert app.excel_path.get() == ""
+    assert app.file_label.get() == "（未選択）"
+
+
+def test_handle_drop_uses_first_file_when_multiple_are_dropped(app):
+    accepted = app._handle_drop(r"{/home/u/一冊目.xlsx} {/home/u/二冊目.xlsx}")
+    app.master.update()
+
+    assert accepted == "/home/u/一冊目.xlsx"
+    assert app.excel_path.get() == "/home/u/一冊目.xlsx"
+    assert "最初の1件だけを使います" in log_text(app)
+
+
+def test_handle_drop_logs_when_nothing_is_recognised(app):
+    accepted = app._handle_drop("")
+    app.master.update()
+
+    assert accepted is None
+    assert "認識できませんでした" in log_text(app)
+
+
+def test_on_drop_never_raises_even_if_handling_fails(app):
+    # tkdndのコールバック内で例外を投げるとTcl側にエラーが出るため、
+    # 何があってもログに出して飲み込む仕様。
+    class FakeEvent:
+        data = "/home/u/a.xlsx"
+        action = "copy"
+
+    with patch.object(app, "_handle_drop", side_effect=RuntimeError("boom")):
+        result = app._on_drop(FakeEvent())
+    app.master.update()
+
+    assert result == "copy"
+    assert "ドロップの処理に失敗しました" in log_text(app)
+
+
+def test_dnd_is_disabled_gracefully_when_tkinterdnd2_is_missing(app):
+    # tkinterdnd2が入っていない環境でも、D&Dが無効になるだけで落ちない。
+    with patch.dict("sys.modules", {"tkinterdnd2": None}):
+        assert app._init_dnd() is False
+
+
+# ------------------------------------------------------ 配色・アイコン
+
+
+def test_summary_chips_are_colour_coded_per_status(app):
+    app.excel_path.set("/tmp/対象.xlsx")
+
+    def fake_run(excel_path, on_progress=None):
+        on_progress(1, 2, "A", "完結", "A", error=None)
+        on_progress(2, 2, "B", "エラー", "", error=RuntimeError("boom"))
+        return 2
+
+    with patch("comic_checker.gui.run", side_effect=fake_run):
+        app._run_worker()
+        app.master.update()
+
+    from comic_checker.gui import STATUS_COLORS
+
+    styles = {
+        chip.cget("text"): str(chip.cget("style"))
+        for chip in app._summary_chips
+        if chip.cget("text") != "／"
+    }
+    assert "完結 1" in styles and "エラー 1" in styles
+    # 完結とエラーは別々のスタイル＝別々の色が当たっている。
+    assert styles["完結 1"] != styles["エラー 1"]
+
+    style = ttk.Style(app.master)
+    assert style.lookup(styles["エラー 1"], "foreground") == STATUS_COLORS["エラー"]
+    assert style.lookup(styles["完結 1"], "foreground") == STATUS_COLORS["完結"]
+
+
+def test_summary_chips_are_cleared_between_runs(app):
+    app.excel_path.set("/tmp/対象.xlsx")
+
+    def fake_run(excel_path, on_progress=None):
+        on_progress(1, 1, "A", "完結", "A", error=None)
+        return 1
+
+    with patch("comic_checker.gui.run", side_effect=fake_run):
+        app._run_worker()
+        app.master.update()
+    assert app._summary_chips
+
+    with patch("comic_checker.gui.run", return_value=0):
+        app._run_worker()
+        app.master.update()
+    assert app._summary_chips == []
+    assert app.summary_text.get() == "—"
+
+
+def test_section_titles_fall_back_to_plain_text_without_emoji_font(app):
+    # 絵文字フォントが無い環境ではアイコンを付けない（豆腐□を並べない）。
+    app._theme["emoji"] = False
+    assert app._decorate("file", "対象ファイル") == "対象ファイル"
+
+    app._theme["emoji"] = True
+    assert app._decorate("file", "対象ファイル") == "📁 対象ファイル"
+    # 未知のキーではアイコンを足さない（レイアウトが崩れない）。
+    assert app._decorate("unknown", "その他") == "その他"
+
+
+def test_run_button_falls_back_to_plain_style_without_accent_support():
+    # アクセント配色を作れない環境では通常のttkボタンで組み立てる。
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        with patch(
+            "comic_checker.gui._apply_theme",
+            return_value={"accent_button": False, "accent_progress": False, "emoji": False},
+        ):
+            widget = App(master=root)
+        assert str(widget.run_button.cget("style")) in ("", "TButton")
+    finally:
+        root.destroy()
