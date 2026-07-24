@@ -361,8 +361,13 @@ def _pick_article(title):
     return _fetch_extract(chosen)
 
 
-def judge(title):
-    """タイトルからWikipedia記事を探し、連載中/完結を判定する。"""
+def judge(title, use_infobox=True):
+    """タイトルからWikipedia記事を探し、連載中/完結を判定する。
+
+    use_infobox=False にすると、Issue #12のインフォボックス補助経路を無効化し、本文解析
+    のみで判定する（Issue #16: 補助経路のOn/Off比較計測専用のフラグ。判定条件そのものは
+    変更しない）。
+    """
     article = _pick_article(title)
     if article is None:
         return WikipediaJudgment(query=title, status=STATUS_NOT_FOUND)
@@ -370,7 +375,7 @@ def judge(title):
     matched_title, extract, url = article
     status, evidence = _judge_extract(extract)
 
-    if status == STATUS_UNKNOWN:
+    if use_infobox and status == STATUS_UNKNOWN:
         wikitext = _fetch_wikitext(matched_title)
         if wikitext is not None:
             infobox_status, infobox_evidence = _judge_via_infobox(wikitext)

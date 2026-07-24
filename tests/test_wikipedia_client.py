@@ -575,6 +575,23 @@ def test_judge_upgrades_unknown_to_ongoing_via_infobox():
     assert mock_get.call_count == 2
 
 
+def test_judge_use_infobox_false_skips_infobox_path_even_when_unknown():
+    # 回帰テスト（Issue #16）: use_infobox=Falseのときは、本文解析が判定不能でも
+    # インフォボックス経路（action=parse）を一切呼ばない。Issue #12前後の判定不能率を
+    # 比較計測するための専用フラグであり、判定条件そのものは変更しないことの確認。
+    direct_response = MagicMock()
+    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
+    direct_response.raise_for_status.return_value = None
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get", return_value=direct_response
+    ) as mock_get:
+        result = judge("インフォ実験作品", use_infobox=False)
+
+    assert result.status == STATUS_UNKNOWN
+    assert mock_get.call_count == 1
+
+
 def test_judge_stays_unknown_when_infobox_main_block_is_ambiguous():
     direct_response = MagicMock()
     direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
