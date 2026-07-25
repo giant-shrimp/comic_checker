@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from urllib.parse import quote
 
 import requests
@@ -58,6 +59,116 @@ _PRIMARY_TYPE_RE = re.compile(r"日本の([^、。]+)")
 STATUS_NOT_FOUND = "記事なし"
 STATUS_UNKNOWN = "判定不能"
 
+# --- タイトルの表記ゆれ吸収（M6-E-1 / Issue #30） ---------------------------------------
+#
+# Excelの入力タイトルは「買い物リスト」として人が手で書いたものであり、Wikipediaの記事名
+# とは体系的にずれる。実データ73件で観測した3種類のずれに対応する。
+#
+# (1) 全角/半角: 「私の百合はお仕事です！」「ヤンキーＪＫクズハナちゃん」に対し、記事名は
+#     「私の百合はお仕事です!」「ヤンキーJKクズハナちゃん」。Wikipediaの記事名は感嘆符・
+#     疑問符・英数字を半角で立てる慣習があるが、`titles=`での参照はUnicode正規化を
+#     してくれないため、こちらでNFKC正規化した変種も試す必要がある。
+# (2) 購入メモの注記: 「カッコウの許嫁　(特装版ない場合通常版)」「触手魔術師の成り上がり
+#     （電子版のみ【最終巻】5巻が発売済）」のように、括弧書きの注記が付く。
+# (3) 版・シリーズ表記の後置: 「月曜日のたわわ　青版」「姫騎士がクラスメート！　ＴＨＥ
+#     ＣＯＭＩＣ」のように、全角スペースや波ダッシュ以降が本編の記事名には含まれない。
+#
+# 開き括弧・閉じ括弧は全角/半角が混在し（「(特装版がない場合通常版）」のように片方だけ
+# 全角の実例がある）、括弧が入れ子になることもある（「（電子版のみ【最終巻】5巻が発売済）」）。
+# そのため単発の正規表現ではなく、括弧を含まない最内側のペアを消せなくなるまで繰り返す。
+_INNERMOST_BRACKET_RE = re.compile(r"[（(【［\[][^（(【［\[）)】］\]]*[）)】］\]]")
+
+# 全角スペース・タブ、および波ダッシュ（全角/半角/WAVE DASH）を後置注記の区切りとみなす。
+# 半角スペース単独は区切りにしない（「after the rain」のように記事名の一部として半角
+# スペースを含む正規のタイトルを壊してしまうため）。
+_TRAILING_NOTE_SEPARATOR_RE = re.compile(r"[　\t]|\s*[~〜～]")
+
+DISAMBIGUATION_SUFFIX = " (漫画)"
+
+# リダイレクト/正規化の連鎖をたどる上限。Wikipediaは二重リダイレクトを解決しないため
+# 実際には1〜2ホップで足りるが、循環リダイレクトで無限ループしないよう上限を設ける。
+_MAX_REDIRECT_HOPS = 5
+
+# 検索フォールバックで投げるクエリ数の上限。変種をすべて検索に回すとタイトル1件あたりの
+# API呼び出しが増えすぎるため、原文と注記除去後の2つまでに絞る。
+MAX_SEARCH_QUERIES = 2
+
+# 「ワンピース」（衣類の記事）のように、作品名と同名の無関係な記事を掴んでしまうリスクへの
+# 歯止め（Issue #8・#9で確立したfail-closed方針の延長）。曖昧さ回避表記「〜 (漫画)」は
+# 編集者が明示的に漫画版を指して作った表記なのでそのまま信用するが、それ以外の経路
+# （タイトル直参照・検索）で記事を採用するときは、その記事が漫画（またはコミカライズ元の
+# 小説）に関するものであることをリード文で確認する。
+ARTICLE_RELEVANCE_MARKERS = ("漫画", "マンガ", "コミック", "ライトノベル", "小説")
+
+# 検索候補が「利用者の書いたタイトル＋サブタイトル」の形かを判定するときに、両者の境目と
+# して認める文字。区切りを要求することで、単に同じ語で始まるだけの別作品を弾く。
+SUBTITLE_SEPARATORS = "〜~～-－―—:：(（[［ 　"
+
+
+def _normalize(text):
+    """全角/半角・互換文字の違いを吸収した比較用の文字列を返す。"""
+    return unicodedata.normalize("NFKC", text).strip()
+
+
+def _strip_annotations(title):
+    """括弧書きの注記を取り除く（入れ子・全角半角混在に対応）。"""
+    previous = None
+    text = title
+    while previous != text:
+        previous = text
+        text = _INNERMOST_BRACKET_RE.sub("", text)
+    return text.strip()
+
+
+def _strip_trailing_note(title):
+    """全角スペース・波ダッシュ以降の後置注記を取り除く。"""
+    return _TRAILING_NOTE_SEPARATOR_RE.split(title, maxsplit=1)[0].strip()
+
+
+def _title_variants(title):
+    """記事を直接参照するときに試すタイトルの変種を、確信度の高い順に返す。
+
+    原文（＝利用者が書いた通り）を最優先し、注記除去・後置注記除去と、確信度を下げる
+    加工を後ろに置く。同じ文字列は先に出た順序を保って1回だけ返す。
+    """
+    variants = []
+
+    def add(candidate):
+        candidate = candidate.strip()
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+
+    for base in (title, _strip_annotations(title)):
+        add(base)
+        add(_normalize(base))
+    for base in (title, _strip_annotations(title)):
+        trimmed = _strip_trailing_note(base)
+        add(trimmed)
+        add(_normalize(trimmed))
+
+    return variants
+
+
+def _search_queries(variants):
+    """検索フォールバックで投げるクエリを選ぶ。
+
+    Wikipediaの全文検索は全角/半角の違いを自前で吸収するため、NFKC正規化した変種を
+    別クエリとして投げても結果はほぼ変わらない。原文と、そこから注記を落としたものだけを
+    最大MAX_SEARCH_QUERIES件まで使う。
+    """
+    queries = []
+    for variant in variants:
+        if _normalize(variant) not in {_normalize(q) for q in queries}:
+            queries.append(variant)
+        if len(queries) >= MAX_SEARCH_QUERIES:
+            break
+    return queries
+
+
+def _is_about_manga(extract):
+    return any(marker in extract for marker in ARTICLE_RELEVANCE_MARKERS)
+
+
 # Issue #12: 本文解析（_judge_extract）が判定不能のときだけ参照する補助情報源。
 # {{Infobox animanga/Manga}}テンプレートの終了系フィールドが空欄かどうかは、本文解析より
 # 頑健な連載中/完結シグナルになりうることを実現可能性検証で確認した一方、記事内に
@@ -91,6 +202,11 @@ def _split_sentences(text):
     return [s for s in re.split(r"(?<=。)", text) if s.strip()]
 
 
+def _has_ongoing_signal(extract):
+    """走査範囲内に、明確な現在形の連載シグナルが1文でもあるか（M6-B-3）。"""
+    return any(ONGOING_RE.search(sentence) for sentence in _split_sentences(extract))
+
+
 def _is_novel_primary(extract):
     """作品自体の一次分類が小説/ライトノベルかどうかを、冒頭文の「日本の<種別>」から見る。
 
@@ -114,11 +230,27 @@ def _judge_extract(extract):
     """
     is_multimedia = _is_novel_primary(extract)
 
-    for sentence in _split_sentences(extract):
+    # M6-B-3（Issue #30）: CONTINUATION_VETO_REは同一文内しか見ないため、掲載誌の移籍を
+    # 「Aまで連載。その後Bに移籍し、Cから連載されている。」と2文に分けて書く記事で、
+    # 前半の文だけを見て完結と誤判定していた（実データで2件確認:
+    # 「一緒に暮らしていいですか?」を誤って完結と断定、「サタノファニ」は本編の文が
+    # 曖昧扱いでスキップされた結果、別作品『DEATHTOPIA』の連載終了文を掴んでいた）。
+    # HUNTER×HUNTER（Issue #8）と同クラスの誤りが、文をまたいで再発していたことになる。
+    # そのため、走査範囲（リード文＋最初のセクション）のどこかに明確な現在形の継続
+    # シグナルがあれば、弱シグナル由来の完結は信用しない。
+    # 強シグナル（COMPLETED_STRONG_RE＝「完結」）はこの無効化の対象外とする。Issue #8以来
+    # 一貫して、無効化は弱シグナルにのみ適用する方針であり、「〜は完結した。アニメは
+    # 連載中。」のような文章を壊さないため。
+    sentences = _split_sentences(extract)
+    has_ongoing_elsewhere = _has_ongoing_signal(extract)
+
+    for sentence in sentences:
         ongoing = bool(ONGOING_RE.search(sentence))
         weak_completed = bool(COMPLETED_WEAK_RE.search(sentence)) and not CONTINUATION_VETO_RE.search(
             sentence
         )
+        if weak_completed and has_ongoing_elsewhere and not ongoing:
+            weak_completed = False
         completed = bool(COMPLETED_STRONG_RE.search(sentence)) or weak_completed
         if ongoing == completed:
             continue
@@ -314,51 +446,158 @@ def _fetch_wikitext(page_title):
     return wikitext
 
 
-def _redirects_to(title, expected_target):
-    """titleがWikipediaの正規のリダイレクトでexpected_targetへ解決されるかどうか。
+def _resolve_titles(titles):
+    """複数タイトルの実在確認を1回のAPI呼び出しでまとめて行う。
 
-    prop=extractsを使わない軽量な問い合わせ（リダイレクト解決の確認のみが目的）。
+    戻り値は {要求したタイトル: 実在する記事名}。存在しないタイトルはキーに現れない。
+    リダイレクト（`redirects`）とタイトル正規化（`normalized`）の連鎖をたどることで、
+    要求した文字列と最終的な記事名を対応付ける。
+
+    タイトルごとに変種を1件ずつ問い合わせるとAPI呼び出しが変種の数だけ増えてしまうため、
+    `titles=`のパイプ区切り（1リクエストあたり最大50件）でまとめて投げる。prop指定を
+    付けない軽量な問い合わせなので、変種を増やしても応答サイズはほとんど増えない。
     """
-    data = _api_get(
-        {
-            "action": "query",
-            "titles": title,
-            "redirects": "1",
-        }
-    )
-    redirects = data.get("query", {}).get("redirects")
-    if not redirects:
+    if not titles:
+        return {}
+
+    data = _api_get({"action": "query", "titles": "|".join(titles), "redirects": "1"})
+    query = data.get("query", {})
+
+    forward = {}
+    for entry in list(query.get("normalized", [])) + list(query.get("redirects", [])):
+        if entry.get("from") is not None and entry.get("to") is not None:
+            forward[entry["from"]] = entry["to"]
+
+    existing = {
+        page["title"]
+        for page in query.get("pages", {}).values()
+        if "title" in page and "missing" not in page and "invalid" not in page
+    }
+
+    resolved = {}
+    for title in titles:
+        current = title
+        for _ in range(_MAX_REDIRECT_HOPS):
+            if current in existing:
+                resolved[title] = current
+                break
+            following = forward.get(current)
+            if following is None or following == current:
+                break
+            current = following
+    return resolved
+
+
+def _accept_article(page_title, trusted):
+    """記事を取得し、判定対象として採用してよければ (タイトル, リード文, URL) を返す。
+
+    trusted=True（曖昧さ回避表記「〜 (漫画)」で辿り着いた場合）は内容を確認せずに
+    採用する。それ以外は無関係な同名記事を掴んでいないかを`_is_about_manga`で確認する。
+    """
+    article = _fetch_extract(page_title)
+    if article is None:
+        return None
+    if trusted or _is_about_manga(article[1]):
+        return article
+    return None
+
+
+def _pick_via_direct_lookup(probes):
+    """タイトルの変種をそのまま記事名として参照し、最初に採用できた記事を返す。
+
+    「{変種} (漫画)」という曖昧さ回避表記は、Wikipedia編集者が意図的に「この作品の
+    漫画版」を指すために作った表記なので最優先で信用する。その次に変種そのものを試す。
+    どちらもWikipedia側のリダイレクト解決を経由するため、「彼女、人見知ります」→
+    「彼女、お借りします」のような編集者による意図的な対応付けもここで拾える。
+    """
+    resolved = _resolve_titles(probes)
+
+    tried = set()
+    for probe in probes:
+        page_title = resolved.get(probe)
+        if page_title is None or page_title in tried:
+            continue
+        tried.add(page_title)
+        article = _accept_article(page_title, trusted=probe.endswith(DISAMBIGUATION_SUFFIX))
+        if article is not None:
+            return article
+    return None
+
+
+def _subtitle_prefix_match(candidate, variant):
+    """候補名が「変種＋区切り記号＋サブタイトル」の形かどうか。
+
+    **実データ73件では未発火（2026年時点）。** M6-E-1の計測では、解決できた行はすべて
+    `_pick_via_direct_lookup`（タイトル直参照）で決着しており、この副題付き一致も
+    `_pick_via_search`自体も一度も採用に至っていない。単体テストで挙動は固定して
+    あるが、実戦での裏付けはまだ無い。将来のデータでここが発火した際は、
+    どのタイトルがどの候補に一致したかと、その判定が正しかったかをIssueに記録すること
+    （誤マッチが出た場合、区切り記号の集合SUBTITLE_SEPARATORSを狭めるのが最初の手当て）。
+
+    利用者の入力（買い物リスト）には主題名しか書かれていない一方、Wikipediaの記事名は
+    サブタイトル込みで立っていることがある（例: 「〜」で続く副題、「 -…-」形式）。
+    区切り記号を挟んでいることを要求するので、「ギャルせん」に対して「ギャル文字」の
+    ような別作品が一致することはない。
+    """
+    if len(candidate) <= len(variant) or not candidate.startswith(variant):
         return False
-    return redirects[-1].get("to") == expected_target
+    return candidate[len(variant)] in SUBTITLE_SEPARATORS
+
+
+def _pick_via_search(variants, already_probed):
+    """全文検索の結果から記事を選ぶ。裏付けが取れない候補は採用しない。
+
+    **実データ73件では未発火（2026年時点）。** 解決できた行はすべて直参照で決着し、
+    この経路が採用に至ったことは一度も無い。直参照が変種（NFKC正規化形を含む）を
+    総当たりするようになったため、検索が拾えて直参照が拾えない記事名は、
+    「NFKC正規化しても入力と一致しないが、副題を除けば一致する」形に限られる。
+    将来この経路が発火した際は、その判定根拠をIssueに記録すること。
+
+    検索の関連度ランキングだけを根拠にすると、「ワンピース」（衣類の記事）のような
+    無関係な同名記事を拾ってしまう（Issue #8・#9）。そのため、候補名が（NFKC正規化後に）
+    変種そのもの・「変種 (漫画)」と一致するか、変種にサブタイトルが続く形である場合のみ
+    採用する。リダイレクトによる裏付けは`_pick_via_direct_lookup`が先に済ませているため、
+    ここでは重ねて確認しない。
+
+    候補は上位1件だけでなく全件を見る。実データでは「釣って食べたいギャル澤さん」の
+    記事が検索3位（1位は無関係な「ギャル」）に沈んでおり、上位1件しか見ないと
+    完全一致する記事が存在するのに取りこぼしていた。
+    """
+    normalized_variants = {_normalize(variant) for variant in variants}
+    exact = normalized_variants | {
+        _normalize(f"{variant}{DISAMBIGUATION_SUFFIX}") for variant in variants
+    }
+
+    for query in _search_queries(variants):
+        for candidate in _search_titles(query):
+            # 直参照で既に解決を試みた記事名は、そこで採用されなかった（存在しない、
+            # または漫画の記事ではなかった）ことが確定しているので取得し直さない。
+            if candidate in already_probed:
+                continue
+            normalized_candidate = _normalize(candidate)
+            if normalized_candidate not in exact and not any(
+                _subtitle_prefix_match(normalized_candidate, variant)
+                for variant in normalized_variants
+            ):
+                continue
+            article = _accept_article(
+                candidate, trusted=candidate.endswith(DISAMBIGUATION_SUFFIX)
+            )
+            if article is not None:
+                return article
+    return None
 
 
 def _pick_article(title):
     """判定対象の記事(タイトル・リード文・URL)を選ぶ。見つからなければNone。
 
-    「{title} (漫画)」という曖昧さ回避表記は、Wikipedia編集者が意図的に「この作品の漫画版」
-    を指すために作った表記なので、直接一致・リダイレクトのどちらで解決してもそのまま
-    信用する。それ以外（`_search_titles`の関連度ランキングによる候補選定）は、
-    「ワンピース」（衣類の記事）のような無関係な同名記事を拾ってしまうリスクがあるため、
-    以下のいずれかで裏付けが取れる場合のみ信用する:
-      - 検索結果がクエリ文字列と完全一致するタイトルである（曖昧さの介在余地が小さい）
-      - クエリがWikipedia自身の正規リダイレクトでその候補へ解決する（編集者による
-        意図的な対応付けであり、検索の関連度ランキングだけを根拠にしていない）
-    どちらの裏付けも取れない場合は、無関係な記事を確信を持って誤答するより、
-    記事なし（Noneを返し判定不能に倒す）を優先する（Issue #8・#9で確立した設計指針）。
+    確信度の高い順に、タイトル直参照 → 全文検索の順で試す。どちらでも裏付けが取れない
+    場合は、無関係な記事を確信を持って誤答するより記事なし（None）を優先する
+    （Issue #8・#9で確立した設計指針）。
     """
-    direct = _fetch_extract(f"{title} (漫画)")
-    if direct is not None:
-        return direct
-
-    candidates = _search_titles(title)
-    if not candidates:
-        return None
-
-    chosen = next((c for c in candidates if "(漫画)" in c), candidates[0])
-    if chosen != title and not _redirects_to(title, chosen):
-        return None
-
-    return _fetch_extract(chosen)
+    variants = _title_variants(title)
+    probes = [f"{variant}{DISAMBIGUATION_SUFFIX}" for variant in variants] + list(variants)
+    return _pick_via_direct_lookup(probes) or _pick_via_search(variants, set(probes))
 
 
 def judge(title, use_infobox=True):
@@ -379,6 +618,17 @@ def judge(title, use_infobox=True):
         wikitext = _fetch_wikitext(matched_title)
         if wikitext is not None:
             infobox_status, infobox_evidence = _judge_via_infobox(wikitext)
+            # M6-B-3（Issue #30）: 本文に明確な現在形の連載シグナルがあるのに本文解析が
+            # 決着しなかった場合、インフォボックスの終了系フィールドを根拠に完結と
+            # 断定してはならない。
+            # 実データ「サタノファニ」の終了日フィールドは
+            # 「2023年34号<br />[[ヤンマガWeb]]：2023年9月6日 -」で、移籍後も継続中である
+            # ことを末尾の「-」で表している。つまり「終了系フィールドが空でない＝完結」は
+            # 移籍作品では成り立たない。本文と矛盾する以上、判定不能のまま維持する。
+            # 逆方向（インフォボックスが連載中を示す）は本文の連載シグナルと矛盾しないため
+            # 抑止しない。
+            if infobox_status == "完結" and _has_ongoing_signal(extract):
+                infobox_status = None
             if infobox_status is not None:
                 status, evidence = infobox_status, infobox_evidence
 

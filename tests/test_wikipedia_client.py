@@ -8,6 +8,10 @@ from comic_checker.wikipedia_client import (
     _extract_braced_blocks,
     _judge_extract,
     _judge_via_infobox,
+    _search_queries,
+    _strip_annotations,
+    _strip_trailing_note,
+    _title_variants,
     judge,
 )
 
@@ -164,6 +168,36 @@ SPINOFF_COMPLETED_MAIN_ONGOING_EXTRACT = (
     "『週刊少年サンプル』（サンプル社）にて2020年から連載中。"
 )
 
+# M6-B-3対応の合成フィクスチャ。掲載誌の移籍を2文に分けて書くパターンで、前半の文だけを
+# 見ると完結（COMPLETED_WEAK_REの「まで連載」）、後半の文を読むと連載中になる。
+# CONTINUATION_VETO_REは同一文内しか見ないため、この形は文をまたいで誤爆していた。
+# 実データ由来ではなく合成だが、元になった実例は「一緒に暮らしていいですか?」の
+# 「『グランドジャンプむちゃ』にて、2023年3月号から2023年11月号まで連載。その後
+# 『グランドジャンプ』（同）に移籍し、2023年23号から連載されている。」である
+# （実データそのままではなく、掲載誌名等を伏せた同じ構造の合成に置き換えている）。
+MAGAZINE_TRANSFER_ONGOING_EXTRACT = (
+    "『例の移籍作品』は、某作者による日本の漫画作品。"
+    "『月刊サンプルA』（サンプル社）にて、2023年3月号から2023年11月号まで連載。"
+    "その後『週刊サンプルB』（同）に移籍し、2023年23号から連載されている。"
+)
+
+# M6-B-3対応の合成フィクスチャ。本編の文が連載中と完結の両シグナルを含んで曖昧扱いで
+# スキップされたあと、*別作品*の連載終了に言及した文を掴んでしまうパターン。
+# 元になった実例は「サタノファニ」で、本編の「2017年15号から2023年34号まで連載され、
+# その後『ヤンマガWeb』に移籍し、同年9月6日より連載中。」がスキップされた結果、
+# 概要節の「作者が…『DEATHTOPIA』の連載終了から4か月後に…」を採用していた。
+# 別作品名を主語にした文はSPINOFF_MARKERSでは弾けない（番外編でも外伝でもない）ため、
+# 走査範囲全体の継続シグナルによる無効化でしか止められない。
+# なお、このケースで期待するのは「連載中」ではなく「判定不能」である。本編の文が
+# 曖昧である事実は変わらず、fail-closedに倒すのが正しい（Issue #8以来の方針）。
+OTHER_WORK_COMPLETION_EXTRACT = (
+    "『例の曖昧作品』は、某作者による日本の漫画作品。"
+    "『週刊サンプルA』（サンプル社）にて、2017年15号から2023年34号まで連載され、"
+    "その後『サンプルWeb』に移籍し、同年9月6日より連載中。"
+    "作者が『サンプルB』（サンプル社）で連載していた『別の過去作』の連載終了から"
+    "4か月後に『週刊サンプルA』へ移籍し、連載が開始された。"
+)
+
 
 def test_one_piece_is_ongoing():
     status, evidence = _judge_extract(ONE_PIECE_EXTRACT)
@@ -225,6 +259,37 @@ def test_tonkatsu_dj_agetaro_main_completion_not_confused_with_spinoff():
     assert status == "完結"
     assert "番外編" not in evidence
     assert "毎週木曜更新で連載" in evidence
+
+
+def test_magazine_transfer_across_sentences_is_not_completed():
+    # M6-B-3対応の回帰テスト（実データ「一緒に暮らしていいですか?」で誤判定していた形）:
+    # 「Aまで連載。」で決着させず、走査範囲内の「連載されている」を根拠に連載中と判定する。
+    status, evidence = _judge_extract(MAGAZINE_TRANSFER_ONGOING_EXTRACT)
+    assert status == "連載中"
+    assert "連載されている" in evidence
+
+
+def test_other_works_serialization_end_does_not_make_main_work_completed():
+    # M6-B-3対応の回帰テスト（実データ「サタノファニ」で誤判定していた形）: 本編の文が
+    # 両シグナルを含んで曖昧なため、別作品の「連載終了」を代用してはならない。
+    # 本編について断定できない以上、連載中ではなく判定不能に倒すのが正しい。
+    status, _ = _judge_extract(OTHER_WORK_COMPLETION_EXTRACT)
+    assert status == STATUS_UNKNOWN
+
+
+def test_strong_completion_is_not_vetoed_by_ongoing_elsewhere():
+    # M6-B-3の無効化が弱シグナル限定であることの担保（Issue #8以来の方針）。
+    # 「完結」（強シグナル）は、走査範囲内に別の連載中シグナルがあっても無効化しない。
+    # 作品名自体に「完結」を含めるとタイトルの文がCOMPLETED_STRONG_REに一致してしまい、
+    # 本来検査したい文とは別の文が根拠に採用されるため、無関係な作品名にしている。
+    extract = (
+        "『例の終了作品』は、某作者による日本の漫画作品。"
+        "本編は2020年に完結した。"
+        "スピンオフ『例の終了作品外伝』は現在も連載中。"
+    )
+    status, evidence = _judge_extract(extract)
+    assert status == "完結"
+    assert "完結した" in evidence
 
 
 def test_spinoff_completion_does_not_override_main_series_ongoing_status():
@@ -420,6 +485,74 @@ def test_extract_braced_blocks_handles_nested_templates():
     assert "概要" not in blocks[0]
 
 
+def test_strip_annotations_removes_mixed_width_and_nested_brackets():
+    # 実データ（M6-E-1）で観測した書き方。「(特装版がない場合通常版）」は開き括弧が
+    # 半角・閉じ括弧が全角という混在、「（電子版のみ【最終巻】5巻が発売済）」は入れ子。
+    assert _strip_annotations("カッコウの許嫁　(特装版ない場合通常版)") == "カッコウの許嫁"
+    assert _strip_annotations("夫婦以上、恋人未満。(特装版がない場合通常版）") == "夫婦以上、恋人未満。"
+    assert (
+        _strip_annotations("触手魔術師の成り上がり（電子版のみ【最終巻】5巻が発売済）")
+        == "触手魔術師の成り上がり"
+    )
+    assert _strip_annotations("普通のタイトル") == "普通のタイトル"
+
+
+def test_strip_trailing_note_cuts_at_fullwidth_space_or_wave_dash():
+    assert _strip_trailing_note("月曜日のたわわ　青版") == "月曜日のたわわ"
+    assert _strip_trailing_note("終わりのハテミは繁殖したい　③～定期") == "終わりのハテミは繁殖したい"
+    assert _strip_trailing_note("朝まで恋愛chu！ ～幼なじみはトキめかない？") == "朝まで恋愛chu！"
+    # 半角スペースは区切りにしない（記事名の一部でありうるため）。
+    assert _strip_trailing_note("お隣の天使様 after the rain") == "お隣の天使様 after the rain"
+
+
+def test_title_variants_are_ordered_by_confidence_and_deduplicated():
+    assert _title_variants("ドラゴン") == ["ドラゴン"]
+    assert _title_variants("グラぱらっ！") == ["グラぱらっ！", "グラぱらっ!"]
+    assert _title_variants("月曜日のたわわ　青版") == [
+        "月曜日のたわわ　青版",
+        "月曜日のたわわ 青版",
+        "月曜日のたわわ",
+    ]
+    # 注記除去 → 後置注記除去の順に確信度が下がる。
+    assert _title_variants("姫騎士がクラスメート！　ＴＨＥ　ＣＯＭＩＣ") == [
+        "姫騎士がクラスメート！　ＴＨＥ　ＣＯＭＩＣ",
+        "姫騎士がクラスメート! THE COMIC",
+        "姫騎士がクラスメート！",
+        "姫騎士がクラスメート!",
+    ]
+
+
+def test_original_title_is_probed_before_any_stripped_form():
+    # 注記除去・後置注記除去が正規タイトルを壊さないことの担保。加工した文字列は原文の
+    # *後ろ* にしか並ばないため、括弧や全角スペースを正規タイトルの一部として含む作品でも、
+    # 実在する原文の記事が必ず先に採用される（加工形はそれが存在しないときの保険）。
+    #
+    # 以下の4件は、実データでこの形の入力を観測したわけではなく、構造（変種の順序）を
+    # 検証するために構成した例である。実在する作品名を含むが、利用者がこの表記で入力
+    # した実績があるという主張ではない。実データ由来の入力例は
+    # test_strip_annotations_... / test_strip_trailing_note_... 側にある。
+    for title in (
+        "ぼくらの（仮）",
+        "推しの子【推し】",
+        "とある魔術の禁書目録 (アニメ)",
+        "ノーゲーム・ノーライフ　ゼロ",
+    ):
+        variants = _title_variants(title)
+        assert variants[0] == title
+        assert _strip_annotations(title) != title or _strip_trailing_note(title) != title, (
+            "加工で変化しない例を混ぜても順序の担保にならないため、変化する例を使うこと"
+        )
+
+
+def test_search_queries_are_capped_and_normalization_duplicates_dropped():
+    # NFKC正規化しただけの変種は、全文検索では原文と同じ結果になるため別クエリにしない。
+    assert _search_queries(_title_variants("グラぱらっ！")) == ["グラぱらっ！"]
+    assert _search_queries(_title_variants("月曜日のたわわ　青版")) == [
+        "月曜日のたわわ　青版",
+        "月曜日のたわわ",
+    ]
+
+
 def _search_response(titles):
     return {"query": {"search": [{"title": t} for t in titles]}}
 
@@ -433,74 +566,166 @@ def _extract_response(title, extract, missing=False):
     return {"query": {"pages": {"1": page}}}
 
 
-def _redirect_response(from_title, to_title):
-    return {"query": {"redirects": [{"from": from_title, "to": to_title}]}}
+# 以降の judge() レベルのテストは、記事選定の *経路*（どの変種・どの裏付けで記事に
+# 辿り着くか）の検査が目的であり、判定ロジックそのものは検査対象外である。そのため
+# リード文には既存の合成フィクスチャ（主に ONE_PIECE_EXTRACT）を流用しており、
+# 「連載中」という判定結果自体には意味がない ―― 記事が採用されたかどうかを読み取る
+# ための目印として使っている。判定ロジックの回帰は _judge_extract() 直呼びの
+# テスト群（ファイル前半）が担当する。
+
+
+def _resolve_response(existing=(), missing=(), redirects=(), normalized=()):
+    """`_resolve_titles`が投げる action=query&titles=A|B&redirects=1 の応答を組み立てる。
+
+    existing/missing は「Wikipedia側で最終的に解決された記事名」、redirects/normalized は
+    (from, to) のタプル列。
+    """
+    pages = {}
+    for i, title in enumerate(existing, start=1):
+        pages[str(i)] = {"title": title}
+    for i, title in enumerate(missing, start=1):
+        pages[str(-i)] = {"title": title, "missing": ""}
+    query = {"pages": pages}
+    if redirects:
+        query["redirects"] = [{"from": f, "to": t} for f, t in redirects]
+    if normalized:
+        query["normalized"] = [{"from": f, "to": t} for f, t in normalized]
+    return {"query": query}
+
+
+def _response(payload):
+    response = MagicMock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return response
 
 
 def test_judge_prefers_direct_manga_disambiguation_page():
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("転生したらスライムだった件 (漫画)", TENSURA_EXTRACT)
-    direct_response.raise_for_status.return_value = None
+    resolve_response = _response(
+        _resolve_response(
+            existing=["転生したらスライムだった件 (漫画)"], missing=["転生したらスライムだった件"]
+        )
+    )
+    extract_response = _response(
+        _extract_response("転生したらスライムだった件 (漫画)", TENSURA_EXTRACT)
+    )
 
-    with patch("comic_checker.wikipedia_client.requests.get", return_value=direct_response) as mock_get:
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response],
+    ) as mock_get:
         result = judge("転生したらスライムだった件")
 
     assert isinstance(result, WikipediaJudgment)
     assert result.status == "連載中"
     assert result.matched_title == "転生したらスライムだった件 (漫画)"
-    # 直接 "(漫画)" 記事が見つかった場合、検索は行わず1回のAPI呼び出しで済む。
-    assert mock_get.call_count == 1
+    # 変種をまとめて実在確認する1回 + 採用した記事のリード文を取る1回で済み、検索は行わない。
+    assert mock_get.call_count == 2
 
 
-def test_judge_falls_back_to_search_and_prefers_manga_candidate():
-    # 検索結果の候補("ダミー (漫画)")はクエリ("ダミー")と文字列が異なるため、
-    # Wikipedia自身のリダイレクトで裏付けが取れて初めて採用される
-    # （M6-A-1: 検索の関連度ランキングだけを根拠にしない）。
-    missing_direct = MagicMock()
-    missing_direct.json.return_value = _extract_response("ダミー (漫画)", "", missing=True)
-    missing_direct.raise_for_status.return_value = None
-
-    search_response = MagicMock()
-    search_response.json.return_value = _search_response(["ダミー", "ダミー (漫画)", "ダミー (小説)"])
-    search_response.raise_for_status.return_value = None
-
-    redirect_confirmation = MagicMock()
-    redirect_confirmation.json.return_value = _redirect_response("ダミー", "ダミー (漫画)")
-    redirect_confirmation.raise_for_status.return_value = None
-
-    extract_response = MagicMock()
-    extract_response.json.return_value = _extract_response("ダミー (漫画)", ONE_PIECE_EXTRACT)
-    extract_response.raise_for_status.return_value = None
+def test_judge_follows_wikipedia_redirect_to_the_real_article():
+    # 「彼女、人見知ります」→「彼女、お借りします」のように、編集者が意図的に張った
+    # リダイレクトは直参照の段階（`_resolve_titles`のredirects解決）で辿られる。
+    resolve_response = _response(
+        _resolve_response(
+            existing=["実際の記事"],
+            missing=["ダミー (漫画)"],
+            redirects=[("ダミー", "実際の記事")],
+        )
+    )
+    extract_response = _response(_extract_response("実際の記事", ONE_PIECE_EXTRACT))
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[missing_direct, search_response, redirect_confirmation, extract_response],
+        side_effect=[resolve_response, extract_response],
     ) as mock_get:
         result = judge("ダミー")
 
-    assert result.matched_title == "ダミー (漫画)"
+    assert result.matched_title == "実際の記事"
     assert result.status == "連載中"
-    assert mock_get.call_count == 4
+    assert mock_get.call_count == 2
 
 
-def test_judge_rejects_search_candidate_without_exact_match_or_redirect_backing():
-    # 回帰テスト（M6-A-1）: 検索結果の候補がクエリと文字列一致せず、かつリダイレクトの
-    # 裏付けも取れない場合、無関係な記事を確信を持って誤答するより判定不能に倒す。
-    missing_direct = MagicMock()
-    missing_direct.json.return_value = _extract_response("謎の作品 (漫画)", "", missing=True)
-    missing_direct.raise_for_status.return_value = None
-
-    search_response = MagicMock()
-    search_response.json.return_value = _search_response(["無関係な別の記事"])
-    search_response.raise_for_status.return_value = None
-
-    no_redirect = MagicMock()
-    no_redirect.json.return_value = {"query": {"pages": {"1": {"title": "謎の作品", "missing": ""}}}}
-    no_redirect.raise_for_status.return_value = None
+def test_judge_finds_article_that_differs_only_in_character_width():
+    # 回帰テスト（M6-E-1）: 利用者が全角で書いたタイトル（「グラぱらっ！」）に対し、
+    # Wikipediaの記事名は半角の感嘆符（「グラぱらっ!」）で立っている。`titles=`はUnicode
+    # 正規化をしてくれないため、NFKC正規化した変種も併せて実在確認する必要がある。
+    resolve_response = _response(
+        _resolve_response(
+            existing=["グラぱらっ!"],
+            missing=["グラぱらっ！ (漫画)", "グラぱらっ! (漫画)", "グラぱらっ！"],
+        )
+    )
+    extract_response = _response(_extract_response("グラぱらっ!", ONE_PIECE_EXTRACT))
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[missing_direct, search_response, no_redirect],
+        side_effect=[resolve_response, extract_response],
+    ) as mock_get:
+        result = judge("グラぱらっ！")
+
+    assert result.matched_title == "グラぱらっ!"
+    assert result.status == "連載中"
+    assert mock_get.call_count == 2
+
+
+def test_judge_strips_purchase_note_from_title():
+    # 回帰テスト（M6-E-1）: 買い物メモ由来の括弧書き注記（全角/半角混在）を落とした
+    # 変種でも実在確認する。
+    resolve_response = _response(
+        _resolve_response(
+            existing=["カッコウの許嫁"],
+            missing=[
+                "カッコウの許嫁　(特装版ない場合通常版) (漫画)",
+                "カッコウの許嫁 (漫画)",
+                "カッコウの許嫁　(特装版ない場合通常版)",
+            ],
+        )
+    )
+    extract_response = _response(_extract_response("カッコウの許嫁", ONE_PIECE_EXTRACT))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response],
+    ) as mock_get:
+        result = judge("カッコウの許嫁　(特装版ない場合通常版)")
+
+    assert result.matched_title == "カッコウの許嫁"
+    assert result.status == "連載中"
+    assert mock_get.call_count == 2
+
+
+def test_judge_rejects_same_name_article_that_is_not_about_manga():
+    # 回帰テスト（M6-E-1）: タイトル直参照で記事が実在しても、それが漫画の記事で
+    # なければ採用しない（「ワンピース」＝衣類の記事を掴まないための歯止め）。
+    resolve_response = _response(
+        _resolve_response(existing=["ワンピース"], missing=["ワンピース (漫画)"])
+    )
+    unrelated_extract = _response(
+        _extract_response("ワンピース", "ワンピースは、上半身と下半身がつながった女性用の衣類。")
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, unrelated_extract, empty_search],
+    ):
+        result = judge("ワンピース")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
+
+
+def test_judge_rejects_search_candidate_without_exact_match_backing():
+    # 回帰テスト（M6-A-1）: 検索結果の候補がクエリと（正規化後も）一致せず、
+    # サブタイトル付きの形でもない場合、無関係な記事を確信を持って誤答するより
+    # 記事なしに倒す。
+    resolve_response = _response(_resolve_response(missing=["謎の作品 (漫画)", "謎の作品"]))
+    search_response = _response(_search_response(["無関係な別の記事"]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, search_response],
     ):
         result = judge("謎の作品")
 
@@ -508,18 +733,47 @@ def test_judge_rejects_search_candidate_without_exact_match_or_redirect_backing(
     assert result.matched_title is None
 
 
-def test_judge_returns_not_found_when_no_article_exists():
-    missing_direct = MagicMock()
-    missing_direct.json.return_value = _extract_response("存在しない作品 (漫画)", "", missing=True)
-    missing_direct.raise_for_status.return_value = None
-
-    empty_search = MagicMock()
-    empty_search.json.return_value = _search_response([])
-    empty_search.raise_for_status.return_value = None
+def test_judge_accepts_search_candidate_with_subtitle():
+    # M6-E-1: 利用者は主題名しか書かないが、Wikipediaの記事名は副題込みで立っている
+    # ことがある。区切り記号を挟んで主題名で始まる候補は採用する。
+    resolve_response = _response(_resolve_response(missing=["謎の作品 (漫画)", "謎の作品"]))
+    search_response = _response(_search_response(["無関係な別の記事", "謎の作品〜副題〜"]))
+    extract_response = _response(_extract_response("謎の作品〜副題〜", ONE_PIECE_EXTRACT))
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[missing_direct, empty_search],
+        side_effect=[resolve_response, search_response, extract_response],
+    ):
+        result = judge("謎の作品")
+
+    assert result.status == "連載中"
+    assert result.matched_title == "謎の作品〜副題〜"
+
+
+def test_judge_does_not_accept_search_candidate_that_merely_shares_a_prefix():
+    # 「ギャルせん」に対する「ギャルせんぱいの秘密」のように、区切り記号を挟まず
+    # 語が続くだけの別作品は採用しない。
+    resolve_response = _response(_resolve_response(missing=["ギャルせん (漫画)", "ギャルせん"]))
+    search_response = _response(_search_response(["ギャルせんぱいの秘密"]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, search_response],
+    ):
+        result = judge("ギャルせん")
+
+    assert result.status == STATUS_NOT_FOUND
+
+
+def test_judge_returns_not_found_when_no_article_exists():
+    resolve_response = _response(
+        _resolve_response(missing=["存在しない作品 (漫画)", "存在しない作品"])
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, empty_search],
     ):
         result = judge("存在しない作品")
 
@@ -539,71 +793,107 @@ def _wikitext_error_response():
 INFOBOX_PROBE_EXTRACT = "『インフォ実験作品』は、某作者による日本の漫画作品。"
 
 
+def _infobox_probe_responses():
+    """「インフォ実験作品」の直参照が「インフォ実験作品 (漫画)」に当たるまでの2応答。"""
+    return [
+        _response(
+            _resolve_response(existing=["インフォ実験作品 (漫画)"], missing=["インフォ実験作品"])
+        ),
+        _response(_extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)),
+    ]
+
+
 def test_judge_does_not_fetch_wikitext_when_text_judgment_already_resolved():
     # 回帰テスト（Issue #12）: 本文解析で完結/連載中が確定している場合、
     # インフォボックス（action=parse）へのAPI呼び出しは発生しない。
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("ワンピース (漫画)", ONE_PIECE_EXTRACT)
-    direct_response.raise_for_status.return_value = None
+    responses = [
+        _response(_resolve_response(existing=["ワンピース (漫画)"], missing=["ワンピース"])),
+        _response(_extract_response("ワンピース (漫画)", ONE_PIECE_EXTRACT)),
+    ]
 
     with patch(
-        "comic_checker.wikipedia_client.requests.get", return_value=direct_response
+        "comic_checker.wikipedia_client.requests.get", side_effect=responses
     ) as mock_get:
         result = judge("ワンピース")
 
     assert result.status == "連載中"
-    assert mock_get.call_count == 1
+    # 実在確認 + リード文取得の2回のみ（action=parseは呼ばれない）。
+    assert mock_get.call_count == 2
 
 
 def test_judge_upgrades_unknown_to_ongoing_via_infobox():
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
-    direct_response.raise_for_status.return_value = None
-
-    wikitext_response = MagicMock()
-    wikitext_response.json.return_value = _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK)
-    wikitext_response.raise_for_status.return_value = None
+    wikitext_response = _response(
+        _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK)
+    )
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[direct_response, wikitext_response],
+        side_effect=_infobox_probe_responses() + [wikitext_response],
     ) as mock_get:
         result = judge("インフォ実験作品")
 
     assert result.status == "連載中"
     assert "インフォボックス" in result.evidence
-    assert mock_get.call_count == 2
+    assert mock_get.call_count == 3
 
 
 def test_judge_use_infobox_false_skips_infobox_path_even_when_unknown():
     # 回帰テスト（Issue #16）: use_infobox=Falseのときは、本文解析が判定不能でも
     # インフォボックス経路（action=parse）を一切呼ばない。Issue #12前後の判定不能率を
     # 比較計測するための専用フラグであり、判定条件そのものは変更しないことの確認。
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
-    direct_response.raise_for_status.return_value = None
-
     with patch(
-        "comic_checker.wikipedia_client.requests.get", return_value=direct_response
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=_infobox_probe_responses(),
     ) as mock_get:
         result = judge("インフォ実験作品", use_infobox=False)
 
     assert result.status == STATUS_UNKNOWN
-    assert mock_get.call_count == 1
+    assert mock_get.call_count == 2
+
+
+def test_judge_does_not_let_infobox_declare_completed_against_prose_ongoing_signal():
+    # M6-B-3対応の回帰テスト（実データ「サタノファニ」）: 本文に明確な「連載中」があるのに
+    # 本文解析が決着しなかった場合、インフォボックスの終了系フィールドを根拠に完結と
+    # 断定してはならない。移籍作品では終了日フィールドが「旧誌の終了日＋新誌での開始日」を
+    # 記録することがあり、「値が入っている＝完結」が成り立たないため。
+    ambiguous_extract = (
+        "『例の曖昧作品』は、某作者による日本の漫画作品。"
+        "『週刊サンプルA』にて2017年から2023年まで連載され、その後移籍し、同年より連載中。"
+    )
+    responses = [
+        _response(_resolve_response(existing=["例の曖昧作品 (漫画)"], missing=["例の曖昧作品"])),
+        _response(_extract_response("例の曖昧作品 (漫画)", ambiguous_extract)),
+        _response(_wikitext_response(MAIN_BLOCK_COMPLETED)),
+    ]
+
+    with patch("comic_checker.wikipedia_client.requests.get", side_effect=responses):
+        result = judge("例の曖昧作品")
+
+    assert result.status == STATUS_UNKNOWN
+
+
+def test_judge_still_upgrades_to_completed_via_infobox_without_prose_ongoing_signal():
+    # 上の抑止が広すぎないことの担保: 本文に連載中シグナルが無ければ、従来どおり
+    # インフォボックスの終了系フィールドから完結へ引き上げてよい。
+    responses = _infobox_probe_responses() + [
+        _response(_wikitext_response(MAIN_BLOCK_COMPLETED))
+    ]
+
+    with patch("comic_checker.wikipedia_client.requests.get", side_effect=responses):
+        result = judge("インフォ実験作品")
+
+    assert result.status == "完結"
+    assert "インフォボックス" in result.evidence
 
 
 def test_judge_stays_unknown_when_infobox_main_block_is_ambiguous():
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
-    direct_response.raise_for_status.return_value = None
-
-    wikitext_response = MagicMock()
-    wikitext_response.json.return_value = _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + MAIN_BLOCK_COMPLETED)
-    wikitext_response.raise_for_status.return_value = None
+    wikitext_response = _response(
+        _wikitext_response(MAIN_BLOCK_ONGOING + "\n\n" + MAIN_BLOCK_COMPLETED)
+    )
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[direct_response, wikitext_response],
+        side_effect=_infobox_probe_responses() + [wikitext_response],
     ):
         result = judge("インフォ実験作品")
 
@@ -613,17 +903,11 @@ def test_judge_stays_unknown_when_infobox_main_block_is_ambiguous():
 def test_judge_stays_unknown_when_wikitext_fetch_fails():
     # 回帰テスト: action=parseがエラー応答を返した（_fetch_wikitextがNoneを返す）場合、
     # 例外を発生させず判定不能のまま維持する。
-    direct_response = MagicMock()
-    direct_response.json.return_value = _extract_response("インフォ実験作品 (漫画)", INFOBOX_PROBE_EXTRACT)
-    direct_response.raise_for_status.return_value = None
-
-    wikitext_error_response = MagicMock()
-    wikitext_error_response.json.return_value = _wikitext_error_response()
-    wikitext_error_response.raise_for_status.return_value = None
+    wikitext_error_response = _response(_wikitext_error_response())
 
     with patch(
         "comic_checker.wikipedia_client.requests.get",
-        side_effect=[direct_response, wikitext_error_response],
+        side_effect=_infobox_probe_responses() + [wikitext_error_response],
     ):
         result = judge("インフォ実験作品")
 

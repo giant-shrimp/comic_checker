@@ -14,11 +14,38 @@
   `判定不能` counts, re-run `tests/test_wikipedia_client.py`'s
   「転生したらスライムだった件」regression case first — that's the exact failure mode
   (原作小説完結 vs 漫画連載中) this heuristic exists to catch.
-- Article selection only tries the `"{title} (漫画)"` disambiguated title and then the top
-  `list=search` hit (preferring a `"(漫画)"`-suffixed candidate if present among results).
-  It does not otherwise validate that the resolved article is actually about the title
-  being searched — same class of ambiguous-title risk as manba.co.jp search below, just
-  one layer removed.
+- **The cross-sentence continuation veto (M6-B-3, Issue #30) only sees the scan range,
+  not the whole article.** `_has_ongoing_signal()` looks at what `_judge_extract()` sees —
+  the lead plus the first `==` section (`_lead_and_first_section()`), typically `概要`.
+  A work whose 連載中 statement lives in a *later* section (刊行状況, 書誌情報, etc.) will
+  not have its weak-tier `完結` vetoed, and can still be answered `完結` on a magazine-
+  transfer sentence. Widening `_has_ongoing_signal()` to the full article is **not** a
+  safe unilateral fix: the scan range is narrow for a reason (see the
+  `_fetch_extract()` bullet below — deeper sections carry spin-off status sentences), and
+  a full-article ongoing scan would let any spin-off's 連載中 veto a genuinely completed
+  main work, trading a false `完結` for a false `判定不能` on a much larger set of rows.
+  If this shows up in real data, prefer narrowing which sections are scanned over
+  widening the veto's reach.
+- Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
+  normalized variants of the input title, then falls back to `list=search`. It validates
+  the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
+  editor-curated redirect, or a subtitle-extended form) and the *topic*
+  (`_is_about_manga()` requires a manga/novel marker in the lead), but nothing more.
+  A page that clears both bars is accepted, so an ambiguous title that happens to name a
+  *different* manga will still be answered confidently — same class of risk as the
+  manba.co.jp search below, just one layer removed. This is why the `参照タイトル` /
+  `参照URL` columns exist: they are for manual spot-checking, not decoration.
+- `記事なし` is frequently the *correct* answer, not a lookup failure. On the real 73-row
+  sheet used to tune M6-E-1, 29 rows still come back `記事なし` after the fix, and
+  spot-checking confirmed most are titles Japanese Wikipedia genuinely has no article for
+  (short-run seinen/adult series, anthologies). Before adding another fallback tier to
+  push that number down, verify against actual article existence — a `記事なし` rate near
+  40% on a list like that is a property of the data, not evidence of a bug.
+- The variant expansion deliberately does **not** cut titles at a half-width space
+  (`お隣の天使様…　after the rain` is a real article name containing one) and does not do
+  fuzzy/edit-distance matching (see `docs/architecture.md` for why that was tried and
+  rejected). A title whose Wikipedia article name differs by more than case/width,
+  bracketed notes, or an appended subtitle will not resolve.
 - `_fetch_extract()` does **not** use `exintro=true` (verified against live Wikipedia:
   many articles' true lead paragraph is a single one-line definition sentence, with the
   actual serialization dates in the first `==` section, usually `概要` — e.g. 進撃の巨人's
