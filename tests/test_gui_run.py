@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from comic_checker.gui import App, _parse_dropped_paths
+from comic_checker.main import RowCounts
 
 
 @pytest.fixture
@@ -32,13 +33,17 @@ def test_run_worker_calls_run_with_excel_path_and_on_progress(app):
         app._run_worker()
         app.master.update()
 
-    mock_run.assert_called_once_with("/tmp/対象.xlsx", on_progress=app._on_progress)
+    # Issue #32: skip_filled を明示的に渡すようになった（GUIから再判定を選べるようにするため）。
+    # 既定値は従来どおり True で、判定済みの行はスキップされる。
+    mock_run.assert_called_once_with(
+        "/tmp/対象.xlsx", on_progress=app._on_progress, skip_filled=True
+    )
 
 
 def test_run_worker_streams_progress_to_log(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 2, "ONE PIECE", "連載中", "ONE PIECE", error=None)
         on_progress(2, 2, "謎の作品", "エラー", "", error=RuntimeError("boom"))
         return 2
@@ -95,11 +100,16 @@ def test_on_run_disables_button_and_starts_worker_thread(app):
     # （_run_worker自体の挙動は他のテストで直接呼び出して検証済み）。
     app.excel_path.set("/tmp/対象.xlsx")
 
-    with patch("comic_checker.gui.threading.Thread") as mock_thread_cls:
-        app._on_run()
+    # Issue #32: 実行前に count_rows() で判定済み行を数えるようになった。ここでは
+    # スレッド起動の検証が目的なので、判定済み0件＝ダイアログ無しの経路に固定する。
+    with patch("comic_checker.gui.count_rows", return_value=RowCounts(pending=3, filled=0)):
+        with patch("comic_checker.gui.threading.Thread") as mock_thread_cls:
+            app._on_run()
 
     assert str(app.run_button["state"]) == "disabled"
-    mock_thread_cls.assert_called_once_with(target=app._run_worker, daemon=True)
+    mock_thread_cls.assert_called_once_with(
+        target=app._run_worker, kwargs={"skip_filled": True}, daemon=True
+    )
     mock_thread_cls.return_value.start.assert_called_once()
 
 
@@ -109,7 +119,7 @@ def test_on_run_disables_button_and_starts_worker_thread(app):
 def test_progress_bar_tracks_index_and_total(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 4, "A", "完結", "A", error=None)
         on_progress(2, 4, "B", "連載中", "B", error=None)
         return 4
@@ -125,7 +135,7 @@ def test_progress_bar_tracks_index_and_total(app):
 def test_progress_bar_resets_at_the_start_of_each_run(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    with patch("comic_checker.gui.run", side_effect=lambda p, on_progress=None: (
+    with patch("comic_checker.gui.run", side_effect=lambda p, on_progress=None, skip_filled=True: (
         on_progress(1, 1, "A", "完結", "A", error=None), 1
     )[1]):
         app._run_worker()
@@ -145,7 +155,7 @@ def test_progress_bar_resets_at_the_start_of_each_run(app):
 def test_summary_counts_each_status(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 5, "A", "完結", "A", error=None)
         on_progress(2, 5, "B", "連載中", "B", error=None)
         on_progress(3, 5, "C", "完結", "C", error=None)
@@ -170,7 +180,7 @@ def test_summary_groups_unlisted_statuses_into_other(app):
     # manba経路の「ヒットなし」「不明」等は「その他」にまとめる。
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 2, "A", "ヒットなし", "", error=None)
         on_progress(2, 2, "B", "不明", "", error=None)
         return 2
@@ -185,7 +195,7 @@ def test_summary_groups_unlisted_statuses_into_other(app):
 def test_summary_is_reset_between_runs(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 1, "A", "完結", "A", error=None)
         return 1
 
@@ -208,7 +218,7 @@ def test_status_shows_progress_while_running_and_completion_at_the_end(app):
 
     seen = []
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 2, "ONE PIECE", "連載中", "ONE PIECE", error=None)
         app.master.update()
         seen.append(app.status_text.get())
@@ -399,7 +409,7 @@ def test_dnd_is_disabled_gracefully_when_tkinterdnd2_is_missing(app):
 def test_summary_chips_are_colour_coded_per_status(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 2, "A", "完結", "A", error=None)
         on_progress(2, 2, "B", "エラー", "", error=RuntimeError("boom"))
         return 2
@@ -427,7 +437,7 @@ def test_summary_chips_are_colour_coded_per_status(app):
 def test_summary_chips_are_cleared_between_runs(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
-    def fake_run(excel_path, on_progress=None):
+    def fake_run(excel_path, on_progress=None, skip_filled=True):
         on_progress(1, 1, "A", "完結", "A", error=None)
         return 1
 

@@ -2,6 +2,7 @@ import argparse
 import sys
 import traceback
 from pathlib import Path
+from typing import NamedTuple
 
 from comic_checker import wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
@@ -101,6 +102,75 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+class RowCounts(NamedTuple):
+    """判定を行わずに数えた、処理対象行の内訳（Issue #32）。
+
+    pending: 判定結果が未記入で、これから処理される行数
+    filled:  判定結果が既に入っており、skip_filled=True ならスキップされる行数
+    """
+
+    pending: int
+    filled: int
+
+    @property
+    def total(self):
+        return self.pending + self.filled
+
+
+def count_rows(
+    excel_path,
+    sheet=None,
+    header_row=1,
+    title_column="タイトル",
+    status_column="連載状況",
+):
+    """処理対象になる行数と、判定済みでスキップされる行数を数える。
+
+    Issue #32: GUIが実行前に「N行は判定済みのためスキップされます」と警告するための
+    事前スキャン。Wikipedia等への問い合わせは一切行わず、Excelを読むだけで完結する。
+
+    status_column がまだ存在しないファイル（初回実行）では、判定済みの行はありえない
+    ため filled=0 を返す。run() と違い、列を作る副作用は持たせない（数えるだけの
+    関数がファイルを書き換えるのは驚きが大きいため）。
+    """
+    wb = open_workbook(Path(excel_path))
+    ws = wb[sheet] if sheet else wb.active
+
+    title_col = find_column(ws, title_column, header_row)
+    try:
+        status_col = find_column(ws, status_column, header_row)
+    except ValueError:
+        status_col = None
+
+    all_rows = _collect_rows(ws, title_col, status_col, header_row, skip_filled=False)
+    if status_col is None:
+        return RowCounts(pending=len(all_rows), filled=0)
+
+    pending_rows = _collect_rows(ws, title_col, status_col, header_row, skip_filled=True)
+    return RowCounts(pending=len(pending_rows), filled=len(all_rows) - len(pending_rows))
+
+
+def _collect_rows(ws, title_col, status_col, header_row, skip_filled):
+    """処理対象の行を (行番号, タイトル) のリストで返す。
+
+    タイトルが空欄の行は常に除外する。skip_filled が真なら、判定結果が既に
+    入っている行も除外する。
+
+    Issue #32: run() とcount_rows()の両方から使う。実行前に「何件がスキップされるか」を
+    GUIに出すには、判定を伴わずに同じ条件で行を数える必要があるが、両者の条件が
+    食い違うと警告の件数と実際の処理件数がずれてしまうため、1か所に集約している。
+    """
+    rows = []
+    for row in range(header_row + 1, ws.max_row + 1):
+        title = ws.cell(row=row, column=title_col).value
+        if title is None or str(title).strip() == "":
+            continue
+        if skip_filled and ws.cell(row=row, column=status_col).value:
+            continue
+        rows.append((row, str(title).strip()))
+    return rows
+
+
 def _judge_row(title, fallback_to_manba, get_manba_client):
     """1件分の判定を行い、(status, source, matched_title, url, evidence) を返す。
 
@@ -173,14 +243,7 @@ def run(
     matched_col = ensure_column(ws, matched_title_column, header_row)
     url_col = ensure_column(ws, url_column, header_row)
 
-    rows = []
-    for row in range(header_row + 1, ws.max_row + 1):
-        title = ws.cell(row=row, column=title_col).value
-        if title is None or str(title).strip() == "":
-            continue
-        if skip_filled and ws.cell(row=row, column=status_col).value:
-            continue
-        rows.append((row, str(title).strip()))
+    rows = _collect_rows(ws, title_col, status_col, header_row, skip_filled)
 
     if not rows:
         print("処理対象の行がありません（タイトル未入力、または既に判定済み）")
