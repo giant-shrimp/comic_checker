@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, font as tkfont, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from comic_checker.main import run
+from comic_checker.main import count_rows, run
 
 # サマリに表示する判定結果。main.py の run() が on_progress へ渡す status 値のうち、
 # 利用者が件数を知りたいものを並べている。ここに無い値（manba経路の「ヒットなし」
@@ -76,6 +76,41 @@ MONO_FONT_CANDIDATES = (
 
 # 受け付けるExcelの拡張子。
 EXCEL_SUFFIX = ".xlsx"
+
+# Issue #32: 実行前確認ダイアログの選択結果。
+CHOICE_SKIP = "skip"
+CHOICE_REJUDGE = "rejudge"
+CHOICE_CANCEL = "cancel"
+
+
+def should_warn_about_filled_rows(counts):
+    """実行前に「判定済みの行がある」警告を出すべきか（Issue #32）。
+
+    判定済みが1行でもあれば警告する。全行スキップ（pending=0）のときだけに限らないのは、
+    一部だけ埋まっている場合も「何件がスキップされるか」は利用者が知るべき情報のため。
+    """
+    return counts.filled > 0
+
+
+def filled_rows_message(counts):
+    """実行前確認ダイアログの本文を作る（Issue #32）。
+
+    件数だけでなく「このまま実行すると何件処理されるか」を明示する。今回の失敗モードは
+    「実行したのに何も起きなかったように見える」ことなので、処理対象が0件になることを
+    押す前に読めるようにするのが肝心。
+    """
+    lines = [
+        f"このファイルには {counts.total} 行中 {counts.filled} 行に判定結果が入っています。"
+    ]
+    if counts.pending:
+        lines.append(f"このまま実行すると、未判定の {counts.pending} 行だけを処理します。")
+    else:
+        lines.append(
+            "このまま実行すると、処理対象は 0 件になります"
+            "（すべての行が判定済みのためスキップされます）。"
+        )
+    lines.append("判定結果を最新の内容に更新したい場合は、すべて再判定してください。")
+    return "\n".join(lines)
 
 
 def _enable_dpi_awareness():
@@ -361,6 +396,83 @@ def _center_window(window):
         pass
 
 
+class FilledRowsDialog(tk.Toplevel):
+    """判定済みの行があるときに実行前へ挟む3択ダイアログ（Issue #32）。
+
+    tkinter.messagebox.askyesnocancel を使わずカスタムにしている理由: 3択のラベルが
+    「はい/いいえ/キャンセル」固定では、どちらが再判定なのかが本文を読まないと分からず、
+    意図しない全件再判定（＝Wikipediaへの再アクセスが件数分発生する）を招きやすい。
+    ボタン自体に動作を書く。
+
+    既定（Enter・初期フォーカス）は「スキップして実行」＝従来どおりの挙動にしてある。
+    中断・再開の運用で毎回このダイアログを通ることになるため、Enter一回で
+    今までと同じ結果になる並びが安全。Escapeはキャンセル。
+    """
+
+    def __init__(self, master, counts):
+        super().__init__(master)
+        self.counts = counts
+        self.choice = CHOICE_CANCEL
+
+        self.title("判定済みの行があります")
+        self.resizable(False, False)
+        self.transient(master)
+
+        body = ttk.Frame(self, padding=(16, 14, 16, 12))
+        body.pack(fill="both", expand=True)
+
+        ttk.Label(body, text="判定済みの行があります", style="Heading.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            body, text=filled_rows_message(counts), justify="left", anchor="w"
+        ).pack(anchor="w", pady=(8, 0))
+
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(16, 0))
+
+        skip_label = (
+            "スキップして実行（処理対象 0 件）"
+            if not counts.pending
+            else f"判定済みをスキップして実行（{counts.pending}件）"
+        )
+        self.skip_button = ttk.Button(
+            buttons, text=skip_label, command=lambda: self._choose(CHOICE_SKIP)
+        )
+        self.skip_button.pack(side="left")
+        ttk.Button(
+            buttons,
+            text=f"すべて再判定する（{counts.total}件）",
+            command=lambda: self._choose(CHOICE_REJUDGE),
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            buttons, text="キャンセル", command=lambda: self._choose(CHOICE_CANCEL)
+        ).pack(side="left", padx=(8, 0))
+
+        self.bind("<Return>", lambda _e: self._choose(CHOICE_SKIP))
+        self.bind("<Escape>", lambda _e: self._choose(CHOICE_CANCEL))
+        # ウィンドウの×で閉じられた場合もキャンセル扱いにする（choiceの初期値のまま）。
+        self.protocol("WM_DELETE_WINDOW", lambda: self._choose(CHOICE_CANCEL))
+
+        _center_window(self)
+        self.skip_button.focus_set()
+
+    def _choose(self, choice):
+        self.choice = choice
+        self.destroy()
+
+    def show(self):
+        """モーダルとして開き、閉じられるまで待ってから選択結果を返す。"""
+        try:
+            self.grab_set()
+        except tk.TclError:
+            # 他のウィンドウがグラブ中などで掴めないことがある。モーダルにならない
+            # だけで選択自体はできるので、続行する。
+            pass
+        self.wait_window(self)
+        return self.choice
+
+
 class App(ttk.Frame):
     """Excelファイルを選択して読み込みを実行するGUI画面。"""
 
@@ -598,19 +710,58 @@ class App(ttk.Frame):
         if path:
             self.excel_path.set(path)
 
+    def _scan_rows(self, excel_path):
+        """実行前に判定済み行数を数える。数えられなければNoneを返す（Issue #32）。
+
+        列が無い・ファイルが壊れている等で数えられなくても、警告をあきらめて従来どおり
+        実行に進めるようにする（数えるだけの処理でGUIを止めない。実行時に同じ問題が
+        起きれば、そちらのエラー処理が本来のメッセージを出す）。
+        """
+        try:
+            return count_rows(excel_path)
+        except Exception as exc:
+            self._log(f"判定済み行数を確認できませんでした（実行は継続します）: {exc}")
+            return None
+
+    def _resolve_skip_filled(self, excel_path):
+        """実行前確認を経て skip_filled を決める。実行しない場合は None を返す。"""
+        counts = self._scan_rows(excel_path)
+        if counts is None or not should_warn_about_filled_rows(counts):
+            return True
+
+        choice = FilledRowsDialog(self.master, counts).show()
+        if choice == CHOICE_CANCEL:
+            self._log("実行をキャンセルしました。")
+            return None
+        if choice == CHOICE_REJUDGE:
+            self._log(f"すべて再判定します（{counts.total}件）。")
+            return False
+        self._log(
+            f"{counts.total}行中 {counts.filled}行は判定済みのためスキップします"
+            f"（処理対象 {counts.pending}件）。"
+        )
+        return True
+
     def _on_run(self):
         if not self.excel_path.get():
             self._log("Excelファイルを選択してください")
             return
-        self.run_button.config(state="disabled")
-        threading.Thread(target=self._run_worker, daemon=True).start()
 
-    def _run_worker(self):
+        skip_filled = self._resolve_skip_filled(self.excel_path.get())
+        if skip_filled is None:
+            return
+
+        self.run_button.config(state="disabled")
+        threading.Thread(
+            target=self._run_worker, kwargs={"skip_filled": skip_filled}, daemon=True
+        ).start()
+
+    def _run_worker(self, skip_filled=True):
         excel_path = self.excel_path.get()
         self._reset_run_state()
         self._log_threadsafe(f"実行開始: {excel_path}")
         try:
-            total = run(excel_path, on_progress=self._on_progress)
+            total = run(excel_path, on_progress=self._on_progress, skip_filled=skip_filled)
             self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
             self._set_status_threadsafe(f"完了しました（{total}件処理）")
             self.after(0, self._set_progress_done, True)
