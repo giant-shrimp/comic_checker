@@ -13,26 +13,62 @@ Modules under `comic_checker/`, each with one job:
     a page, then `_judge_extract(extract)` to classify the lead text, and returns a
     `WikipediaJudgment(query, status, matched_title, url, evidence)`. `status` is one of
     `完結` / `連載中` / `判定不能` / `記事なし` (article not found).
-  - `_pick_article()` first tries the exact disambiguated title `"{title} (漫画)"`
-    directly (one API call); if that page doesn't exist, it falls back to
-    `list=search`, preferring a `"(漫画)"`-suffixed candidate among the results if one
-    exists, else the top hit, then fetches that page's lead extract
-    (`prop=extracts&exintro=true&explaintext=true`). This mirrors the "曖昧さ回避・派生
-    記事の優先探索" requirement — a manga-specific article should win over a franchise or
-    novel article when one exists.
-  - **Match-confidence check (M6-A-1, Issue #9)**: the `"{title} (漫画)"` direct lookup is
-    always trusted unconditionally — whether it resolves via an exact page or via a
-    Wikipedia redirect, that's editors' own curated disambiguation convention, not a guess.
-    The `list=search` fallback is different: relevance-ranking can surface a same-named but
-    topically unrelated page (the motivating case: bare `ワンピース` is an article about
-    *clothing*, not the manga — `ワンピース (漫画)` redirecting to `ONE PIECE` is what saves
-    that lookup, not search). So a search-fallback candidate is only accepted if `chosen ==
-    title` (exact string match — no room for a different-topic same-name collision when the
-    query itself is a real, distinct title) or `_redirects_to(title, chosen)` confirms the
-    *original query* redirects to that exact candidate (same "editors curated this" logic
-    as the `(漫画)` path, just discovered via the bare title instead). If neither holds,
-    `_pick_article()` returns `None` (→ `記事なし`) rather than risk a confident wrong
-    answer — same "fail closed" philosophy as the `COMPLETED_WEAK_RE` veto in Issue #8.
+  - **Title variants (M6-E-1, Issue #30)**: the Excel input is a hand-written shopping
+    list, so it diverges from Wikipedia article names in three systematic ways, all
+    observed across a real 73-row sheet. `_title_variants()` expands one input into an
+    ordered, highest-confidence-first list covering them:
+    1. **Character width.** Users type `私の百合はお仕事です！` / `ヤンキーＪＫクズハナちゃん`;
+       Wikipedia titles those `私の百合はお仕事です!` / `ヤンキーJKクズハナちゃん`. The API's
+       `titles=` parameter does *not* NFKC-normalize, so `_normalize()` (NFKC) variants must
+       be probed explicitly. This alone accounted for 8 of the 48 `記事なし` rows.
+    2. **Purchase notes in brackets.** `カッコウの許嫁　(特装版ない場合通常版)`,
+       `触手魔術師の成り上がり（電子版のみ【最終巻】5巻が発売済）`. `_strip_annotations()`
+       removes them by repeatedly deleting the innermost bracket pair — brackets nest, and
+       full/half-width open and close brackets get mixed within a single pair
+       (`(特装版がない場合通常版）` is real input), so one non-nesting regex pass is not enough.
+    3. **Trailing edition/series notes.** `月曜日のたわわ　青版`,
+       `姫騎士がクラスメート！　ＴＨＥ　ＣＯＭＩＣ`. `_strip_trailing_note()` cuts at a
+       full-width space or wave dash. A bare half-width space is deliberately *not* a cut
+       point — `お隣の天使様…　after the rain` shows real titles containing one.
+  - `_pick_article()` runs two tiers: `_pick_via_direct_lookup()` then `_pick_via_search()`.
+    - **Direct lookup** probes `"{variant} (漫画)"` for every variant, then every variant
+      bare, and resolves them all in **one** `action=query&titles=A|B|…&redirects=1` call.
+      Batching is what makes the variant expansion affordable: probes are checked for
+      existence in a single lightweight call (no `prop=`, so response size barely grows
+      with variant count), and only the one winning page then costs a second call for its
+      extract. Typical cost is 2 API calls per row — the same order as the pre-M6-E-1
+      single-probe flow. `_resolve_titles()` walks the response's `normalized` and
+      `redirects` chains to map each requested string back to a real page title, which is
+      also how editor-curated redirects (`彼女、人見知ります` → `彼女、お借りします`,
+      `こち亀` → `こちら葛飾区亀有公園前派出所`) get followed.
+    - **Search** (`list=search`) only runs when direct lookup found nothing. It scans **all**
+      hits, not just the top one: real data had `釣って食べたいギャル澤さん`'s own article
+      sitting at rank 3 behind an unrelated `ギャル`, so a top-hit-only rule dropped an
+      exact match that existed. Candidates already probed by the direct-lookup tier are
+      skipped (their status is settled). Queries are capped at `MAX_SEARCH_QUERIES` (2);
+      NFKC-only variants are not re-queried because Wikipedia's full-text search already
+      folds character width itself.
+  - **Match-confidence check (M6-A-1, Issue #9; extended in M6-E-1)**: a
+    `"{variant} (漫画)"` hit is always trusted unconditionally — whether it resolves via an
+    exact page or via a Wikipedia redirect, that's editors' own curated disambiguation
+    convention, not a guess. Everything else must clear two bars:
+    - **Name backing.** A search candidate is accepted only if it equals a variant (or
+      `"{variant} (漫画)"`) after NFKC normalization, or if `_subtitle_prefix_match()` says
+      it's a variant followed by a `SUBTITLE_SEPARATORS` character and a subtitle (users
+      write the main title only; Wikipedia often titles the article with the subtitle
+      attached). Requiring the separator is what keeps `ギャルせん` from matching
+      `ギャル文字`. Redirect backing is no longer re-checked here — the direct-lookup tier
+      already resolved redirects for every variant.
+    - **Topic backing (`_is_about_manga()`).** Any article accepted outside the `(漫画)`
+      path must mention one of `ARTICLE_RELEVANCE_MARKERS` in its lead. This is what
+      replaces the old "never look up the bare title at all" rule: probing bare titles is
+      what recovers articles like `真夜中ハートチューン` (exists at its exact name, but
+      Wikipedia's search ranks it off the list entirely), and the marker check is what
+      still keeps bare `ワンピース` — an article about *clothing* — from being answered
+      confidently.
+    If neither bar is cleared, `_pick_article()` returns `None` (→ `記事なし`) rather than
+    risk a confident wrong answer — same "fail closed" philosophy as the
+    `COMPLETED_WEAK_RE` veto in Issue #8.
     Do **not** replace this with fuzzy string similarity (edit distance, normalized
     substring, etc.) as the primary mechanism — it was tried in design discussion and
     rejected: `ワンピース`→`ONE PIECE`, `ハンターハンター`→`HUNTER×HUNTER`, and
@@ -91,6 +127,30 @@ Modules under `comic_checker/`, each with one job:
       way. This split matters concretely for tense too: 「アオのハコ」's lead says "…まで
       連載された" (past tense, completed) — a naive `連載` substring check would misread
       that as ongoing.
+    - **Cross-sentence continuation veto (M6-B-3, Issue #30)**: `CONTINUATION_VETO_RE`
+      only looks *within* one sentence, which left the same false-`完結` class as #8 alive
+      across a sentence boundary. Magazine transfers are routinely written as two
+      sentences — 「『月刊A』にて…2023年11月号まで連載。その後『週刊B』に移籍し、
+      2023年23号から連載されている。」 — and `_judge_extract()` returns on the first
+      decisive sentence, so it answered `完結` before ever reading the second. Two real
+      rows hit this (`一緒に暮らしていいですか?` answered a confident wrong `完結`;
+      `サタノファニ` had its own ambiguous sentence skipped and then picked up a
+      *different work*'s 連載終了 sentence from the 概要 section — a subject
+      `SPINOFF_MARKERS` cannot catch, since 『DEATHTOPIA』 is neither 番外編 nor 外伝).
+      The fix: `_has_ongoing_signal()` scans the whole range once up front, and a
+      weak-tier completion in a sentence that itself has no ongoing signal is discarded
+      when one exists elsewhere in range. Scope discipline is the same as ever — the veto
+      applies to the weak tier only, so 「本編は完結した。スピンオフは連載中。」 still
+      resolves to `完結`.
+    - **The same veto gates the infobox fallback.** `_judge_via_infobox()` reads "終了系
+      field is non-empty ⇒ 完結", which does not hold for transferred works:
+      サタノファニ's `終了日` is `2023年34号<br />[[ヤンマガWeb]]：2023年9月6日 -`, where
+      the trailing `-` means the new run is still going. So `judge()` refuses an
+      infobox-sourced `完結` whenever the prose has an ongoing signal, and stays
+      `判定不能`. The opposite direction (infobox says ongoing) is not gated — it agrees
+      with the prose rather than contradicting it. Without this gate the text-level fix
+      alone does not change サタノファニ's answer; verified end-to-end, not just on
+      `_judge_extract()`.
     - **Guideline for adding any new completion pattern**: default it to the vetoed weak
       tier, not the strong tier. Only put a pattern in `COMPLETED_STRONG_RE` if you can't
       construct a plausible sentence where it's true but the work isn't actually over
