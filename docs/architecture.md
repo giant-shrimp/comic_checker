@@ -84,6 +84,21 @@ Modules under `comic_checker/`, each with one job:
   - `_judge_extract()` splits the lead text into sentences on `。` and applies regexes per
     sentence: `ONGOING_RE` (`連載中` / `連載されている`, present tense) vs completion, which
     is itself split into two tiers, not one flat regex:
+    - `ONGOING_RE`'s `連載中` branch carries a negative lookahead (`から` / `は` / `作品` /
+      `の` + digit / `だっ` / `であっ`) added in Issue #36. Those forms are modifiers meaning
+      "during the run" or references to *other* works — `大奥`'s 「連載中から多くの漫画賞を
+      受賞し」, `鋼の錬金術師`'s 「同誌の連載中作品の中では」, こち亀's 「単行本は連載中は
+      全200巻」, `小田扉`'s 「『団地ともお』連載中の2016年より…在住」 — and each of them was
+      observed misfiring in the M6-D-2 measurement (Issue #35). The damage is doubled because
+      `_has_ongoing_signal()` (below) then suppresses the article's *real* completion
+      sentence: 大奥 was answered `連載中` outright, 鋼の錬金術師 fell to `判定不能`.
+      The exclusion list is deliberately limited to forms with an observed failure, rather
+      than restricting `連載中` to predicate position generally: dropping an unseen *valid*
+      form would lose a true ongoing signal and let some other sentence's weak completion
+      win, which is the dangerous false-positive direction. That's also why `の` is excluded
+      only before a digit — 「連載中の漫画である」 is a legitimate ongoing statement. The
+      frequency survey that would have justified a broader rule could not be run: Wikipedia
+      returned HTTP 429 even at a 4-second request interval (see Issue #36's comment).
     - `COMPLETED_STRONG_RE` (`完結(した)?`) is trusted unconditionally — in Japanese this
       essentially only means "the work itself concluded."
     - `COMPLETED_WEAK_RE` (`連載(が|を)?終了(した)?` / `連載された` / `まで連載(された)?` /
