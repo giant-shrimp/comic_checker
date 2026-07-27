@@ -70,6 +70,32 @@
   `判定不能` on it. Only when the primary type itself is 小説/ライトノベル (as in
   転生したらスライムだった件's "…日本のなろう系ライトノベル。") does the mediamix
   subject-check kick in.
+- **A green test suite is not evidence that real data still behaves correctly.** Every
+  fixture in `tests/test_wikipedia_client.py` is a *snapshot* of an article taken on the
+  day the test was written. Wikipedia articles get rewritten, so a fixture can keep
+  passing long after the live article stopped producing that result — the test proves the
+  regex still handles *that text*, not that the row is still answered correctly.
+  Concrete instance, found while working Issue #37: **`大奥` — the headline case of Issue
+  #36 and the only "confident wrong answer" M6-D-2 turned up — currently returns
+  `判定不能` against the live article**, while `OOOKU_EXTRACT` still asserts `完結` and
+  passes. `連載中から多くの漫画賞を受賞し` no longer appears in the live scan range, so
+  the fix that test guards is no longer being exercised by the real page. Cause not
+  investigated (deliberately out of scope for #37). Two consequences worth internalizing:
+  a fixture-based regression test cannot tell you a fix is *still needed*, and any claim
+  about real-data accuracy has to be re-measured against live articles (see `ERRORS.md`
+  for a request-cheap way to do that).
+- **Rows that land on an author's article are answered confidently and wrongly, and
+  neither Issue #36 nor #37 fixes that.** When a title has no article of its own,
+  Wikipedia's redirect often points at the 漫画家 article, which
+  `_is_about_manga()` happily accepts (it contains 漫画). That article then supplies a
+  status sentence about some *other* work by the same author. Observed rows: `こさめちゃん`
+  and `横須賀こずえ` (→ `小田扉`), `リングサイドクレイジー` (→ `吾妻ひでお`). #37 removed
+  the specific false signal in the last one (`1コマを1コママンガとして完結させる`, a
+  description of *drawing style*), but the row still answers `完結` — now off
+  『ざ・色っぷる』's 連載終了 sentence. The correct answer for all of these is `記事なし`
+  or `判定不能`. Fixing it means changing article *selection*, not the regexes; do not
+  try to patch it by adding vocabulary to `COMPLETED_STRONG_RE`/`ONGOING_RE`, since the
+  author article will always contain legitimate-looking status sentences for other works.
 
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
