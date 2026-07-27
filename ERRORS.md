@@ -83,3 +83,36 @@ Windows(WSL)から Ubuntu PC へ開発環境を移した際、`verify.sh`で
 5. **教訓**：「ttkテーマ差」等の表層に見える環境依存バグでも、まず`python --version`と
    当該APIの追加バージョンを疑う。また、広い`except Exception: pass`は原因を隠すので、
    バージョン差で飛びうる例外は発生箇所で個別に処理する。
+
+## Wikipedia調査でHTTP 429を避ける方法（Issue #37）
+
+Issue #36 では、`ONGOING_RE` の除外範囲を決める根拠にしたかった「『連載中』の後続語の
+頻度調査」が実施できなかった。**4秒間隔でも Wikipedia が HTTP 429 を返した**ためで、
+その結果 #36 は「実測で誤爆した形だけを除外する」という保守的な方針を取り、
+`docs/architecture.md` にも「頻度調査は実施できなかった」と明記して終わっている
+（API利用の作法整備そのものは Issue #40 として別に立っている）。
+
+Issue #37 では、**#40 の解決を待たずに同種の調査ができる**ことが分かったので記録する。
+効いたのは「リクエスト間隔を空ける」ことではなく、**1リクエストあたりの情報量を増やす**
+ことだった。
+
+1. **`insource:` で母集団を検索側に絞らせる**。`action=query&list=search` に
+   CirrusSearch の `insource:"一話完結"` を渡すと、全文検索がサーバ側で完結する。
+   `hastemplate:"Infobox animanga/Manga"` を併用すれば漫画作品記事だけに、
+   `incategory:` や `insource:/正規表現/` も併用できる。ヒット総数は
+   `searchinfo.totalhits` で1リクエストで取れるので、「その語の実例が存在するか」を
+   調べるだけならこれで足りる。
+2. **`generator=search` + `prop=extracts` で検索と本文取得を1リクエストにまとめる**。
+   `action=query&generator=search&gsrsearch=...&gsrlimit=20&prop=extracts&explaintext=1&exlimit=20`
+   で、**検索結果20記事分の本文を1リクエストで取得できる**。取得した本文を
+   `_lead_and_first_section()` に通せば、実際の走査範囲での実例の有無をローカルで
+   判定できる。`gsroffset` でページングする。
+
+この方法で、100記事のサンプリングと12語の実例調査を合わせて**十数リクエスト**で完了し、
+429は一度も出なかった。#36当時の方法（記事を1件ずつ`prop=extracts`で取得）だと同じ調査に
+数百リクエストかかっていたはずで、間隔を4秒に広げても通らなかったのは当然である。
+
+**教訓**：Wikipedia APIで429に当たったら、まず「間隔を空ける」ではなく「1リクエストに
+まとめられないか」を疑う。MediaWiki APIは `generator=` で検索・カテゴリ・リンク元などを
+本文取得と合成できるので、たいていの調査は数リクエストに畳める。なお `exlimit=20` は
+`explaintext` 使用時の上限で、これを超える値を渡すと黙って20件に丸められる。

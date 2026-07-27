@@ -84,8 +84,8 @@ Modules under `comic_checker/`, each with one job:
   - `_judge_extract()` splits the lead text into sentences on `。` and applies regexes per
     sentence: `ONGOING_RE` (`連載中` / `連載されている`, present tense) vs completion, which
     is itself split into two tiers, not one flat regex:
-    - `ONGOING_RE`'s `連載中` branch carries a negative lookahead (`から` / `は` / `作品` /
-      `の` + digit / `だっ` / `であっ`) added in Issue #36. Those forms are modifiers meaning
+    - `ONGOING_RE`'s `連載中` branch carries a negative lookahead (`から` / `は` / `に` /
+      `作品` / `の` + digit / `だっ` / `であっ`) added in Issue #36. Those forms are modifiers meaning
       "during the run" or references to *other* works — `大奥`'s 「連載中から多くの漫画賞を
       受賞し」, `鋼の錬金術師`'s 「同誌の連載中作品の中では」, こち亀's 「単行本は連載中は
       全200巻」, `小田扉`'s 「『団地ともお』連載中の2016年より…在住」 — and each of them was
@@ -97,10 +97,47 @@ Modules under `comic_checker/`, each with one job:
       form would lose a true ongoing signal and let some other sentence's weak completion
       win, which is the dangerous false-positive direction. That's also why `の` is excluded
       only before a digit — 「連載中の漫画である」 is a legitimate ongoing statement. The
-      frequency survey that would have justified a broader rule could not be run: Wikipedia
-      returned HTTP 429 even at a 4-second request interval (see Issue #36's comment).
-    - `COMPLETED_STRONG_RE` (`完結(した)?`) is trusted unconditionally — in Japanese this
-      essentially only means "the work itself concluded."
+      frequency survey that would have justified a broader rule could not be run *at the
+      time*: Wikipedia returned HTTP 429 even at a 4-second request interval (see Issue
+      #36's comment). Issue #37 later found a way to run surveys like this in a handful of
+      requests instead of hundreds — `ERRORS.md` has the method — so "we couldn't measure
+      it" is no longer a reason to leave one of these lists unverified.
+      `に` was added in Issue #37, not #36: `ARIA (漫画)`'s 「連載中にエニックスお家騒動が
+      起こり」 stayed hidden until #37 stopped a strong signal in the same article from
+      deciding first. That is the general hazard of this file — removing one false signal
+      exposes whatever was queued behind it, so any change here needs re-measuring against
+      live articles, not just a green test suite.
+    - `COMPLETED_STRONG_RE` (`(?<![話回未])完結(?!させ|し(ていな|な)い|せず|する回)`) is trusted
+      unconditionally *once it matches* — in Japanese `完結` essentially only means "the work
+      itself concluded." The exclusions are a separate layer from the veto, and the
+      distinction matters: the strong tier is still never suppressed by
+      `CONTINUATION_VETO_RE` or by `_has_ongoing_signal()` (Issue #8's rule, unchanged), so
+      「〜は完結した。アニメは連載中。」 still resolves to `完結`. What Issue #37 changed is
+      which strings count as the signal at all. Three families of compound, all with
+      observed in-scan-range instances:
+      - **Episode-format idioms** (`一話完結` / `1話完結` / `各話完結` / `一回完結`, and the
+        reversed 「完結する回」): these describe *self-contained episodes*, not a finished
+        series, and they are everywhere in manga articles. Because the strong tier is
+        veto-exempt by design, this misfire was unsuppressable — the one real wrong answer
+        it produced is `絶体絶命でんぢゃらすじーさん`, an *ongoing* series answered `完結`
+        off 「基本的には一話完結型のストーリー。」. こち亀 and `アウターゾーン` were the
+        milder version: right status, but the `判定根拠` column held a sentence about
+        drawing style. The `[話回]` lookbehind is safe because 「全100話完結」-shaped phrases
+        (where the count *does* imply completion) do not occur anywhere in the scan range —
+        checked with `insource:/全[0-9]+話完結/` and friends.
+      - **Negations** (`未完結` / `完結していない` / `完結しない` / `完結せず`): these mean the
+        opposite. No observed misjudgment yet — all three real instances (`GOLDEN BOY`,
+        `8マン インフィニティ`, `BUILD KING`) happen to sit in sentences that also say
+        `打ち切り`/`連載終了`, so the conclusion agreed by accident — but "not yet observed"
+        is not "safe", and a negation can never be a valid completion signal. Excluded on
+        the same reasoning that put `連載中だっ`/`連載中であっ` in `ONGOING_RE` without an
+        example.
+      - **Causative `完結させ`**: 「1コマを1コママンガとして完結させる」 (`吾妻ひでお`)
+        describes technique. See `docs/known_limitations.md` on why fixing that row needs
+        article-selection work, not more vocabulary here.
+      `完結編` is deliberately *not* excluded: it can genuinely imply the story ends, and it
+      has zero in-scan-range instances, so it falls under the same "don't touch ambiguous
+      forms without an observed failure" rule as the `ONGOING_RE` list above.
     - `COMPLETED_WEAK_RE` (`連載(が|を)?終了(した)?` / `連載された` / `まで連載(された)?` /
       `打ち切(り|られ)`) is *not* trusted unconditionally: it's vetoed by
       `CONTINUATION_VETO_RE` (`継続` / `再開` / `引き続き` / `連載を?続け` / `掲載を?続け`)
