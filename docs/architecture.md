@@ -66,6 +66,41 @@ Modules under `comic_checker/`, each with one job:
       Wikipedia's search ranks it off the list entirely), and the marker check is what
       still keeps bare `ワンピース` — an article about *clothing* — from being answered
       confidently.
+    - **Author-article rejection (`_is_person_article()`, Issue #45).** The topic check
+      above is not enough on its own: when a title has no article, Wikipedia's redirect
+      frequently points at the *author's* article, whose lead reads 「…は、日本の漫画家。」
+      and therefore sails past `ARTICLE_RELEVANCE_MARKERS`. The article then supplies a
+      perfectly well-formed serialization sentence about some *other* work by that author.
+      M6-D-2 measured this as the worst single failure class in the whole run: category 2
+      (10 rows redirecting to an author article, all of which should answer `記事なし`) had
+      a **D-rate of 9/10 = 90.0%**, and not one of those 9 evidence sentences was about the
+      input work. Applied only on the untrusted path — a `〜 (漫画)` page is an editor's
+      explicit "this is the work's article", so running the check there would add no value
+      and only expose it to this check's false positives.
+      The rule is three-stage, in order: (a) a lead starting with `『` is a work article,
+      never a person (Wikipedia work articles conventionally open with 『タイトル』:
+      measured 195/200 work articles vs 0/200 person articles); (b) the primary type is
+      read from the **first sentence only**; (c) it's a person article if the first
+      `・`-separated segment of that type ends in `家`. Person articles are consistent here
+      (`漫画家` / `男性漫画家` / `女性漫画家` / `風刺漫画家` / `漫画家・歌手` / `漫画家・
+      イラストレーター`), while no work article's primary type ends in `家` (`漫画` /
+      `漫画作品` / `少年漫画` / `4コマ漫画` / `推理漫画` / `テレビアニメ作品`).
+      Stage (a) is not cosmetic: `魔法少女メルル` is a real *work* article whose lead runs
+      「『魔法少女メルル』は、日本の漫画家・ねこしたPONGによる成人向け漫画」, and stages
+      (b)+(c) alone would reject it.
+      **`_is_person_article()` and `_is_novel_primary()` share `_PRIMARY_TYPE_RE` but must
+      keep opposite defaults — do not "unify" them.** `_is_novel_primary()` fails *closed*
+      when it can't tell (assume novel-primary, demand a subject check).
+      `_is_person_article()` must fail *open* (assume not a person, behave exactly as
+      before), because **35 of 200 sampled work articles have no 「日本の<種別>」 clause in
+      their lead at all** (`陰陽師 (漫画)`, `ベルセルク`, …); failing closed there would
+      drop every one of them to `記事なし`. The measured numbers behind the current rule,
+      over 400 articles sampled via `generator=search` (method and its pitfall in
+      `ERRORS.md`): **0/200 work articles wrongly rejected, 163/200 person articles
+      detected.** The undetected 37 have primary types like `アイドル` / `女性声優` /
+      `アニメ監督` / `漫画家ユニット`; they are not what manga titles redirect onto, and
+      leaving them undetected is the fail-open policy working as intended, not a gap to
+      close by broadening the suffix list.
     If neither bar is cleared, `_pick_article()` returns `None` (→ `記事なし`) rather than
     risk a confident wrong answer — same "fail closed" philosophy as the
     `COMPLETED_WEAK_RE` veto in Issue #8.

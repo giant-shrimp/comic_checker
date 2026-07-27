@@ -8,6 +8,7 @@ from comic_checker.wikipedia_client import (
     WikipediaJudgment,
     _extract_braced_blocks,
     _has_ongoing_signal,
+    _is_person_article,
     _judge_extract,
     _judge_via_infobox,
     _search_queries,
@@ -342,6 +343,45 @@ NEGATED_COMPLETION_EXTRACT = (
     "「あくまでも「第一部完」です」との見解を示している。"
 )
 
+# Issue #45: 実際の漫画家記事『押切蓮介』の冒頭。一次分類が「漫画家・歌手」と複数の職業を
+# 並べる形で、語尾（歌手）だけを見ると人物と判別できない。区切り記号で分割した*先頭*
+# セグメントを見る理由がこれである。M6-D-2ではこの記事に`ジーニアース`が着地し、別作品
+# 『おののけ！くわいだん部』等の連載状況を根拠に「連載中」と誤答していた。
+AUTHOR_ARTICLE_MULTI_OCCUPATION_EXTRACT = (
+    "押切 蓮介（おしきり れんすけ、本名：神崎良太、1979年9月19日 - ）は、"
+    "日本の漫画家・歌手。"
+    "2022年現在、怪談専門誌『怪と幽』にて『おののけ！くわいだん部』、"
+    "『月刊ビッグガンガン』にて『ハイスコアガールDASH』を連載中。"
+)
+
+# Issue #45: 実際の『魔法少女メルル』の冒頭。**作品記事なのに一次分類が「漫画家・…」で
+# 始まる**という、`_is_person_article`にとって唯一の危険形（実在）。「『」で始まるか
+# どうかのガードが無いと、この形の作品記事を誤って「記事なし」に落とす。
+WORK_ARTICLE_WITH_AUTHOR_PRIMARY_TYPE_EXTRACT = (
+    "『魔法少女メルル』（まほうしょうじょ メルル）は、日本の漫画家・ねこしたPONGによる"
+    "成人向け漫画、および、それを原作としてメディアミックスで作られた作品群の"
+    "メインタイトルである。"
+    "漫画はアダルトゲーム雑誌『ファンタジェンヌ』にて1993年（平成5年）から1995年に"
+    "かけて執筆された。"
+)
+
+# Issue #45: 実際の『陰陽師 (漫画)』のリード文。冒頭文に「日本の<種別>」が無く
+# （「夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画。」）、`_PRIMARY_TYPE_RE`が
+# 一致しない記事の代表例。作品記事200件中35件がこの形で、`_is_person_article`を
+# fail-closedにするとこれらが全滅する。
+#
+# あわせてIssue #41（mediamix緩和）の対象そのものでもある。この記事は`小説`を含む
+# リード文のせいで`_is_novel_primary()`が真を返し、判定文に漫画マーカーが無いため
+# 判定不能に落ちている。#45は記事*選定*だけを変える修正なので、この偽陰性は
+# 手つかずのまま残っていなければならない（下の回帰テスト参照）。
+ONMYOJI_EXTRACT = (
+    "『陰陽師』（おんみょうじ）は、夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画。"
+    "1993年から2005年に、『コミックバーガー』『コミックバーズ』（いずれもスコラ）、"
+    "『月刊メロディ』（白泉社）で連載された。"
+    "2006年、第37回星雲賞コミック部門を受賞している。"
+    "続編に『陰陽師 玉手匣』がある。"
+)
+
 
 def test_one_piece_is_ongoing():
     status, evidence = _judge_extract(ONE_PIECE_EXTRACT)
@@ -491,9 +531,10 @@ def test_other_works_ongoing_mention_does_not_suppress_completion():
 def test_author_article_residence_sentence_is_not_an_ongoing_signal():
     # 回帰テスト（Issue #36 / 実データ「小田扉」）: 「『団地ともお』連載中の2016年より
     # …在住」は居住開始時期を述べる文で、連載シグナルではない。
-    # フィクスチャのコメントに書いたとおり、この記事に着地する行（こさめちゃん・
-    # 横須賀こずえ）は本Issueの修正後も別の理由で誤答のままなので、ステータスは固定せず、
-    # 居住地の文が連載シグナルとして扱われないことだけを検証する。
+    # ここで検証するのは`_judge_extract`レベルの挙動のみ。この記事に着地する行
+    # （こさめちゃん・横須賀こずえ）が行として「記事なし」に倒れることは、記事選定側で
+    # 解決した（Issue #45）ので、そちらのend-to-endテストで固定している
+    # （`test_judge_rejects_author_article_reached_via_redirect`）。
     assert _has_ongoing_signal(AUTHOR_ARTICLE_RESIDENCE_EXTRACT) is False
 
     _, evidence = _judge_extract(AUTHOR_ARTICLE_RESIDENCE_EXTRACT)
@@ -536,10 +577,46 @@ def test_episodic_format_sentences_are_not_used_as_evidence():
 def test_author_article_style_sentence_is_not_a_completion_signal():
     # 回帰テスト（Issue #37 / 実データ「吾妻ひでお」＝`リングサイドクレイジー`の着地先）:
     # 「1コマを1コママンガとして完結させる」は作風の説明であって連載状況ではない。
-    # フィクスチャのコメントに書いたとおり、この行は本Issueの修正後も記事選定側の理由で
-    # 誤答のままなので、ステータスは固定せず作風の文が根拠にならないことだけを検証する。
+    # ここで検証するのは`_judge_extract`レベルの挙動のみ。`リングサイドクレイジー`が
+    # 行として「記事なし」に倒れることは記事選定側で解決した（Issue #45）ので、
+    # そちらのend-to-endテストで固定している。
     _, evidence = _judge_extract(AUTHOR_ARTICLE_STYLE_EXTRACT)
     assert evidence is None or "1コママンガ" not in evidence
+
+
+def test_is_person_article_detects_author_articles():
+    # Issue #45: 作者記事の一次分類は語尾が「家」で一貫している。「漫画家・歌手」のように
+    # 複数の職業が並ぶ形（押切蓮介）があるため、区切り記号で分割した先頭セグメントを見る。
+    for extract in (
+        AUTHOR_ARTICLE_STYLE_EXTRACT,  # 吾妻ひでお（日本の漫画家）
+        AUTHOR_ARTICLE_RESIDENCE_EXTRACT,  # 小田扉（日本の漫画家）
+        AUTHOR_ARTICLE_MULTI_OCCUPATION_EXTRACT,  # 押切蓮介（日本の漫画家・歌手）
+    ):
+        assert _is_person_article(extract) is True, extract[:30]
+
+
+def test_is_person_article_does_not_reject_work_articles():
+    # Issue #45: 作品記事を人物と誤判定すると、正しく判定できていた行が「記事なし」に
+    # 落ちる。実測400件では誤除外0件だったが、その根拠になった3つの形を固定する。
+    for extract in (
+        ONE_PIECE_EXTRACT,  # 一次分類が「少年漫画」
+        OOOKU_EXTRACT,  # 一次分類が「フィクション・時代物の少女漫画」
+        ONMYOJI_EXTRACT,  # 冒頭文に「日本の<種別>」が無い（作品記事200件中35件がこの形）
+        WORK_ARTICLE_WITH_AUTHOR_PRIMARY_TYPE_EXTRACT,  # 一次分類が「漫画家・…」で始まる
+    ):
+        assert _is_person_article(extract) is False, extract[:30]
+
+
+def test_is_person_article_falls_open_on_malformed_extracts():
+    # Issue #45: 判定できないときは必ずfail-open（人物ではない）に倒す。
+    # `_is_novel_primary()`はfail-closedだが、こちらで同じ既定値にすると、冒頭文に
+    # 「日本の<種別>」が無い作品記事（実測200件中35件）が軒並み「記事なし」に落ちる。
+    for extract in (
+        "",
+        "   ",
+        "吾妻ひでおは日本の漫画家",  # 句点が1つも無く、冒頭1文を切り出せない
+    ):
+        assert _is_person_article(extract) is False, repr(extract)
 
 
 def test_negated_completion_is_not_a_completion_signal():
@@ -992,6 +1069,89 @@ def test_judge_rejects_same_name_article_that_is_not_about_manga():
 
     assert result.status == STATUS_NOT_FOUND
     assert result.matched_title is None
+
+
+def test_judge_rejects_author_article_reached_via_redirect():
+    # 回帰テスト（Issue #45 / 実データ「リングサイドクレイジー」）: 作品の記事が存在せず、
+    # Wikipediaのリダイレクトが作者記事『吾妻ひでお』を指している行。作者記事のリード文は
+    # 「…は、日本の漫画家。」なので`_is_about_manga`（「漫画」を含むか）を素通りしてしまい、
+    # 記事中の*別作品*の連載状況を根拠に「完結」と誤答していた。期待値は「記事なし」。
+    #
+    # この行は#36（ONGOING_REの非述語用法）・#37（COMPLETED_STRONG_REの複合語誤爆）を
+    # どちらも修正しても誤答のままだった。掴む文が変わるだけで、作者記事には別作品の
+    # *それ自体としては正しい*連載状況の文がいくらでもあるためである。記事選定側でしか
+    # 直せないことの実証そのものなので、語彙側のIssueで代用しないこと。
+    resolve_response = _response(
+        _resolve_response(
+            existing=["吾妻ひでお"],
+            missing=["リングサイドクレイジー (漫画)"],
+            redirects=[("リングサイドクレイジー", "吾妻ひでお")],
+        )
+    )
+    author_extract = _response(
+        _extract_response("吾妻ひでお", AUTHOR_ARTICLE_STYLE_EXTRACT)
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, author_extract, empty_search],
+    ):
+        result = judge("リングサイドクレイジー")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
+
+
+def test_judge_rejects_author_article_for_residence_sentence_rows():
+    # 回帰テスト（Issue #45 / 実データ「こさめちゃん」「横須賀こずえ」）: どちらも同じ
+    # 作者記事『小田扉』に着地し、居住地の説明文を根拠に誤答していた2行。着地先が同一
+    # なので、1件固定すれば両方を担保できる。
+    resolve_response = _response(
+        _resolve_response(
+            existing=["小田扉"],
+            missing=["こさめちゃん (漫画)"],
+            redirects=[("こさめちゃん", "小田扉")],
+        )
+    )
+    author_extract = _response(
+        _extract_response("小田扉", AUTHOR_ARTICLE_RESIDENCE_EXTRACT)
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, author_extract, empty_search],
+    ):
+        result = judge("こさめちゃん")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
+
+
+def test_judge_still_returns_unknown_for_onmyoji_after_person_article_check():
+    # 回帰テスト（Issue #45、#41の前提固定）: `陰陽師`は「陰陽師 (漫画)」という曖昧さ回避
+    # 表記で解決するため信頼経路（trusted=True）に入り、人物記事チェックを一切通らない。
+    # したがって#41が直そうとしている偽陰性（原作小説の存在でmediamix扱いになり判定不能に
+    # 落ちる）は、#45の後も手つかずで残っていなければならない。
+    #
+    # これをテストで固定しておかないと、#41に着手したときに「前提が既に崩れていたのか、
+    # 自分の変更で壊したのか」を判別できない。#41で緩和を入れた際は、このテストが
+    # 「完結」を期待する形に変わるのが正しい。
+    resolve_response = _response(
+        _resolve_response(existing=["陰陽師 (漫画)"], missing=["陰陽師"])
+    )
+    extract_response = _response(_extract_response("陰陽師 (漫画)", ONMYOJI_EXTRACT))
+    wikitext_error = _response(_wikitext_error_response())
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response, wikitext_error],
+    ):
+        result = judge("陰陽師")
+
+    assert result.status == STATUS_UNKNOWN
+    assert result.matched_title == "陰陽師 (漫画)"
 
 
 def test_judge_rejects_search_candidate_without_exact_match_backing():

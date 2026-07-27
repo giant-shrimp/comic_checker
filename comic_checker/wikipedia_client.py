@@ -224,6 +224,67 @@ def _is_about_manga(extract):
     return any(marker in extract for marker in ARTICLE_RELEVANCE_MARKERS)
 
 
+# Issue #45: 作品の記事が存在しない入力は、Wikipediaのリダイレクトでその作者の記事に
+# 着地することがある。作者記事のリード文は「…は、日本の漫画家。」なので`_is_about_manga`
+# （「漫画」を含むか）を素通りしてしまい、そのまま採用された結果、記事中にある*別作品*の
+# 連載状況を根拠に確信を持って誤答していた。M6-D-2（Issue #35）の実測ではカテゴリ2
+# （作者記事へのリダイレクト・10件、期待は全件「記事なし」）のD率が9/10 = 90.0%で、
+# 9件の根拠文は1件も入力作品の話ではなかった。
+#
+# 重要: これは「作品記事かどうかの門番」ではなく、既知の悪いパターンだけを名指しで
+# 除外する装置である。正の証拠が取れない限り、従来の挙動を一切変えない（fail-open）。
+# 判定条件は次の3段構え。
+#   (a) リード文が「『」で始まるなら人物ではない。Wikipediaの作品記事は慣例的に
+#       『タイトル』で始まる（実測: 作品記事200件中195件が該当、人物記事200件中0件）。
+#       これは`魔法少女メルル`「『魔法少女メルル』は、日本の漫画家・ねこしたPONGによる
+#       成人向け漫画」のような、作品記事なのに一次分類が「漫画家…」で始まる実在の形を
+#       誤除外しないためのガードである。
+#   (b) 一次分類は冒頭1文からのみ読む。走査範囲全体を見ると、記事の後方にある無関係な
+#       「日本の漫画家である〜」を拾いうるため。
+#   (c) 一次分類の先頭セグメント（「・」等で区切った1つ目）の語尾が「家」なら人物記事と
+#       みなす。人物記事の一次分類は`漫画家`/`男性漫画家`/`女性漫画家`/`風刺漫画家`/
+#       `漫画家・歌手`（押切蓮介）/`漫画家・イラストレーター`のように語尾が一貫して
+#       「家」になる一方、作品記事の一次分類は`漫画`/`漫画作品`/`少年漫画`/`4コマ漫画`/
+#       `推理漫画`/`テレビアニメ作品`等で、「家」で終わるものは1件も無い。
+#
+# 【`_is_novel_primary()`と既定値を揃えてはならない】両者は`_PRIMARY_TYPE_RE`を共有するが、
+# 判定できないときの倒し方が意図的に逆である。`_is_novel_primary()`は判定不能時にfail-closed
+# （小説主体とみなして主語チェックを要求する）だが、この関数は必ずfail-openにすること。
+# 根拠となる実測値（400記事、`generator=search`で取得。手法はERRORS.md参照）:
+#   - 作品記事200件のうち**35件は冒頭文に「日本の<種別>」が無い**（`陰陽師 (漫画)`
+#     「夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画。」、`ベルセルク`など）。
+#     ここをfail-closedにすると、この35件が軒並み「記事なし」に落ちる。
+#   - 本条件による作品記事の誤除外は200件中**0件**。
+#   - 人物記事の検出は200件中**163件**。残り37件は一次分類が`アイドル`/`女性声優`/
+#     `アニメ監督`/`漫画家ユニット`等で「家」で終わらないもの。漫画タイトルのリダイレクト先に
+#     なる母集団ではないので、fail-openの方針どおり検出しないままでよい。
+PERSON_TYPE_SUFFIX = "家"
+WORK_TITLE_PREFIX = "『"
+_PRIMARY_TYPE_SEPARATOR_RE = re.compile(r"[・、／/]")
+
+
+def _is_person_article(extract):
+    """リード文から、この記事が作品ではなく人物（漫画家等）の記事かを判定する。
+
+    判定できない場合はFalse（人物ではない）を返す。上のコメントの「fail-openにすること」
+    の実装であり、この既定値を変えてはならない。
+    """
+    stripped = extract.lstrip()
+    if stripped.startswith(WORK_TITLE_PREFIX):
+        return False
+    # 冒頭1文が切り出せない（空文字・句点が1つも無い）場合は、リード文の形を確認できて
+    # いないので人物とはみなさない。句点が無いときに全文を1文として扱うと、走査範囲の
+    # 後方にある「日本の漫画家…」を拾って誤除外しうるため、ここでも倒す先はfail-open側。
+    end = stripped.find("。")
+    if end == -1:
+        return False
+    match = _PRIMARY_TYPE_RE.search(stripped[: end + 1])
+    if match is None:
+        return False
+    first_segment = _PRIMARY_TYPE_SEPARATOR_RE.split(match.group(1))[0]
+    return first_segment.endswith(PERSON_TYPE_SUFFIX)
+
+
 # Issue #12: 本文解析（_judge_extract）が判定不能のときだけ参照する補助情報源。
 # {{Infobox animanga/Manga}}テンプレートの終了系フィールドが空欄かどうかは、本文解析より
 # 頑健な連載中/完結シグナルになりうることを実現可能性検証で確認した一方、記事内に
@@ -547,12 +608,20 @@ def _accept_article(page_title, trusted):
     """記事を取得し、判定対象として採用してよければ (タイトル, リード文, URL) を返す。
 
     trusted=True（曖昧さ回避表記「〜 (漫画)」で辿り着いた場合）は内容を確認せずに
-    採用する。それ以外は無関係な同名記事を掴んでいないかを`_is_about_manga`で確認する。
+    採用する。それ以外は無関係な同名記事を掴んでいないかを`_is_about_manga`で、
+    作者の記事に着地していないかを`_is_person_article`で確認する（Issue #45）。
+
+    人物記事チェックを信頼経路（trusted=True）に適用しないのは意図的である。
+    「〜 (漫画)」はWikipedia編集者が「これは作品の記事だ」と明示した表記であり、
+    そこに人物記事が来ることはない。得るものが無い一方で、`_is_person_article`の
+    偽陽性（作品記事を人物と誤判定して記事なしに落とす）だけを新たに晒すことになる。
     """
     article = _fetch_extract(page_title)
     if article is None:
         return None
-    if trusted or _is_about_manga(article[1]):
+    if trusted:
+        return article
+    if _is_about_manga(article[1]) and not _is_person_article(article[1]):
         return article
     return None
 

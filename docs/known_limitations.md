@@ -84,18 +84,39 @@
   a fixture-based regression test cannot tell you a fix is *still needed*, and any claim
   about real-data accuracy has to be re-measured against live articles (see `ERRORS.md`
   for a request-cheap way to do that).
-- **Rows that land on an author's article are answered confidently and wrongly, and
-  neither Issue #36 nor #37 fixes that.** When a title has no article of its own,
-  Wikipedia's redirect often points at the 漫画家 article, which
-  `_is_about_manga()` happily accepts (it contains 漫画). That article then supplies a
-  status sentence about some *other* work by the same author. Observed rows: `こさめちゃん`
-  and `横須賀こずえ` (→ `小田扉`), `リングサイドクレイジー` (→ `吾妻ひでお`). #37 removed
-  the specific false signal in the last one (`1コマを1コママンガとして完結させる`, a
-  description of *drawing style*), but the row still answers `完結` — now off
-  『ざ・色っぷる』's 連載終了 sentence. The correct answer for all of these is `記事なし`
-  or `判定不能`. Fixing it means changing article *selection*, not the regexes; do not
-  try to patch it by adding vocabulary to `COMPLETED_STRONG_RE`/`ONGOING_RE`, since the
-  author article will always contain legitimate-looking status sentences for other works.
+- **Rows that land on an author's article were fixed in Issue #45 — but only that shape.**
+  Category 2 of M6-D-2 (a title with no article of its own whose redirect points at the
+  漫画家 article) is now rejected at selection time by `_is_person_article()`, taking all
+  10 rows to `記事なし` (D-rate 90.0% → 0%): `こさめちゃん`/`横須賀こずえ` (→ `小田扉`),
+  `リングサイドクレイジー` (→ `吾妻ひでお`), `独裁君`/`詩人ケン`/`神様物語`/
+  `ガラガラポン!日本政治` (→ `業田良家`), `ジーニアース` (→ `押切蓮介`), `叛意明らか也`
+  (→ `松本大洋`), `終わった漫画家` (→ `福満しげゆき`). Note what it took: #36 and #37 each
+  removed a specific false signal in these rows and *neither changed the answer* — the
+  judge simply grabbed the next legitimate-looking sentence about a different work by the
+  same author. If a similar "confidently wrong on an article that isn't about the input
+  work" case turns up, reach for article *selection*, not more regex vocabulary.
+- **The author-article check can, in principle, reject a real work article.**
+  `_is_person_article()` exempts anything whose lead starts with `『`, which is how
+  Wikipedia work articles conventionally open — but **5 of 200 sampled work articles do
+  not start with `『`** (and the exemption is a literal `『` check, so a lead opening with
+  `「` or a bare Latin title is not exempted either). If such an article also has a lead
+  whose 「日本の<種別>」 begins with a `家`-suffixed word — the `魔法少女メルル` shape —
+  it would be dropped to `記事なし`. Measured false-positive rate is 0/200 today, and the
+  failure lands on the fail-closed side (`記事なし`, not a wrong assertion), but this is
+  the direction to check first if a title that used to resolve suddenly reports
+  `記事なし`.
+  The same `『` exemption also lets *non-serialized* work articles through — collected
+  editions, anthologies and the like — which can then answer `完結` off a collected work's
+  serialization sentence (observed: `長谷川町子全集`, answered `完結` from 『サザエさん』's
+  連載 sentence). Left as-is deliberately: dropping the `『` guard to catch these would
+  sweep in the `魔法少女メルル` shape above, and no such row appeared in M6-D-2.
+- **Category 3 of M6-D-2 is still unfixed and is a different problem.** 12 rows where a
+  spin-off or sequel redirects to the *parent work's* article (D-rate 83.3%) are answered
+  off the parent's serialization status. `_is_person_article()` cannot help — the landing
+  page is a work article, correctly formatted, just not the *input's* work. That needs a
+  check that the landed article is about the title that was asked for, which does not
+  exist yet. Article-selection-caused wrong answers totalled 27 rows in M6-D-2; #45
+  removed 10 of them.
 
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
