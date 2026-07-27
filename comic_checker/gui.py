@@ -154,6 +154,21 @@ def _create_root():
         return tk.Tk()
 
 
+def _named_font(name, root):
+    """名前付きフォントを取得する。root引数の有無はPythonバージョン差を吸収する。
+
+    tkfont.nametofont() の root= キーワードは Python 3.10 で追加されたもの。
+    3.8/3.9 では TypeError になるため、その場合は root 無しで取得する
+    （このアプリはTk rootが1つなので既定rootと一致する）。root= を素通しで
+    渡していた頃は、この TypeError が _apply_theme の except Exception まで
+    伝播してテーマ設定が途中で中断していた（Issue: サマリの色が付かない）。
+    """
+    try:
+        return tkfont.nametofont(name, root=root)
+    except TypeError:
+        return tkfont.nametofont(name)
+
+
 def _pick_font(root, candidates):
     """candidatesのうち、この環境に実在する最初のフォント名を返す。無ければNone。"""
     try:
@@ -294,7 +309,7 @@ def _apply_theme(root):
         if ui_font:
             for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
                 try:
-                    tkfont.nametofont(name, root=root).configure(family=ui_font, size=10)
+                    _named_font(name, root).configure(family=ui_font, size=10)
                 except tk.TclError:
                     pass
 

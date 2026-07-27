@@ -49,3 +49,37 @@
    ある。どちらも、モデルへの指示（プロンプト・SKILL.md記載）だけでは強制力を持たず、
    実行環境側（`permissions.deny`・`git status`によるdiff確認）で裏付けを取って初めて
    信頼できる、という同じ構造の教訓である。
+
+## 開発環境をUbuntu(20.04/Python3.8)へ移植したらGUIテストが1件失敗
+
+Windows(WSL)から Ubuntu PC へ開発環境を移した際、`verify.sh`で
+`test_summary_chips_are_colour_coded_per_status`だけが失敗した
+（`assert 'black' == '#b3261e'`：サマリのチップに色が付かない）。WSLでは通っていた。
+
+1. **真因はPythonバージョン差**。Ubuntu機は Python 3.8.10、旧WSLは3.10以降だった。
+   `gui.py`の`_apply_theme()`が`tkfont.nametofont(name, root=root)`を呼んでいたが、
+   `nametofont`の`root=`引数は**Python 3.10で追加**されたもので、3.8では`TypeError`。
+   さらに内側の`try`が`except tk.TclError`しか捕まえないため、`TypeError`が
+   `_apply_theme`末尾の`except Exception: pass`まで伝播し、**STATUS_COLORSの色設定
+   ループが走る前に関数全体が中断**。結果テーマ(clam)だけ適用され、チップの
+   foregroundが未設定→`style.lookup()`がclam既定の`black`を返してテスト失敗、という
+   流れだった。「ttkテーマ差」に見えるが原因はテーマではなくバージョン差。
+2. **対応**：`root=`の有無を吸収する`_named_font(name, root)`ヘルパーを追加し、
+   `TypeError`時は引数なしで`nametofont`を取得するようにした（3.8/3.10両対応、かつ
+   例外でテーマ設定が中断しなくなる）。CLAUDE.mdの「Windows/Linux両方で動くように
+   書く」方針の一環。
+3. **3.10化を試みたが上流都合で不可**。バージョン合わせのため`python3.10`(deadsnakes
+   PPA導入済み)でvenvを作り直そうとしたが、Tk GUIに必須の`python3.10-tk`がaptで
+   入らなかった。調べると **deadsnakesがfocal(20.04)向けの提供を停止しており、
+   `dists/focal/main/binary-amd64/Packages`が空(0バイト、2025-10更新)** だった
+   （20.04が標準サポート終了したため）。何度`apt-get update`しても入らない。
+   途中、ROSリポジトリの鍵期限切れ(`EXPKEYSIG`)が`apt-get update`のトランザクションを
+   巻き添えにする現象や、InReleaseが「ヒット(304)」だとPackagesを取り直さない挙動にも
+   はまったが、いずれも本質ではなく上流の空インデックスが結論。
+4. **結論**：コード修正で3.8でも`verify.sh`は132 passedになったため、**3.8のまま**運用と
+   した。最終目的のEXEはWindows側でPyInstallerが独自Pythonを同梱するので、開発機の
+   Pythonバージョン差はビルド成果物に影響しない。3.10+が本当に必要になったら、
+   deadsnakesに依存しないMiniconda/pyenv経由が現実的（apt経路はfocalでは詰む）。
+5. **教訓**：「ttkテーマ差」等の表層に見える環境依存バグでも、まず`python --version`と
+   当該APIの追加バージョンを疑う。また、広い`except Exception: pass`は原因を隠すので、
+   バージョン差で飛びうる例外は発生箇所で個別に処理する。
