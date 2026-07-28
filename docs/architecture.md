@@ -295,6 +295,21 @@ Modules under `comic_checker/`, each with one job:
     about the main work in the full ~140KB article — see the `_fetch_extract()` bullet
     above), so text analysis alone is structurally unable to resolve it, no matter how
     the regexes are tuned.
+    - **"Supplementary" understates what this path does on real input.** Measured
+      2026-07-28 (M6-D-3 / Issue #47) over the 72-row census of real user input: the prose
+      analysis returned `判定不能` for 8 of the 42 rows that landed on an article, and the
+      infobox path decided **6 of them — 6/42 = 14.3%**. For those six rows the answer is
+      the infobox's alone; the prose contributes nothing. Read the word "supplementary" as
+      "consulted second", not as "rarely load-bearing".
+      Worse, the two directions of the inference are not equally sound and are **not
+      equally gated**. "Non-empty end field ⇒ `完結`" was found unsound (サタノファニ) and
+      #30 added a gate for it — an infobox-sourced `完結` is refused whenever the prose has
+      an ongoing signal. **"Empty end field ⇒ `連載中`" has no gate at all**, even though an
+      empty field is equally what you get when nobody filled it in. All six rows happened
+      to come out correct, so this is a description-vs-reality gap rather than a list of
+      known bugs — but do not cite M6-D-3's accuracy numbers as evidence that the prose
+      heuristics are healthy without subtracting those six. Details and the row list are in
+      `docs/known_limitations.md`.
     - **Main-block identification is the dangerous part, not the field-reading.** A
       mediamix article can contain multiple independent `{{Infobox animanga/Manga}}`
       blocks — one per work (main series + each spinoff/one-shot). Picking the wrong
