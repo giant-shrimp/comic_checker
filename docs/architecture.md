@@ -104,6 +104,18 @@ Modules under `comic_checker/`, each with one job:
     If neither bar is cleared, `_pick_article()` returns `None` (→ `記事なし`) rather than
     risk a confident wrong answer — same "fail closed" philosophy as the
     `COMPLETED_WEAK_RE` veto in Issue #8.
+    **A query-string redirect proves the editors connected the two names; it does not prove
+    they are the same *work*.** The same mechanism that maps `ワンピース`→`ONE PIECE` also
+    maps a spin-off onto its parent (`彼女、人見知ります`→`彼女、お借りします`) — M6-D-2's
+    category 3, which answered off the parent's serialization status with an 83.3% D-rate.
+    So a redirect is a strong signal for *accepting* the article and no signal at all for
+    "this is the input's work". `_accept_article()` therefore runs
+    `_lands_on_a_different_work()` (M6-A-2, Issue #51) after the two bars above, on the
+    untrusted path only: when the landing title differs from the raw input, a lead sentence
+    that introduces the input as a derivative work (`『input』` NFKC-exact, with a marker
+    modifying that mention, and the article not declaring merged coverage) sends the row to
+    `記事なし`. Rationale and the measured false-exclusion risk are in
+    `docs/known_limitations.md`.
     Do **not** replace this with fuzzy string similarity (edit distance, normalized
     substring, etc.) as the primary mechanism — it was tried in design discussion and
     rejected: `ワンピース`→`ONE PIECE`, `ハンターハンター`→`HUNTER×HUNTER`, and
