@@ -95,7 +95,7 @@ CAT_PARENT = "3（親作品）"
 #   M-5  インフォボックス終了系が非空欄だが終了でない   → 誤答 / #12 の経路
 #   M-6  走査範囲内に #37 で除外した複合語が実在        → 回帰確認（#37）
 #   M-7  休載同居型（語形はあるが打ち消しが同居）       → 誤答または偽陰性 / シグナル優先順位
-#   M-8  判定に必要な情報が走査範囲に存在しない         → 分母外・分類Aの正解
+#   M-8  地の文（走査範囲）に判定材料が無い             → インフォボックス経路への依存（#12）
 #   M-9  類似タイトルを完全一致の裏付け無しで不採用     → 回帰確認（#8・#9 の fail-closed）
 #   移籍  掲載誌の移籍が記述されている                  → 回帰確認（#8・#30）
 M1 = "M-1"
@@ -110,6 +110,20 @@ M7 = "M-7"
 M8 = "M-8"
 M9 = "M-9"
 TRANSFER = "移籍"
+
+# M-8 の定義は測定後に見直した（Issue #47）。当初は「判定に必要な情報が走査範囲に存在しない」
+# ＝「分母外・分類Aの正解」としていたが、[57] ではインフォボックスに情報があり、そこで
+# `連載中` が決着した。**走査範囲（＝`_lead_and_first_section()` が返す地の文）に判定材料が
+# 無いのは事実**なので、マーク自体は [57] に付けたまま残し、効く指標だけを
+# 「インフォボックス経路への依存」に改めた。
+#
+# この見直しで M-2 と M-8 の関係が明確になった:
+#   M-2（語形は無いが連載の記述はある）= [13][19][28][52][72]
+#   M-8（記述自体が無い）              = [57]
+#   → **和集合が、インフォボックス経路で決着した6行と完全に一致する**（6/42 = 14.3%）。
+# つまり M-2・M-8 が全件正答したのは語彙が対応したからではなく、インフォボックス経路が
+# 救っていたためである。当初の分析（「M-2 は他の経路で救済されていた」）の具体化にあたる。
+INFOBOX_DECIDED = (13, 19, 28, 52, 57, 72)
 
 
 class Label:
@@ -188,7 +202,21 @@ LABELS = (
     Label(54, "それでも明日も彼氏がいい", _, NOT_FOUND, "×", _, CAT_ABSENT),
     Label(55, "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain", _, NOT_FOUND, "×", _, CAT_PARENT, (M3,)),
     Label(56, "ゾンビ世界でハーレムをつくろう！", _, NOT_FOUND, "×", _, CAT_ABSENT),
-    Label(57, "リコリス・リコイル", "リコリス・リコイル", UNKNOWN, "△", MERGED_ANIME, CAT_NORMAL, (M8,)),
+    # [57] は当初 `判定不能` とラベルしていたが、測定後に `連載中` へ訂正した（Issue #47）。
+    # 訂正の理由は2点。
+    #  (1) 地の文が `判定不能` のときインフォボックスの終了系フィールドが空欄なら `連載中` と
+    #      読む、というまったく同一の機構で、[13][19][28][52][72] の5行が正答している。
+    #      [57] だけ別基準を当てるのは測定として一貫しない。
+    #  (2) ラベル付け（ラウンド6）でこの行を提示した際、`終了号 =（空欄）/ 終了日 =（空欄）`
+    #      しか示さず、**`巻数 = 既刊8巻（2026年1月現在）` を材料に含めていなかった**。
+    #      「既刊」は空欄の消極的解釈ではなく継続中であることの積極的な記録であり、
+    #      当初のラベルはこの決定的な材料を欠いた状態での判断だった。
+    #      記事の実データも確認済み: 採用された本編ブロックは『リコリス・リコイル』の漫画版
+    #      そのもの（コミックフラッパー連載）で、スピンオフ『リコレクト』（終了日あり）とは
+    #      正しく区別されている。
+    # なお「空欄 ⇒ 連載中 にゲートが無い」という構造上の論点は本行固有ではなく上記6行すべてに
+    # 関わるため、ラベルではなく別課題として残す（docs/known_limitations.md 参照）。
+    Label(57, "リコリス・リコイル", "リコリス・リコイル", ONGOING, "△", MERGED_ANIME, CAT_NORMAL, (M8,)),
     Label(58, "履いてください、鷹峰さん", "履いてください、鷹峰さん", ONGOING, "○", _, CAT_NORMAL),
     Label(59, "ガイシューイッショク！", "ガイシューイッショク!", ONGOING, "○", _, CAT_NORMAL),
     Label(60, "カレシがいるのに", _, NOT_FOUND, "×", _, CAT_ABSENT),
@@ -241,10 +269,14 @@ def _self_check():
     marks = Counter(m for label in LABELS for m in label.marks)
     merged = Counter(label.merged_into for label in LABELS if label.merged_into)
 
-    assert status == {ONGOING: 38, NOT_FOUND: 32, UNKNOWN: 2}, status
+    # [57] を `判定不能` → `連載中` に訂正したため、分母は 38 → 39 に増えた（Issue #47）。
+    assert status == {ONGOING: 39, NOT_FOUND: 32, UNKNOWN: 1}, status
     assert exists == {"×": 32, "○": 31, "△": 9}, exists
     assert category == {CAT_NORMAL: 40, CAT_ABSENT: 29, CAT_PARENT: 2, CAT_AUTHOR: 1}, category
-    assert len(DENOMINATOR) == 38, len(DENOMINATOR)
+    assert len(DENOMINATOR) == 39, len(DENOMINATOR)
+    # M-2 と M-8 の和集合＝インフォボックス経路で決着した6行、という対応を固定する。
+    infobox_marked = {label.no for label in LABELS if M2 in label.marks or M8 in label.marks}
+    assert infobox_marked == set(INFOBOX_DECIDED), infobox_marked
     assert marks == {M1: 6, M1A: 2, M2: 5, M2A: 1, M3: 2, M4: 2, M5: 2,
                      M6: 1, M7: 1, M8: 1, M9: 1, TRANSFER: 2}, marks
     assert merged == {MERGED_NOVEL: 7, MERGED_ILLUSTRATION: 1, MERGED_ANIME: 1}, merged
