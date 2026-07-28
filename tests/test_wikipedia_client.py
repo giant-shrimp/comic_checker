@@ -2,17 +2,21 @@ from unittest.mock import MagicMock, patch
 
 from comic_checker.wikipedia_client import (
     COMPLETED_STRONG_RE,
+    _accept_article,
     MANGA_INFOBOX_MARKER,
     STATUS_NOT_FOUND,
     STATUS_UNKNOWN,
     WikipediaJudgment,
+    _declares_merged_coverage,
     _extract_braced_blocks,
     _has_ongoing_signal,
     _is_person_article,
     _judge_extract,
     _judge_via_infobox,
+    _mentions_as_derivative_work,
     _search_queries,
     _strip_annotations,
+    _strip_disambiguation_suffix,
     _strip_trailing_note,
     _title_variants,
     judge,
@@ -1350,3 +1354,280 @@ def test_judge_stays_unknown_when_wikitext_fetch_fails():
         result = judge("インフォ実験作品")
 
     assert result.status == STATUS_UNKNOWN
+
+
+# --- Issue #51 (M6-A-2): 着地記事が入力タイトルの作品かを判定する ----------------------
+#
+# 以下の抽出文はいずれも2026-07-28時点の実記事から採った実文である。カテゴリ3
+# （スピンオフ／続編が親作品にリダイレクトする形）の実例と、そこで誤除外してはならない
+# 形を固定する。
+
+# `[23]` 彼女、人見知ります が着地する親作品の記事。入力作品はスピンオフとして言及される。
+KANOJO_OKARISHIMASU_EXTRACT = (
+    "『彼女、お借りします』（かのじょ おかりします）は、宮島礼吏による日本の漫画。"
+    "『週刊少年マガジン』（講談社）において、2017年32号から連載中。"
+    "略称は「かのかり」。"
+    "2020年6月21日から、ヒロインの1人・桜沢墨を主人公としたスピンオフ漫画"
+    "『彼女、人見知ります』（かのじょ ひとみしります）が"
+    "『マガジンポケット』において連載されている。"
+)
+
+# `[47]`（本編・正常系）と `[55]`（スピンオフ・カテゴリ3）が**同じ記事に着地する**。
+# 記事側の情報だけでは両者を分けられないので、入力タイトルとの完全一致が決め手になる。
+OTONARI_NO_TENSHISAMA_EXTRACT = (
+    "『お隣の天使様にいつの間にか駄目人間にされていた件』"
+    "（おとなりのてんしさまにいつのまにかだめにんげんにされていたけん）は、"
+    "佐伯さんによる日本のライトノベル。"
+    "メディアミックスとして、芝田わん作画、優木すず構成によるコミカライズが"
+    "2022年1月6日より『マンガUP!』にて連載中。"
+    "ぷよによる5.5巻とコミカライズの特装版のショートエピソードを題材としたスピンオフ"
+    "『お隣の天使様にいつの間にか駄目人間にされていた件 after the rain』が、"
+    "2023年12月7日より同アプリにて連載中。"
+)
+
+# `[111]` 精霊の守り人 が着地するシリーズ記事。**部分一致で照合すると誤除外になる形**で、
+# 『ジン～アニメ精霊の守り人外伝～』が入力を部分文字列として含み、同じ文に「外伝」がある。
+# この行は期待値が`完結`の正常系なので、発動してはならない。
+MORIBITO_SERIES_EXTRACT = (
+    "守り人シリーズ（もりびとシリーズ）は、上橋菜穂子による異世界ファンタジー小説の"
+    "シリーズ作品である。"
+    "2007年3月より「月刊少年ガンガン」にて『精霊の守り人』の漫画版が藤原カムイの手で"
+    "連載され、全3巻にて完結する。"
+    "2008年4月より「ヤングガンガン」にて『ジン～アニメ精霊の守り人外伝～』が連載された。"
+)
+
+
+def test_strip_disambiguation_suffix_removes_editorial_qualifier():
+    # Issue #51: 「 (漫画)」はWikipedia編集者の曖昧さ回避表記であって作品名の一部ではない。
+    # `_pick_article()`自身が「{変種} (漫画)」をprobeとして組み立て、`_accept_article()`が
+    # その接尾辞を「作品記事である」信号として信頼している以上、ゲートでだけ差異として
+    # 扱うのは一貫しない。実測では回帰群の7行（陰陽師・日常・タッチ・H2・大奥・ソムリエ・
+    # ミスミソウ）がこの形で、除去しないと入力が正しくても常にゲートが開く。
+    assert _strip_disambiguation_suffix("陰陽師 (漫画)") == "陰陽師"
+    assert _strip_disambiguation_suffix("日常 (漫画)") == "日常"
+    # 「(漫画)」固定ではない。回帰群の`風光る`の期待記事名がこの形。
+    assert _strip_disambiguation_suffix("風光る (渡辺多恵子の漫画)") == "風光る"
+    # 全角括弧も落とす。
+    assert _strip_disambiguation_suffix("ソムリエ（漫画）") == "ソムリエ"
+    # 接尾辞が無いものは変えない。
+    assert _strip_disambiguation_suffix("リコリス・リコイル") == "リコリス・リコイル"
+    assert _strip_disambiguation_suffix("守り人シリーズ") == "守り人シリーズ"
+
+
+def test_mentions_as_derivative_work_detects_category3_rows():
+    # Issue #51: カテゴリ3の実データ2件。どちらも親記事のリードで、入力タイトルが
+    # 『』に囲まれ、同じ文に派生作品マーカーがある形で言及されている。
+    assert _mentions_as_derivative_work(
+        KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります"
+    ) is True
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain",
+    ) is True
+
+
+def test_mentions_as_derivative_work_spares_the_parent_work_itself():
+    # Issue #51の最大の難所: `[47]`（本編）と`[55]`（スピンオフ）は**同じ記事に着地する**。
+    # `[47]`の入力は`[55]`の『』内文字列の前方部分文字列なので、部分一致で照合すると
+    # `[47]`も一致してしまう。完全一致にすることで、ゲートに頼らず照合条件の側でも通る。
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT, "お隣の天使様にいつの間にか駄目人間にされていた件"
+    ) is False
+
+
+def test_mentions_as_derivative_work_does_not_fire_on_series_article():
+    # Issue #51: `[111]` 精霊の守り人 → 守り人シリーズ は期待値`完結`の正常系。
+    # 部分一致で照合すると『ジン～アニメ精霊の守り人外伝～』（同じ文に「外伝」）に
+    # 引っかかって誤除外になる。**ゲートは開いているので、ここで守れないと行が落ちる。**
+    assert _mentions_as_derivative_work(
+        MORIBITO_SERIES_EXTRACT, "精霊の守り人"
+    ) is False
+
+
+def test_mentions_as_derivative_work_normalizes_ideographic_space():
+    # Issue #51: `[55]`の入力は全角スペース(U+3000)を含むが、記事側の『』内は半角スペース。
+    # NFKCがU+3000をU+0020に正規化するので一致するが、**生の==では一致せず取り逃がす**。
+    raw_input = "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain"
+    quoted_in_article = "お隣の天使様にいつの間にか駄目人間にされていた件 after the rain"
+    assert raw_input != quoted_in_article  # 正規化しないと一致しないことを明示する
+    assert _mentions_as_derivative_work(OTONARI_NO_TENSHISAMA_EXTRACT, raw_input) is True
+
+
+def test_mentions_as_derivative_work_requires_a_derivative_marker():
+    # Issue #51: 『』で言及されているだけでは弾かない。別名・略称は記事主題の言い換えとして
+    # 現れるので、マーカーが無い言及は通す（fail-open）。`ONE PIECE`の「『ONE PIECE』
+    # （ワンピース）は、」がこの形。
+    assert _mentions_as_derivative_work(ONE_PIECE_EXTRACT, "ONE PIECE") is False
+    assert _mentions_as_derivative_work(ONE_PIECE_EXTRACT, "ワンピース") is False
+
+
+def test_mentions_as_derivative_work_falls_open_on_empty_input():
+    # Issue #51: #45と同じくfail-open。判定できない入力で除外側に倒してはならない。
+    assert _mentions_as_derivative_work("", "彼女、人見知ります") is False
+    assert _mentions_as_derivative_work(KANOJO_OKARISHIMASU_EXTRACT, "") is False
+
+
+# --- Issue #51: 条件A（マーカーが言及を修飾しているか）・条件B（併合記事か） -----------
+#
+# 敵対群の本調査（作品記事150件・被リダイレクト1,462行）で、7語の候補語彙で掃くと32件が
+# 発動し、人手ラベルの結果 (a)＝誤除外が10件出た。以下はその10件の代表形である。
+
+# 併合記事型かつマーカーが『』内にある形。『最遊記外伝』は入力タイトル自身で、
+# その中の「外伝」を拾って発動していた（条件A-1で消える）。
+# 入力『最遊記』『最遊記RELOAD』『最遊記RELOAD BLAST』は、後ろにある『最遊記外伝』の
+# 「外伝」を拾っていた（条件A-2で消える）。リード文が「〜の総称」で併合を宣言している。
+SAIYUKI_SERIES_EXTRACT = (
+    "『最遊記シリーズ』（さいゆうきシリーズ）は、峰倉かずやによる日本の漫画作品"
+    "『最遊記』、『最遊記RELOAD』（さいゆうきリロード）、"
+    "『最遊記RELOAD BLAST』（さいゆうきリロード ブラスト）、"
+    "『最遊記外伝』（さいゆうきがいでん）、『最遊記異聞』（さいゆうきいぶん）の総称。"
+)
+
+# 併合記事型。マーカー「続編」は『バキ』の3字前にあり、**近接条件では救えない**。
+# 条件B（「本項ではこれらも併せて解説する」）だけが救える形。
+BAKI_EXTRACT = (
+    "『グラップラー刃牙』（グラップラーバキ）は、板垣恵介による日本の格闘漫画。"
+    "『週刊少年チャンピオン』（秋田書店）に連載された。"
+    "続編として『バキ』、『範馬刃牙』、『刃牙道』、『バキ道』、『刃牙らへん』があり"
+    "本項ではこれらも併せて解説する。"
+)
+
+# 記事名の略称が入力された形。無関係な文にたまたま「前日譚」が同居しているだけで、
+# マーカーと『』の距離は92字ある（条件A-3で消える）。併合宣言は無い。
+HATHAWAY_EXTRACT = (
+    "『機動戦士ガンダム 閃光のハサウェイ』は、富野由悠季による日本の小説。"
+    "ガンダムシリーズのうち世界観「宇宙世紀」を描く作品の1つである。"
+    "1987年から1988年に劇場アニメ『逆襲のシャア』とほぼ同じストーリーとその前日譚を"
+    "含む全3巻の小説も発表されているが、その巻末インタビューで作者の富野は、"
+    "同作を「『閃光のハサウェイ』に対する語り直し」と述べている。"
+)
+
+_MK7 = ("スピンオフ", "続編", "外伝", "番外編", "前日譚", "派生", "スピンアウト")
+
+
+def test_declares_merged_coverage_detects_merged_articles():
+    # Issue #51: 併合宣言の語彙は150記事の実文から回収した（決め打ちしていない）。
+    assert _declares_merged_coverage(BAKI_EXTRACT) is True  # 本項では/併せて解説
+    assert _declares_merged_coverage(SAIYUKI_SERIES_EXTRACT) is True  # の総称
+
+
+def test_declares_merged_coverage_spares_the_target_articles():
+    # Issue #51の最大の確認点。`[23]`・`[55]`/`[47]`の着地先が併合記事と判定されると、
+    # 本Issueの目的そのものが達成できなくなる。実測でも併合宣言は無い。
+    assert _declares_merged_coverage(KANOJO_OKARISHIMASU_EXTRACT) is False
+    assert _declares_merged_coverage(OTONARI_NO_TENSHISAMA_EXTRACT) is False
+    # `[111]`の着地先。記事名は「〜シリーズ」だが併合宣言は無い＝記事名では判定できない。
+    assert _declares_merged_coverage(MORIBITO_SERIES_EXTRACT) is False
+
+
+def test_condition_a1_ignores_markers_inside_the_quotes():
+    # 条件A-1: 『』の中のマーカーは数えない。`最遊記外伝`は入力名自身に「外伝」を含み、
+    # 『』外にはマーカーが1つも無い。
+    assert _mentions_as_derivative_work(
+        SAIYUKI_SERIES_EXTRACT, "最遊記外伝", markers=_MK7, skip_merged_articles=False
+    ) is False
+
+
+def test_condition_a2_requires_the_marker_to_precede_the_quote():
+    # 条件A-2: 『最遊記』等は、後ろにある『最遊記外伝』の「外伝」を拾っていた。
+    for title in ("最遊記", "最遊記RELOAD", "最遊記RELOAD BLAST"):
+        assert _mentions_as_derivative_work(
+            SAIYUKI_SERIES_EXTRACT, title, markers=_MK7, skip_merged_articles=False
+        ) is False, title
+
+
+def test_condition_a3_requires_the_marker_to_be_near_the_quote():
+    # 条件A-3: 距離92字。MARKER_MAX_DISTANCE(=12)を超えるので修飾とみなさない。
+    assert _mentions_as_derivative_work(
+        HATHAWAY_EXTRACT, "閃光のハサウェイ", markers=_MK7, skip_merged_articles=False
+    ) is False
+    # 距離条件を無効化すると、改良前の挙動（誤除外）が再現することを固定する。
+    assert _mentions_as_derivative_work(
+        HATHAWAY_EXTRACT, "閃光のハサウェイ", markers=_MK7,
+        max_distance=None, require_before=False, skip_merged_articles=False
+    ) is True
+
+
+def test_condition_b_is_the_only_thing_that_saves_a_near_marker_in_a_merged_article():
+    # `バキ`はマーカーが3字前にあり、条件Aを全て満たしてしまう。条件Bだけが救える。
+    assert _mentions_as_derivative_work(
+        BAKI_EXTRACT, "バキ", markers=_MK7, skip_merged_articles=False
+    ) is True
+    assert _mentions_as_derivative_work(BAKI_EXTRACT, "バキ", markers=_MK7) is False
+
+
+def test_conditions_do_not_break_the_two_target_rows():
+    # 条件A・Bを入れても`[23]`・`[55]`は発動し続けること（本Issueの目的）。
+    assert _mentions_as_derivative_work(
+        KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります", markers=_MK7
+    ) is True
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain",
+        markers=_MK7,
+    ) is True
+    # `[47]`（本編）と`[111]`は引き続き発動しない。
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件", markers=_MK7,
+    ) is False
+    assert _mentions_as_derivative_work(
+        MORIBITO_SERIES_EXTRACT, "精霊の守り人", markers=_MK7
+    ) is False
+
+
+def test_judge_drops_a_row_that_lands_on_a_different_work():
+    # Issue #51: `彼女、人見知ります`は自分の記事を持たず、Wikipediaのリダイレクトで
+    # 親作品『彼女、お借りします』に着地する。従来はそこで親作品の連載状況を根拠に
+    # `連載中`と確信を持って誤答していた（M6-D-2/#35 のカテゴリ3、実分布でもD率100%）。
+    resolve = _response(
+        _resolve_response(
+            existing=["彼女、お借りします"],
+            missing=["彼女、人見知ります (漫画)"],
+            redirects=[("彼女、人見知ります", "彼女、お借りします")],
+        )
+    )
+    extract = _response(
+        _extract_response("彼女、お借りします", KANOJO_OKARISHIMASU_EXTRACT)
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve, extract, empty_search],
+    ):
+        result = judge("彼女、人見知ります")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
+
+
+def test_judge_keeps_the_parent_work_itself():
+    # 同じ記事に着地する`[47]`（本編）は従来どおり採用されること。`[55]`（スピンオフ）と
+    # 分ける鍵は入力側にしかないので、ここが壊れると本Issueの変更は使えない。
+    title = "お隣の天使様にいつの間にか駄目人間にされていた件"
+    resolve = _response(
+        _resolve_response(existing=[title], missing=[f"{title} (漫画)"])
+    )
+    extract = _response(_extract_response(title, OTONARI_NO_TENSHISAMA_EXTRACT))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve, extract],
+    ):
+        result = judge(title, use_infobox=False)
+
+    assert result.matched_title == title
+
+
+def test_different_work_check_is_not_applied_to_the_trusted_path():
+    # Issue #45と同じ方針。「〜 (漫画)」は編集者が「作品の記事だ」と明示した表記なので
+    # 素通しにする。適用しても得るものが無く、偽陽性（正しい記事を弾く）だけが増える。
+    article = ("親作品 (漫画)", KANOJO_OKARISHIMASU_EXTRACT, "https://example.invalid")
+    with patch("comic_checker.wikipedia_client._fetch_extract", return_value=article):
+        assert _accept_article(
+            "親作品 (漫画)", trusted=True, input_title="彼女、人見知ります"
+        ) == article
+        assert _accept_article(
+            "親作品 (漫画)", trusted=False, input_title="彼女、人見知ります"
+        ) is None

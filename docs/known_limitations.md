@@ -110,13 +110,64 @@
   serialization sentence (observed: `長谷川町子全集`, answered `完結` from 『サザエさん』's
   連載 sentence). Left as-is deliberately: dropping the `『` guard to catch these would
   sweep in the `魔法少女メルル` shape above, and no such row appeared in M6-D-2.
-- **Category 3 of M6-D-2 is still unfixed and is a different problem.** 12 rows where a
-  spin-off or sequel redirects to the *parent work's* article (D-rate 83.3%) are answered
-  off the parent's serialization status. `_is_person_article()` cannot help — the landing
-  page is a work article, correctly formatted, just not the *input's* work. That needs a
-  check that the landed article is about the title that was asked for, which does not
-  exist yet. Article-selection-caused wrong answers totalled 27 rows in M6-D-2; #45
-  removed 10 of them.
+- **Category 3 (spin-off / sequel redirecting to the parent work) is handled, but the
+  guard that handles it is the one place in the selection path that fails *closed*.**
+  A title with no article of its own can redirect onto the *parent work's* article, which
+  is a correctly formatted work article — just not the input's work — so
+  `_is_person_article()` cannot help. `_lands_on_a_different_work()` (Issue #51) rejects
+  those rows: when the landing title differs from the raw input, it looks for a lead
+  sentence that names the input inside `『』` with a derivative-work marker
+  (`DERIVATIVE_WORK_MARKERS`) modifying that specific mention. Two details are load-bearing
+  and were each measured, not guessed:
+  - The comparison against `『』` is **NFKC-exact, never a substring**. `[47]`
+    `お隣の天使様にいつの間にか駄目人間にされていた件` is a prefix of the spin-off title
+    `…件 after the rain`, and the two land on the *same article*; a substring match drops
+    the main series. Separately, `精霊の守り人` → `守り人シリーズ` is a substring of
+    『ジン～アニメ精霊の守り人外伝～』 and would be dropped even though the gate is open.
+  - The marker must **modify that mention** — outside the `『』`, before it, within
+    `MARKER_MAX_DISTANCE` characters. Sentences that list several works otherwise fire on
+    all of them.
+- **The merged-article exemption (condition B, Issue #51) fails toward *over*-rejection,
+  not toward safety.** `_mentions_as_derivative_work()` refuses to fire when the landing
+  article declares it covers several works at once (`本項では…併せて解説する`, `…の総称`,
+  and the other phrases in `MERGED_COVERAGE_MARKERS`, harvested from 150 real articles).
+  That exemption is what keeps `バキ` → `グラップラー刃牙` and `カイジ` →
+  `賭博黙示録カイジ` from being dropped to `記事なし` — measured, they are rows the tool
+  answers correctly today. **Every other guard in the selection path fails open**
+  (`_is_person_article()`, the marker proximity check): when the evidence is missing they
+  leave the previous behaviour alone. This one does not. If a Wikipedia editor rewrites a
+  merge declaration into wording the vocabulary does not match, the article stops being
+  recognised as merged, the rule fires, and a row that used to answer correctly starts
+  answering `記事なし`. The failure is silent — the row simply reports no article, which is
+  indistinguishable from a title Wikipedia has never covered.
+  **There is no runtime mitigation. The only check that exists is re-running the Issue #51
+  corpus survey — `python scripts/survey_m6a2_corpus.py`**, which reproduces both the
+  adversarial group (`hastemplate:"Infobox animanga/Manga"`, 150 articles, all incoming
+  redirects) and the normal group, and reports any firing that was not in the recorded
+  2026-07-29 set. It exits non-zero on a difference. Budget ~370 API calls / 20-25 minutes;
+  results are cached on disk so an interrupted run resumes. A false-exclusion count above zero there is
+  the signal that the vocabulary has drifted. Re-run it before trimming
+  `MERGED_COVERAGE_MARKERS`, and after any report of a title that used to resolve and now
+  returns `記事なし`. Note that a `〜シリーズ` article name is *not* a usable substitute for
+  the declaration: `守り人シリーズ` carries no merge declaration at all.
+- **Reading a work's status off a *series* article is still accepted — the line is drawn at
+  "introduced as a derivative work", not at "is the article about exactly this work".**
+  `精霊の守り人` → `守り人シリーズ` is answered `完結` from the series article's sentence
+  about that work's manga version, and that is the intended behaviour; a spin-off landing
+  on its parent (`彼女、人見知ります` → `彼女、お借りします`) is dropped to `記事なし`.
+  Both are "the landing article is not exclusively about the input", so the asymmetry is
+  deliberate, not an oversight: Issue #47's labelling settled that a spin-off must not be
+  answered from its parent, while M6-D-2 accepted the series article as the right article
+  for a constituent work. **Do not "fix" the `守り人シリーズ` case by widening the rule** —
+  it would have to reject constituent-work rows, which are correct today.
+- **The derivative-work check only catches mentions written the same way as the input.**
+  `チンピース` redirects to `ONE PIECE`, whose lead introduces the spin-off as
+  『CHIN PIECE』 in Latin script; NFKC does not equate kana with Latin, so the row is not
+  rejected and still answers off `ONE PIECE`. This is the fail-open side of requiring an
+  exact match and is not a bug to chase with fuzzy matching — see the string-similarity
+  warning in `docs/architecture.md`. Recall on the Issue #51 adversarial corpus was low by
+  design; that corpus is deliberately enriched with derivative works and is not the real
+  input distribution (category 3 was 2/72 rows there).
 - **The infobox path's "empty end field ⇒ `連載中`" inference has no gate, and on real
   input it is not a fallback — it decides 14.3% of the rows** (measured 2026-07-28,
   M6-D-3 / Issue #47; article content changes over time, so re-verify against that date).

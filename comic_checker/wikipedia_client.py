@@ -285,6 +285,169 @@ def _is_person_article(extract):
     return first_segment.endswith(PERSON_TYPE_SUFFIX)
 
 
+# Issue #51 (M6-A-2): カテゴリ3 ——「作品の記事が存在しない入力が、Wikipediaのリダイレクトで
+# *親作品*の記事に着地し、親作品の連載状況を根拠に確信を持って誤答する」系統への対処。
+# #45で潰したカテゴリ2（作者記事）と構造は同じだが、着地先が体裁の正しい作品記事なので
+# `_is_person_article()`では原理的に弾けない。実分布（#47拡張群72行）では2件（`彼女、
+# 人見知ります`・`お隣の天使様に…件　after the rain`）で、どちらもD（確信を持った誤答）。
+#
+# 【`_accept_article()`のuntrusted経路にのみ接続してある】trusted経路（「〜 (漫画)」で
+# 辿り着いた場合）は#45と同じ理由で素通しにする。編集者が「これは作品の記事だ」と明示した
+# 表記なので、そこに別作品が来ることはなく、誤除外の機会だけが増える。
+#
+# 判定は「ゲート」と「照合」の2段。どちらも実測（着地63行）で外せないことを確認済み。
+#   ゲート: NFKC(接尾辞を除いた着地先タイトル) != NFKC(入力原文) のときだけ照合に進む。
+#     - **変種ではなく入力原文と比べる**。`[47]`（本編）と`[55]`（スピンオフ）は同じ記事に
+#       着地するので、分ける鍵は入力側にしかない。変種と比べると`[55]`の後置注記除去変種が
+#       着地先と一致してゲートが閉じ、規則が発動しなくなる。
+#     - 曖昧さ回避接尾辞は除く。`日常`→`日常 (漫画)`のように入力が正しくても常にゲートが
+#       開く行が生まれるため（実測7行）。`(漫画)`は`_pick_article()`自身がprobeとして
+#       組み立て`_accept_article()`が信頼している表記なので、ここで差異扱いすると一貫しない。
+#   照合: リード文の1文ごとに、入力タイトルが『』に囲まれ、かつ同じ文に派生作品マーカーが
+#     あるかを見る。**『』内と入力はNFKC完全一致でなければならない。** 部分一致にすると
+#     実測で2件壊れる: (1)`[47]`の入力は`[55]`の『』内の前方部分文字列なのでゲートだけが
+#     頼りになる、(2)`[111]`（精霊の守り人→守り人シリーズ・期待は完結）が
+#     『ジン～アニメ精霊の守り人外伝～』に引っかかり、**ゲートが開いているので守れない**。
+#
+# 【なぜ言及の有無を条件にしないか】言及は「入力の作品である」証拠にも「別作品である」
+# 証拠にもならない。`幽遊白書`は着地先`幽☆遊☆白書`のリードに文字列として現れず（装飾記号）、
+# 逆に`彼女、人見知ります`は現れる。倒す向きが逆になるので、*どういう文脈で*言及されて
+# いるかだけが情報を持つ。
+#
+# 【fail-open】`_is_person_article()`と同じく、既知の悪いパターンだけを名指しで除外する
+# 装置である。正の証拠が取れない限り従来の挙動を変えない。既定値をfail-closedにすると、
+# 別名・略称・シリーズ着地（ワンピース→ONE PIECE、こち亀→こちら葛飾区亀有公園前派出所、
+# 精霊の守り人→守り人シリーズ等）がまとめて落ちる。
+# 採用語彙。Issue #51 の敵対群調査（1,462行）で、実文から回収した候補のうち発動実績が
+# あったものだけを採る。候補にあった`派生`・`スピンアウト`は**1,462行で発動0件**だった
+# ため採らない（#36 の除外リストと同じ方針で、観測された実例のある形だけを名指しする）。
+# 不採用にした語と理由は Issue #51 に記録してある。とくに`コミカライズ`は入力作品*そのもの*
+# の説明として現れるため、加えると`[47]`が誤除外になる。
+DERIVATIVE_WORK_MARKERS = ("スピンオフ", "続編", "外伝", "番外編", "前日譚")
+_QUOTED_WORK_RE = re.compile(r"『([^』]*)』")
+
+# 【条件A】マーカーが*その言及を修飾している*ことを要求する。「文中のどこかにマーカーが
+# あれば発動」では足りないことが、敵対群の本調査（作品記事150件・被リダイレクト1,462行）
+# で確定した。7語の候補語彙で掃くと32件発動し、人手ラベルで10件が(a)＝誤除外だった。
+# 内訳は「マーカーが入力名の一部」1件・「マーカーが後方にある共起」3件・「併合記事型」5件・
+# 「記事名の略称」1件で、前2者と最後の1件は条件Aで消える。
+#
+# MARKER_MAX_DISTANCE は**実データの距離分布から決めた。決め打ちではない。**
+# マーカー末尾から『までの字数を、人手ラベル別に並べると:
+#   (b) 検出すべき: 1, 2, 2, 2, 3, 3, 3, 4, 5, 5, 9, 11 ‖ 27, 51, 66, 102
+#   (a) 誤除外    : 3 ‖ 15, 16, 27, 48, 92（＋前方にマーカーが無いもの4件）
+# **11 と 15 の間が唯一の切れ目**なので 12 とした。10 にすると(b)の1件（距離11）を落とし、
+# 15 にすると(a)の1件（距離15）が残る。将来この値を動かすときは、同じ距離分布を測り直して
+# 切れ目が動いたことを示すこと。「キリのいい数字に揃える」類の変更をしてはならない。
+MARKER_MAX_DISTANCE = 12
+
+# 【条件B】着地先が「複数の作品を併せて解説する記事」なら発動させない。
+# 条件Aだけでは救えない形があるため必要になった。`グラップラー刃牙`の
+# 「続編として『バキ』、…があり本項ではこれらも併せて解説する。」は、マーカー「続編」が
+# 『バキ』の3字前にあって条件Aを全て満たすが、記事が各作品の連載状況を実際に解説している
+# ので入力`バキ`に対して採用してよい行（(a)）である。
+#
+# 語彙は150記事のリード＋最初のセクションから**実文で回収した**（決め打ちしていない）。
+# 回収元の記事名を残す:
+#   本項では/本項目では : グラップラー刃牙・賭博黙示録カイジ・CLANNAD (ゲーム)・
+#                        おジャ魔女どれみ・ふたりはプリキュア・魔法つかいプリキュア!
+#   の総称              : 最遊記シリーズ・ゲゲゲの鬼太郎
+#   も併せて/併せて取り扱/併せて解説 : ふたりはプリキュア・Yes!プリキュア5・グラップラー刃牙
+#   についても解説/についても記述     : 賭博黙示録カイジ・CLANNAD (ゲーム)
+#   詳述するものとする/ここでは       : 魔法つかいプリキュア!・ダンボール戦機
+#
+# 【重要・この条件は安全側に倒れない】語彙が当たらなくなる（＝併合宣言を見落とす）と
+# 併合記事で発動してしまい、**誤除外が出る危険側**に倒れる。過剰に当たった場合は発動しなく
+# なるだけで取りこぼし（安全側）。Wikipediaの編集で言い回しが変わりうるので、
+# `docs/known_limitations.md` に記載してある。語彙を削るときは特に注意すること。
+MERGED_COVERAGE_MARKERS = (
+    "本項では",
+    "本項目では",
+    "の総称",
+    "も併せて",
+    "併せて取り扱",
+    "併せて解説",
+    "についても解説",
+    "についても記述",
+    "詳述するものとする",
+    "ここでは",
+)
+
+
+def _declares_merged_coverage(extract):
+    """記事が「複数の作品を併せて解説する」と宣言しているか（条件B）。"""
+    if not extract:
+        return False
+    return any(marker in extract for marker in MERGED_COVERAGE_MARKERS)
+
+
+def _marker_modifies_mention(sentence, mention, markers, max_distance,
+                             require_outside_quote, require_before):
+    """マーカーがこの『』の言及を修飾しているか（条件A）。"""
+    for marker in markers:
+        position = sentence.find(marker)
+        while position != -1:
+            end = position + len(marker)
+            inside_quote = mention.start() <= position < mention.end()
+            before = end <= mention.start()
+            if (not (require_outside_quote and inside_quote)
+                    and not (require_before and not before)):
+                if before:
+                    distance = mention.start() - end
+                elif inside_quote:
+                    distance = 0
+                else:
+                    distance = position - mention.end()
+                if max_distance is None or distance <= max_distance:
+                    return True
+            position = sentence.find(marker, position + 1)
+    return False
+
+
+# 末尾の丸括弧1組だけを落とす。`(漫画)`固定にしないのは`風光る (渡辺多恵子の漫画)`のような
+# 形があるため。入れ子や本文中の括弧まで落とさないよう、末尾かつ1組に限定している。
+_DISAMBIGUATION_SUFFIX_RE = re.compile(r"\s*[（(][^（()）]*[)）]\s*$")
+
+
+def _strip_disambiguation_suffix(page_title):
+    """記事名から曖昧さ回避の接尾辞（「 (漫画)」等）を取り除く。"""
+    return _DISAMBIGUATION_SUFFIX_RE.sub("", page_title).strip()
+
+
+def _mentions_as_derivative_work(extract, input_title, markers=DERIVATIVE_WORK_MARKERS,
+                                 max_distance=MARKER_MAX_DISTANCE,
+                                 require_outside_quote=True, require_before=True,
+                                 skip_merged_articles=True):
+    """リード文が入力タイトルを「派生作品」として紹介しているかを判定する。
+
+    Trueなら、この記事は入力タイトルの作品についての記事ではない（＝別作品の記事に
+    着地している）。判定できない場合はFalse（上のコメントの「fail-open」の実装であり、
+    この既定値を変えてはならない）。
+
+    条件A（`max_distance` / `require_outside_quote` / `require_before`）と条件B
+    （`skip_merged_articles`）は**それぞれ独立に無効化できる**。どの条件がどの行を
+    落としているかをコーパス調査で切り分けるためで、既定値のまま使うのが出荷時の挙動。
+    `markers`も同じ理由で引数にしてある（語彙の候補を差し替えながら同じ関数で掃く）。
+    """
+    if not extract or not input_title:
+        return False
+    normalized_title = _normalize(input_title)
+    if not normalized_title:
+        return False
+    if skip_merged_articles and _declares_merged_coverage(extract):
+        return False
+    for sentence in _split_sentences(extract):
+        if not any(marker in sentence for marker in markers):
+            continue
+        for mention in _QUOTED_WORK_RE.finditer(sentence):
+            if _normalize(mention.group(1)) != normalized_title:
+                continue
+            if _marker_modifies_mention(sentence, mention, markers, max_distance,
+                                        require_outside_quote, require_before):
+                return True
+    return False
+
+
 # Issue #12: 本文解析（_judge_extract）が判定不能のときだけ参照する補助情報源。
 # {{Infobox animanga/Manga}}テンプレートの終了系フィールドが空欄かどうかは、本文解析より
 # 頑健な連載中/完結シグナルになりうることを実現可能性検証で確認した一方、記事内に
@@ -604,29 +767,47 @@ def _resolve_titles(titles):
     return resolved
 
 
-def _accept_article(page_title, trusted):
+def _lands_on_a_different_work(page_title, extract, input_title):
+    """着地した記事が、入力タイトルとは*別の作品*についての記事かを判定する（Issue #51）。
+
+    ゲート（着地先タイトルが入力原文と違うときだけ照合に進む）と、リード文での言及の
+    仕方を見る照合の2段。詳細は`_mentions_as_derivative_work`の上のコメントを参照。
+
+    ゲートを**変種ではなく入力原文**と比べるのが要点である。`お隣の天使様に…件`（本編・
+    正常系）と`お隣の天使様に…件　after the rain`（スピンオフ）は**同じ記事に着地する**
+    ので、記事側の情報だけでは分けられない。分ける鍵は入力側にしかない。
+    """
+    if _normalize(_strip_disambiguation_suffix(page_title)) == _normalize(input_title):
+        return False
+    return _mentions_as_derivative_work(extract, input_title)
+
+
+def _accept_article(page_title, trusted, input_title):
     """記事を取得し、判定対象として採用してよければ (タイトル, リード文, URL) を返す。
 
     trusted=True（曖昧さ回避表記「〜 (漫画)」で辿り着いた場合）は内容を確認せずに
     採用する。それ以外は無関係な同名記事を掴んでいないかを`_is_about_manga`で、
-    作者の記事に着地していないかを`_is_person_article`で確認する（Issue #45）。
+    作者の記事に着地していないかを`_is_person_article`で（Issue #45）、入力とは別作品の
+    記事に着地していないかを`_lands_on_a_different_work`で確認する（Issue #51）。
 
-    人物記事チェックを信頼経路（trusted=True）に適用しないのは意図的である。
-    「〜 (漫画)」はWikipedia編集者が「これは作品の記事だ」と明示した表記であり、
-    そこに人物記事が来ることはない。得るものが無い一方で、`_is_person_article`の
-    偽陽性（作品記事を人物と誤判定して記事なしに落とす）だけを新たに晒すことになる。
+    人物記事チェックと別作品チェックを信頼経路（trusted=True）に適用しないのは意図的で
+    ある。「〜 (漫画)」はWikipedia編集者が「これは作品の記事だ」と明示した表記であり、
+    そこに人物記事が来ることはない。得るものが無い一方で、これらの判定の偽陽性
+    （正しい記事を弾いて記事なしに落とす）だけを新たに晒すことになる。
     """
     article = _fetch_extract(page_title)
     if article is None:
         return None
     if trusted:
         return article
-    if _is_about_manga(article[1]) and not _is_person_article(article[1]):
-        return article
-    return None
+    if not _is_about_manga(article[1]) or _is_person_article(article[1]):
+        return None
+    if _lands_on_a_different_work(article[0], article[1], input_title):
+        return None
+    return article
 
 
-def _pick_via_direct_lookup(probes):
+def _pick_via_direct_lookup(probes, input_title):
     """タイトルの変種をそのまま記事名として参照し、最初に採用できた記事を返す。
 
     「{変種} (漫画)」という曖昧さ回避表記は、Wikipedia編集者が意図的に「この作品の
@@ -642,7 +823,10 @@ def _pick_via_direct_lookup(probes):
         if page_title is None or page_title in tried:
             continue
         tried.add(page_title)
-        article = _accept_article(page_title, trusted=probe.endswith(DISAMBIGUATION_SUFFIX))
+        article = _accept_article(
+            page_title, trusted=probe.endswith(DISAMBIGUATION_SUFFIX),
+            input_title=input_title,
+        )
         if article is not None:
             return article
     return None
@@ -668,7 +852,7 @@ def _subtitle_prefix_match(candidate, variant):
     return candidate[len(variant)] in SUBTITLE_SEPARATORS
 
 
-def _pick_via_search(variants, already_probed):
+def _pick_via_search(variants, already_probed, input_title):
     """全文検索の結果から記事を選ぶ。裏付けが取れない候補は採用しない。
 
     **実データ73件では未発火（2026年時点）。** 解決できた行はすべて直参照で決着し、
@@ -705,7 +889,8 @@ def _pick_via_search(variants, already_probed):
             ):
                 continue
             article = _accept_article(
-                candidate, trusted=candidate.endswith(DISAMBIGUATION_SUFFIX)
+                candidate, trusted=candidate.endswith(DISAMBIGUATION_SUFFIX),
+                input_title=input_title,
             )
             if article is not None:
                 return article
@@ -721,7 +906,8 @@ def _pick_article(title):
     """
     variants = _title_variants(title)
     probes = [f"{variant}{DISAMBIGUATION_SUFFIX}" for variant in variants] + list(variants)
-    return _pick_via_direct_lookup(probes) or _pick_via_search(variants, set(probes))
+    return (_pick_via_direct_lookup(probes, title)
+            or _pick_via_search(variants, set(probes), title))
 
 
 def judge(title, use_infobox=True):

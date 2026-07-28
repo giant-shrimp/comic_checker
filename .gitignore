@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .manba_state.json
+# scripts/survey_m6a2_corpus.py の取得結果キャッシュ（Issue #51）
+.m6a2_corpus_cache.json
 build/
 dist/
 logs/
