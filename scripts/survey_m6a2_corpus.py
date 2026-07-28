@@ -307,10 +307,16 @@ def main():
     removed = sorted(RECORDED_ADVERSARIAL_HITS - observed)
     if added or removed:
         print("\n  ⚠ 2026-07-29 の記録と差がある")
+        print("     記事は編集されるので、件数が動くこと自体は異常ではない。"
+              "**件数ではなく下の行の中身を見ること。**")
+        print("     切り分け: 増えた行に Issue #51 の基準で (a)/(b)/(c) を付ける。"
+              "(a) が1件でもあれば規則の劣化、")
+        print("     (b)/(c) だけなら記事が変わって新しい派生作品が書かれただけで"
+              "対応不要。減った行は取りこぼしなので安全側。")
         for source, target in added:
-            print(f"    ＋ {source!r} -> {target!r}  ← **誤除外の候補。人手判定が要る**")
+            print(f"    ＋ {source!r} -> {target!r}  ← **人手判定が要る**")
         for source, target in removed:
-            print(f"    − {source!r} -> {target!r}  ← 検出しなくなった（取りこぼし）")
+            print(f"    − {source!r} -> {target!r}  ← 検出しなくなった（取りこぼし・安全側）")
     else:
         print("  ✓ 2026-07-29 の記録と一致（発動13件）")
 
@@ -345,9 +351,12 @@ def main():
 
     if added or normal_fired != RECORDED_NORMAL_HITS:
         raise SystemExit(
-            "\n記録との差を検出しました。増えた発動行は誤除外の候補です。"
-            "\nIssue #51 の (a)/(b)/(c) 判定基準で人手ラベルを付け、"
-            "(a) が1件でもあれば語彙・条件を見直してください。"
+            "\n記録との差を検出しました。**記事が編集されただけの可能性が高い**ので、"
+            "件数の変化を即座に不具合と読まないこと。"
+            "\n増えた発動行に Issue #51 の (a)/(b)/(c) 判定基準で人手ラベルを付け、"
+            "\n  - (a) が1件でもあれば → 規則の劣化。語彙・条件を見直す"
+            "\n  - (b)/(c) だけなら   → 記事側の変化。RECORDED_ADVERSARIAL_HITS を"
+            " 更新し、観測日を書き換える"
         )
 
 
