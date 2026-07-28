@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from comic_checker.wikipedia_client import (
     COMPLETED_STRONG_RE,
+    _accept_article,
     MANGA_INFOBOX_MARKER,
     STATUS_NOT_FOUND,
     STATUS_UNKNOWN,
@@ -1573,3 +1574,60 @@ def test_conditions_do_not_break_the_two_target_rows():
     assert _mentions_as_derivative_work(
         MORIBITO_SERIES_EXTRACT, "精霊の守り人", markers=_MK7
     ) is False
+
+
+def test_judge_drops_a_row_that_lands_on_a_different_work():
+    # Issue #51: `彼女、人見知ります`は自分の記事を持たず、Wikipediaのリダイレクトで
+    # 親作品『彼女、お借りします』に着地する。従来はそこで親作品の連載状況を根拠に
+    # `連載中`と確信を持って誤答していた（M6-D-2/#35 のカテゴリ3、実分布でもD率100%）。
+    resolve = _response(
+        _resolve_response(
+            existing=["彼女、お借りします"],
+            missing=["彼女、人見知ります (漫画)"],
+            redirects=[("彼女、人見知ります", "彼女、お借りします")],
+        )
+    )
+    extract = _response(
+        _extract_response("彼女、お借りします", KANOJO_OKARISHIMASU_EXTRACT)
+    )
+    empty_search = _response(_search_response([]))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve, extract, empty_search],
+    ):
+        result = judge("彼女、人見知ります")
+
+    assert result.status == STATUS_NOT_FOUND
+    assert result.matched_title is None
+
+
+def test_judge_keeps_the_parent_work_itself():
+    # 同じ記事に着地する`[47]`（本編）は従来どおり採用されること。`[55]`（スピンオフ）と
+    # 分ける鍵は入力側にしかないので、ここが壊れると本Issueの変更は使えない。
+    title = "お隣の天使様にいつの間にか駄目人間にされていた件"
+    resolve = _response(
+        _resolve_response(existing=[title], missing=[f"{title} (漫画)"])
+    )
+    extract = _response(_extract_response(title, OTONARI_NO_TENSHISAMA_EXTRACT))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve, extract],
+    ):
+        result = judge(title, use_infobox=False)
+
+    assert result.matched_title == title
+
+
+def test_different_work_check_is_not_applied_to_the_trusted_path():
+    # Issue #45と同じ方針。「〜 (漫画)」は編集者が「作品の記事だ」と明示した表記なので
+    # 素通しにする。適用しても得るものが無く、偽陽性（正しい記事を弾く）だけが増える。
+    article = ("親作品 (漫画)", KANOJO_OKARISHIMASU_EXTRACT, "https://example.invalid")
+    with patch("comic_checker.wikipedia_client._fetch_extract", return_value=article):
+        assert _accept_article(
+            "親作品 (漫画)", trusted=True, input_title="彼女、人見知ります"
+        ) == article
+        assert _accept_article(
+            "親作品 (漫画)", trusted=False, input_title="彼女、人見知ります"
+        ) is None
