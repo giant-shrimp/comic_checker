@@ -117,6 +117,27 @@
   check that the landed article is about the title that was asked for, which does not
   exist yet. Article-selection-caused wrong answers totalled 27 rows in M6-D-2; #45
   removed 10 of them.
+- **The infobox path's "empty end field ⇒ `連載中`" inference has no gate, and on real
+  input it is not a fallback — it decides 14.3% of the rows** (measured 2026-07-28,
+  M6-D-3 / Issue #47; article content changes over time, so re-verify against that date).
+  `_judge_via_infobox()` exists to read "終了系 field is non-empty ⇒ `完結`". The opposite
+  reading — empty ⇒ `連載中` — is its contrapositive, and it is much weaker: **an empty
+  field is not a record that serialization is continuing, it is equally what you get when
+  nobody filled it in.** The asymmetry is concrete: the `完結` direction *was* found to be
+  unsound (サタノファニ's `終了日` is non-empty while the run continues) and #30 added a
+  gate for it — `judge()` refuses an infobox-sourced `完結` whenever the prose has an
+  ongoing signal. **Nothing gates the `連載中` direction.**
+  What makes this worth flagging is the scale. On the M6-D-3 census (72 real input rows,
+  42 of which landed on an article), the prose analysis `_judge_extract()` returned
+  `判定不能` for 8 rows, and the infobox path decided **6 of them**: `うしろの正面カムイさん`,
+  `てんぷる`, `カッコウの許嫁`, `月曜日のたわわ`, `リコリス・リコイル`, `魔都精兵のスレイブ`
+  — **6/42 = 14.3%**. All six came out correct, so this is not a list of known bugs; the
+  point is that `docs/architecture.md` describes this path as a "補助情報源" consulted
+  "only when the prose analysis is inconclusive", and on real-world input that description
+  understates what it is doing. Those six rows have **no serialization verdict from the
+  prose at all** — the answer is the infobox's alone, on the weaker of its two inferences,
+  with no gate. Before relying on the M6-D-3 accuracy figures as evidence that the prose
+  heuristics are healthy, subtract these six.
 
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
