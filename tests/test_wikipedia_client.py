@@ -6,6 +6,7 @@ from comic_checker.wikipedia_client import (
     STATUS_NOT_FOUND,
     STATUS_UNKNOWN,
     WikipediaJudgment,
+    _declares_merged_coverage,
     _extract_braced_blocks,
     _has_ongoing_signal,
     _is_person_article,
@@ -1463,3 +1464,112 @@ def test_mentions_as_derivative_work_falls_open_on_empty_input():
     # Issue #51: #45と同じくfail-open。判定できない入力で除外側に倒してはならない。
     assert _mentions_as_derivative_work("", "彼女、人見知ります") is False
     assert _mentions_as_derivative_work(KANOJO_OKARISHIMASU_EXTRACT, "") is False
+
+
+# --- Issue #51: 条件A（マーカーが言及を修飾しているか）・条件B（併合記事か） -----------
+#
+# 敵対群の本調査（作品記事150件・被リダイレクト1,462行）で、7語の候補語彙で掃くと32件が
+# 発動し、人手ラベルの結果 (a)＝誤除外が10件出た。以下はその10件の代表形である。
+
+# 併合記事型かつマーカーが『』内にある形。『最遊記外伝』は入力タイトル自身で、
+# その中の「外伝」を拾って発動していた（条件A-1で消える）。
+# 入力『最遊記』『最遊記RELOAD』『最遊記RELOAD BLAST』は、後ろにある『最遊記外伝』の
+# 「外伝」を拾っていた（条件A-2で消える）。リード文が「〜の総称」で併合を宣言している。
+SAIYUKI_SERIES_EXTRACT = (
+    "『最遊記シリーズ』（さいゆうきシリーズ）は、峰倉かずやによる日本の漫画作品"
+    "『最遊記』、『最遊記RELOAD』（さいゆうきリロード）、"
+    "『最遊記RELOAD BLAST』（さいゆうきリロード ブラスト）、"
+    "『最遊記外伝』（さいゆうきがいでん）、『最遊記異聞』（さいゆうきいぶん）の総称。"
+)
+
+# 併合記事型。マーカー「続編」は『バキ』の3字前にあり、**近接条件では救えない**。
+# 条件B（「本項ではこれらも併せて解説する」）だけが救える形。
+BAKI_EXTRACT = (
+    "『グラップラー刃牙』（グラップラーバキ）は、板垣恵介による日本の格闘漫画。"
+    "『週刊少年チャンピオン』（秋田書店）に連載された。"
+    "続編として『バキ』、『範馬刃牙』、『刃牙道』、『バキ道』、『刃牙らへん』があり"
+    "本項ではこれらも併せて解説する。"
+)
+
+# 記事名の略称が入力された形。無関係な文にたまたま「前日譚」が同居しているだけで、
+# マーカーと『』の距離は92字ある（条件A-3で消える）。併合宣言は無い。
+HATHAWAY_EXTRACT = (
+    "『機動戦士ガンダム 閃光のハサウェイ』は、富野由悠季による日本の小説。"
+    "ガンダムシリーズのうち世界観「宇宙世紀」を描く作品の1つである。"
+    "1987年から1988年に劇場アニメ『逆襲のシャア』とほぼ同じストーリーとその前日譚を"
+    "含む全3巻の小説も発表されているが、その巻末インタビューで作者の富野は、"
+    "同作を「『閃光のハサウェイ』に対する語り直し」と述べている。"
+)
+
+_MK7 = ("スピンオフ", "続編", "外伝", "番外編", "前日譚", "派生", "スピンアウト")
+
+
+def test_declares_merged_coverage_detects_merged_articles():
+    # Issue #51: 併合宣言の語彙は150記事の実文から回収した（決め打ちしていない）。
+    assert _declares_merged_coverage(BAKI_EXTRACT) is True  # 本項では/併せて解説
+    assert _declares_merged_coverage(SAIYUKI_SERIES_EXTRACT) is True  # の総称
+
+
+def test_declares_merged_coverage_spares_the_target_articles():
+    # Issue #51の最大の確認点。`[23]`・`[55]`/`[47]`の着地先が併合記事と判定されると、
+    # 本Issueの目的そのものが達成できなくなる。実測でも併合宣言は無い。
+    assert _declares_merged_coverage(KANOJO_OKARISHIMASU_EXTRACT) is False
+    assert _declares_merged_coverage(OTONARI_NO_TENSHISAMA_EXTRACT) is False
+    # `[111]`の着地先。記事名は「〜シリーズ」だが併合宣言は無い＝記事名では判定できない。
+    assert _declares_merged_coverage(MORIBITO_SERIES_EXTRACT) is False
+
+
+def test_condition_a1_ignores_markers_inside_the_quotes():
+    # 条件A-1: 『』の中のマーカーは数えない。`最遊記外伝`は入力名自身に「外伝」を含み、
+    # 『』外にはマーカーが1つも無い。
+    assert _mentions_as_derivative_work(
+        SAIYUKI_SERIES_EXTRACT, "最遊記外伝", markers=_MK7, skip_merged_articles=False
+    ) is False
+
+
+def test_condition_a2_requires_the_marker_to_precede_the_quote():
+    # 条件A-2: 『最遊記』等は、後ろにある『最遊記外伝』の「外伝」を拾っていた。
+    for title in ("最遊記", "最遊記RELOAD", "最遊記RELOAD BLAST"):
+        assert _mentions_as_derivative_work(
+            SAIYUKI_SERIES_EXTRACT, title, markers=_MK7, skip_merged_articles=False
+        ) is False, title
+
+
+def test_condition_a3_requires_the_marker_to_be_near_the_quote():
+    # 条件A-3: 距離92字。MARKER_MAX_DISTANCE(=12)を超えるので修飾とみなさない。
+    assert _mentions_as_derivative_work(
+        HATHAWAY_EXTRACT, "閃光のハサウェイ", markers=_MK7, skip_merged_articles=False
+    ) is False
+    # 距離条件を無効化すると、改良前の挙動（誤除外）が再現することを固定する。
+    assert _mentions_as_derivative_work(
+        HATHAWAY_EXTRACT, "閃光のハサウェイ", markers=_MK7,
+        max_distance=None, require_before=False, skip_merged_articles=False
+    ) is True
+
+
+def test_condition_b_is_the_only_thing_that_saves_a_near_marker_in_a_merged_article():
+    # `バキ`はマーカーが3字前にあり、条件Aを全て満たしてしまう。条件Bだけが救える。
+    assert _mentions_as_derivative_work(
+        BAKI_EXTRACT, "バキ", markers=_MK7, skip_merged_articles=False
+    ) is True
+    assert _mentions_as_derivative_work(BAKI_EXTRACT, "バキ", markers=_MK7) is False
+
+
+def test_conditions_do_not_break_the_two_target_rows():
+    # 条件A・Bを入れても`[23]`・`[55]`は発動し続けること（本Issueの目的）。
+    assert _mentions_as_derivative_work(
+        KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります", markers=_MK7
+    ) is True
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain",
+        markers=_MK7,
+    ) is True
+    # `[47]`（本編）と`[111]`は引き続き発動しない。
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件", markers=_MK7,
+    ) is False
+    assert _mentions_as_derivative_work(
+        MORIBITO_SERIES_EXTRACT, "精霊の守り人", markers=_MK7
+    ) is False
