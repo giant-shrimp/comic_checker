@@ -11,8 +11,10 @@ from comic_checker.wikipedia_client import (
     _is_person_article,
     _judge_extract,
     _judge_via_infobox,
+    _mentions_as_derivative_work,
     _search_queries,
     _strip_annotations,
+    _strip_disambiguation_suffix,
     _strip_trailing_note,
     _title_variants,
     judge,
@@ -1350,3 +1352,114 @@ def test_judge_stays_unknown_when_wikitext_fetch_fails():
         result = judge("インフォ実験作品")
 
     assert result.status == STATUS_UNKNOWN
+
+
+# --- Issue #51 (M6-A-2): 着地記事が入力タイトルの作品かを判定する ----------------------
+#
+# 以下の抽出文はいずれも2026-07-28時点の実記事から採った実文である。カテゴリ3
+# （スピンオフ／続編が親作品にリダイレクトする形）の実例と、そこで誤除外してはならない
+# 形を固定する。
+
+# `[23]` 彼女、人見知ります が着地する親作品の記事。入力作品はスピンオフとして言及される。
+KANOJO_OKARISHIMASU_EXTRACT = (
+    "『彼女、お借りします』（かのじょ おかりします）は、宮島礼吏による日本の漫画。"
+    "『週刊少年マガジン』（講談社）において、2017年32号から連載中。"
+    "略称は「かのかり」。"
+    "2020年6月21日から、ヒロインの1人・桜沢墨を主人公としたスピンオフ漫画"
+    "『彼女、人見知ります』（かのじょ ひとみしります）が"
+    "『マガジンポケット』において連載されている。"
+)
+
+# `[47]`（本編・正常系）と `[55]`（スピンオフ・カテゴリ3）が**同じ記事に着地する**。
+# 記事側の情報だけでは両者を分けられないので、入力タイトルとの完全一致が決め手になる。
+OTONARI_NO_TENSHISAMA_EXTRACT = (
+    "『お隣の天使様にいつの間にか駄目人間にされていた件』"
+    "（おとなりのてんしさまにいつのまにかだめにんげんにされていたけん）は、"
+    "佐伯さんによる日本のライトノベル。"
+    "メディアミックスとして、芝田わん作画、優木すず構成によるコミカライズが"
+    "2022年1月6日より『マンガUP!』にて連載中。"
+    "ぷよによる5.5巻とコミカライズの特装版のショートエピソードを題材としたスピンオフ"
+    "『お隣の天使様にいつの間にか駄目人間にされていた件 after the rain』が、"
+    "2023年12月7日より同アプリにて連載中。"
+)
+
+# `[111]` 精霊の守り人 が着地するシリーズ記事。**部分一致で照合すると誤除外になる形**で、
+# 『ジン～アニメ精霊の守り人外伝～』が入力を部分文字列として含み、同じ文に「外伝」がある。
+# この行は期待値が`完結`の正常系なので、発動してはならない。
+MORIBITO_SERIES_EXTRACT = (
+    "守り人シリーズ（もりびとシリーズ）は、上橋菜穂子による異世界ファンタジー小説の"
+    "シリーズ作品である。"
+    "2007年3月より「月刊少年ガンガン」にて『精霊の守り人』の漫画版が藤原カムイの手で"
+    "連載され、全3巻にて完結する。"
+    "2008年4月より「ヤングガンガン」にて『ジン～アニメ精霊の守り人外伝～』が連載された。"
+)
+
+
+def test_strip_disambiguation_suffix_removes_editorial_qualifier():
+    # Issue #51: 「 (漫画)」はWikipedia編集者の曖昧さ回避表記であって作品名の一部ではない。
+    # `_pick_article()`自身が「{変種} (漫画)」をprobeとして組み立て、`_accept_article()`が
+    # その接尾辞を「作品記事である」信号として信頼している以上、ゲートでだけ差異として
+    # 扱うのは一貫しない。実測では回帰群の7行（陰陽師・日常・タッチ・H2・大奥・ソムリエ・
+    # ミスミソウ）がこの形で、除去しないと入力が正しくても常にゲートが開く。
+    assert _strip_disambiguation_suffix("陰陽師 (漫画)") == "陰陽師"
+    assert _strip_disambiguation_suffix("日常 (漫画)") == "日常"
+    # 「(漫画)」固定ではない。回帰群の`風光る`の期待記事名がこの形。
+    assert _strip_disambiguation_suffix("風光る (渡辺多恵子の漫画)") == "風光る"
+    # 全角括弧も落とす。
+    assert _strip_disambiguation_suffix("ソムリエ（漫画）") == "ソムリエ"
+    # 接尾辞が無いものは変えない。
+    assert _strip_disambiguation_suffix("リコリス・リコイル") == "リコリス・リコイル"
+    assert _strip_disambiguation_suffix("守り人シリーズ") == "守り人シリーズ"
+
+
+def test_mentions_as_derivative_work_detects_category3_rows():
+    # Issue #51: カテゴリ3の実データ2件。どちらも親記事のリードで、入力タイトルが
+    # 『』に囲まれ、同じ文に派生作品マーカーがある形で言及されている。
+    assert _mentions_as_derivative_work(
+        KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります"
+    ) is True
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT,
+        "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain",
+    ) is True
+
+
+def test_mentions_as_derivative_work_spares_the_parent_work_itself():
+    # Issue #51の最大の難所: `[47]`（本編）と`[55]`（スピンオフ）は**同じ記事に着地する**。
+    # `[47]`の入力は`[55]`の『』内文字列の前方部分文字列なので、部分一致で照合すると
+    # `[47]`も一致してしまう。完全一致にすることで、ゲートに頼らず照合条件の側でも通る。
+    assert _mentions_as_derivative_work(
+        OTONARI_NO_TENSHISAMA_EXTRACT, "お隣の天使様にいつの間にか駄目人間にされていた件"
+    ) is False
+
+
+def test_mentions_as_derivative_work_does_not_fire_on_series_article():
+    # Issue #51: `[111]` 精霊の守り人 → 守り人シリーズ は期待値`完結`の正常系。
+    # 部分一致で照合すると『ジン～アニメ精霊の守り人外伝～』（同じ文に「外伝」）に
+    # 引っかかって誤除外になる。**ゲートは開いているので、ここで守れないと行が落ちる。**
+    assert _mentions_as_derivative_work(
+        MORIBITO_SERIES_EXTRACT, "精霊の守り人"
+    ) is False
+
+
+def test_mentions_as_derivative_work_normalizes_ideographic_space():
+    # Issue #51: `[55]`の入力は全角スペース(U+3000)を含むが、記事側の『』内は半角スペース。
+    # NFKCがU+3000をU+0020に正規化するので一致するが、**生の==では一致せず取り逃がす**。
+    raw_input = "お隣の天使様にいつの間にか駄目人間にされていた件　after the rain"
+    quoted_in_article = "お隣の天使様にいつの間にか駄目人間にされていた件 after the rain"
+    assert raw_input != quoted_in_article  # 正規化しないと一致しないことを明示する
+    assert _mentions_as_derivative_work(OTONARI_NO_TENSHISAMA_EXTRACT, raw_input) is True
+
+
+def test_mentions_as_derivative_work_requires_a_derivative_marker():
+    # Issue #51: 『』で言及されているだけでは弾かない。別名・略称は記事主題の言い換えとして
+    # 現れるので、マーカーが無い言及は通す（fail-open）。`ONE PIECE`の「『ONE PIECE』
+    # （ワンピース）は、」がこの形。
+    assert _mentions_as_derivative_work(ONE_PIECE_EXTRACT, "ONE PIECE") is False
+    assert _mentions_as_derivative_work(ONE_PIECE_EXTRACT, "ワンピース") is False
+
+
+def test_mentions_as_derivative_work_falls_open_on_empty_input():
+    # Issue #51: #45と同じくfail-open。判定できない入力で除外側に倒してはならない。
+    assert _mentions_as_derivative_work("", "彼女、人見知ります") is False
+    assert _mentions_as_derivative_work(KANOJO_OKARISHIMASU_EXTRACT, "") is False
