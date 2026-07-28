@@ -74,6 +74,26 @@ NOT_FOUND = "記事なし"
 MERGED_NOVEL = "原作小説/LN"
 MERGED_ILLUSTRATION = "イラスト群"
 MERGED_ANIME = "アニメ記事"
+MERGED_SERIES = "シリーズ記事"
+
+# --- ラベル定義の版 -------------------------------------------------------------------
+#
+# 拡張群と回帰群では**期待値を決めるときに見た範囲が違う**。取り違えると測定が無意味になるので、
+# 各行が明示的に持つ。
+#
+#   新定義: リード＋最初の `==` セクション **および** インフォボックスの終了系フィールド
+#           （Issue #47 で #35 から変更した。#35 §4 の申し送りによる）
+#   旧定義: リード＋最初の `==` セクションのみ（#35 当時の定義）
+#
+# **回帰群のラベルは旧定義のまま据え置く。** 新定義で付け直すと #35 のベースライン 35.0% との
+# 比較が成立しなくなるためで、この判断と根拠は Issue #47 の「新定義の適用範囲: 拡張群のみ」に
+# 記載してある。結果表では回帰群に「旧定義」、拡張群に「新定義」を必ず併記すること。
+DEFINITION_NEW = "新定義（本文＋インフォボックス）"
+DEFINITION_OLD = "旧定義（本文のみ・#35 当時）"
+
+# category の値（回帰群は #35 の構成をそのまま使う。拡張群の「観測された現象」とは別物）
+CAT_M35_CATEGORY1 = "1（同名・別ジャンルの記事が存在）"
+CAT_M35_CONTROL = "対照群（#35 の正常系の分母）"
 
 # category の値
 CAT_NORMAL = "正常系"
@@ -128,10 +148,10 @@ INFOBOX_DECIDED = (13, 19, 28, 52, 57, 72)
 
 class Label:
     __slots__ = ("no", "title", "expected_page", "expected", "exists", "merged_into",
-                 "category", "marks")
+                 "category", "marks", "definition")
 
     def __init__(self, no, title, expected_page, expected, exists, merged_into,
-                 category, marks=()):
+                 category, marks=(), definition=DEFINITION_NEW):
         self.no = no
         self.title = title
         self.expected_page = expected_page
@@ -140,6 +160,7 @@ class Label:
         self.merged_into = merged_into
         self.category = category
         self.marks = tuple(marks)
+        self.definition = definition
 
 
 _ = None  # merged_into / expected_page の「なし」を短く書くための別名
@@ -241,6 +262,84 @@ LABELS = (
 DENOMINATOR = tuple(label for label in LABELS if label.expected in (ONGOING, COMPLETED))
 
 
+# --- 回帰群（#35 のカテゴリ1＋対照群・22行） ---------------------------------------------
+#
+# **拡張群（LABELS）とは別物なので、絶対に混ぜて集計しないこと。** #47 に明記したとおり、
+# 拡張群は実運用の分布そのものだが、回帰群は #35 が failure mode を炙り出すために
+# **意図的に偏らせて構成した**サンプルである。混ぜると「偏ったサンプルの率」と「実分布の率」が
+# 区別できなくなる。回帰群を置いている目的は、**#35 のベースラインとの同一母集団での
+# 直接比較**（偽陰性率 35.0% / 判定不能率 36.4% / 誤答率 9.1%）のみである。
+#
+# 出所: Issue #35 のサンプル設計コメント
+# https://github.com/giant-shrimp/comic_checker/issues/35#issuecomment-5088118731
+#   - カテゴリ1（12行）= 同コメント「## 1. カテゴリ1: 同名・類似名の別ジャンル記事（12件）」の表
+#   - 対照群（10行）  = 同コメント「## 2. 対照群（10件・正常系の分母）」の表
+# 期待記事名・期待ステータス・記事実在は上記2つの表から**機械的にパースして取り込んだ**
+# （手入力による転記ミスを避けるため）。番号は #35 の行ID（1-1〜1-12 / 0-1〜0-10）に対応する。
+#
+# **全行が DEFINITION_OLD（旧定義）である。** ラベル付けは #35 当時に本文だけを見て行われて
+# おり、インフォボックスは見ていない。新定義で付け直すとベースラインとの比較が壊れるため
+# 据え置く（#47 の「新定義の適用範囲: 拡張群のみ」）。
+_R = None
+REGRESSION_LABELS = (
+    # カテゴリ1: 同名・類似名の別ジャンル記事が存在する入力
+    Label(101, "銀の匙", "銀の匙 Silver Spoon", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(102, "岳", "岳 みんなの山", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(103, "アド・アストラ", "アド・アストラ -スキピオとハンニバル-", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(104, "チェーザレ", "チェーザレ 破壊の創造者", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(105, "バジリスク", "バジリスク 〜甲賀忍法帖〜", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(106, "フラジャイル", "フラジャイル 病理医岸京一郎の所見", ONGOING, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(107, "風光る", "風光る (渡辺多恵子の漫画)", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(108, "陰陽師", "陰陽師 (漫画)", COMPLETED, "○", _R, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(109, "墨攻", "墨攻", UNKNOWN, "△", MERGED_NOVEL, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(110, "銀河英雄伝説", "銀河英雄伝説", UNKNOWN, "△", MERGED_NOVEL, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(111, "精霊の守り人", "守り人シリーズ", COMPLETED, "△", MERGED_SERIES, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    Label(112, "幼女戦記", "幼女戦記", ONGOING, "△", MERGED_NOVEL, CAT_M35_CATEGORY1, (), DEFINITION_OLD),
+    # 対照群: 同名衝突のない素直な作品
+    Label(201, "日常", "日常 (漫画)", ONGOING, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(202, "タッチ", "タッチ (漫画)", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(203, "H2", "H2 (漫画)", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(204, "大奥", "大奥 (漫画)", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(205, "ソムリエ", "ソムリエ (漫画)", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(206, "ミスミソウ", "ミスミソウ (漫画)", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(207, "鋼の錬金術師", "鋼の錬金術師", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(208, "ヒカルの碁", "ヒカルの碁", COMPLETED, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(209, "3月のライオン", "3月のライオン", ONGOING, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+    Label(210, "葬送のフリーレン", "葬送のフリーレン", ONGOING, "○", _R, CAT_M35_CONTROL, (), DEFINITION_OLD),
+)
+
+REGRESSION_DENOMINATOR = tuple(
+    label for label in REGRESSION_LABELS if label.expected in (ONGOING, COMPLETED)
+)
+
+# #35 §2-2〜§2-6 が記載しているベースライン（回帰群＝段階1の22行に対する値）。
+# 回帰群を置いている唯一の目的が、この値との**同一母集団での直接比較**である。
+# #35 段階1（2026-07-27 14:25:42〜14:26:34 JST）の生データ。回帰群の各行が #35 の時点で
+# どう出たかを {番号: (出力ステータス, 分類)} で持つ。出所は #35 の段階1測定結果コメント
+# 「## 1. 生データ」の表。
+#
+# **用途**: 回帰群にはマーク体系が無い（#35 由来のラベルなので M-1〜M-9 を付けていない）ため、
+# 「マークなしの失敗＝新規の失敗パターン」という拡張群向けの判定を回帰群に当てると、既知の
+# 失敗が全件「新規」に見えてしまう。回帰群ではマーク判定を行わず、代わりにこの表と照合して
+# **#35 に記載のある既知の失敗かどうか**を判定する。#35 に無い失敗が出たら、それが本当の
+# 新規パターンである。
+M35_STAGE1_RESULTS = {
+    101: ("判定不能", "E"), 102: ("判定不能", "E"), 103: ("判定不能", "E"),
+    104: ("記事なし", "E"), 105: ("完結", "A"), 106: ("連載中", "A"),
+    107: ("判定不能", "E"), 108: ("判定不能", "B"), 109: ("判定不能", "A"),
+    110: ("判定不能", "A"), 111: ("完結", "A"), 112: ("連載中", "A"),
+    201: ("完結", "C"), 202: ("完結", "A"), 203: ("完結", "A"), 204: ("連載中", "C"),
+    205: ("完結", "A"), 206: ("完結", "A"), 207: ("判定不能", "B"), 208: ("完結", "A"),
+    209: ("連載中", "A"), 210: ("連載中", "A"),
+}
+
+BASELINE_REGRESSION = {
+    "偽陰性率": (7, 20, 35.0),   # 分子=B＋E, 分母=20
+    "判定不能率": (8, 22, 36.4),  # 分子=出力が判定不能, 分母=22（記事なしは0件だった）
+    "誤答率": (2, 22, 9.1),      # 分子=C＋D。#35 に指標名は無く #47 が A〜E 表から算出した値
+}
+
+
 def _self_check():
     """ラベル定義の整合性を検算する。数値は Issue #47 に記載したものと一致すること。"""
     from collections import Counter
@@ -277,6 +376,33 @@ def _self_check():
     # M-2 と M-8 の和集合＝インフォボックス経路で決着した6行、という対応を固定する。
     infobox_marked = {label.no for label in LABELS if M2 in label.marks or M8 in label.marks}
     assert infobox_marked == set(INFOBOX_DECIDED), infobox_marked
+
+    # --- 回帰群の不変条件 ---
+    # 拡張群と混ざっていないこと、および #35 の記載値と一致することを機械的に固定する。
+    assert len(REGRESSION_LABELS) == 22, len(REGRESSION_LABELS)
+    assert all(label.definition == DEFINITION_OLD for label in REGRESSION_LABELS)
+    assert all(label.definition == DEFINITION_NEW for label in LABELS)
+    assert not ({label.no for label in REGRESSION_LABELS} & {label.no for label in LABELS}), \
+        "回帰群と拡張群で番号が衝突している"
+    reg_status = Counter(label.expected for label in REGRESSION_LABELS)
+    # #35 の表をパースして得た分布。手入力ではなく #35 の記載そのもの。
+    assert reg_status == {COMPLETED: 15, ONGOING: 5, UNKNOWN: 2}, reg_status
+    assert len(REGRESSION_DENOMINATOR) == 20, len(REGRESSION_DENOMINATOR)
+    reg_cat = Counter(label.category for label in REGRESSION_LABELS)
+    assert reg_cat == {CAT_M35_CATEGORY1: 12, CAT_M35_CONTROL: 10}, reg_cat
+    assert all(label.expected != NOT_FOUND for label in REGRESSION_LABELS), \
+        "#35 の回帰群に「記事なし」期待の行は無い"
+    for label in REGRESSION_LABELS:
+        assert (label.merged_into is not None) == (label.exists == "△"), label.no
+    assert BASELINE_REGRESSION["偽陰性率"][1] == len(REGRESSION_DENOMINATOR)
+    assert BASELINE_REGRESSION["判定不能率"][1] == len(REGRESSION_LABELS)
+    # #35 段階1 の生データが回帰群と1対1で対応すること。
+    assert set(M35_STAGE1_RESULTS) == {label.no for label in REGRESSION_LABELS}
+    # #35 の集計値と生データが整合すること（転記ミスの検出）。
+    m35_classes = Counter(k for _, k in M35_STAGE1_RESULTS.values())
+    assert m35_classes == {"A": 13, "B": 2, "C": 2, "E": 5}, m35_classes
+    m35_unknown = sum(1 for s, _ in M35_STAGE1_RESULTS.values() if s == UNKNOWN)
+    assert m35_unknown == BASELINE_REGRESSION["判定不能率"][0] == 8, m35_unknown
     assert marks == {M1: 6, M1A: 2, M2: 5, M2A: 1, M3: 2, M4: 2, M5: 2,
                      M6: 1, M7: 1, M8: 1, M9: 1, TRANSFER: 2}, marks
     assert merged == {MERGED_NOVEL: 7, MERGED_ILLUSTRATION: 1, MERGED_ANIME: 1}, merged
