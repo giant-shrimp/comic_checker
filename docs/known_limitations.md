@@ -141,8 +141,11 @@
   answering `記事なし`. The failure is silent — the row simply reports no article, which is
   indistinguishable from a title Wikipedia has never covered.
   **There is no runtime mitigation. The only check that exists is re-running the Issue #51
-  adversarial corpus** (`hastemplate:"Infobox animanga/Manga"`, 150 articles, all incoming
-  redirects; ~150 API calls, a few minutes). A false-exclusion count above zero there is
+  corpus survey — `python scripts/survey_m6a2_corpus.py`**, which reproduces both the
+  adversarial group (`hastemplate:"Infobox animanga/Manga"`, 150 articles, all incoming
+  redirects) and the normal group, and reports any firing that was not in the recorded
+  2026-07-29 set. It exits non-zero on a difference. Budget ~370 API calls / 20-25 minutes;
+  results are cached on disk so an interrupted run resumes. A false-exclusion count above zero there is
   the signal that the vocabulary has drifted. Re-run it before trimming
   `MERGED_COVERAGE_MARKERS`, and after any report of a title that used to resolve and now
   returns `記事なし`. Note that a `〜シリーズ` article name is *not* a usable substitute for
