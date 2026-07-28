@@ -285,6 +285,75 @@ def _is_person_article(extract):
     return first_segment.endswith(PERSON_TYPE_SUFFIX)
 
 
+# Issue #51 (M6-A-2): カテゴリ3 ——「作品の記事が存在しない入力が、Wikipediaのリダイレクトで
+# *親作品*の記事に着地し、親作品の連載状況を根拠に確信を持って誤答する」系統への対処。
+# #45で潰したカテゴリ2（作者記事）と構造は同じだが、着地先が体裁の正しい作品記事なので
+# `_is_person_article()`では原理的に弾けない。実分布（#47拡張群72行）では2件（`彼女、
+# 人見知ります`・`お隣の天使様に…件　after the rain`）で、どちらもD（確信を持った誤答）。
+#
+# 【この2関数はまだ`_accept_article()`に繋いでいない】Issue #51のコーパス調査
+# （敵対群・正常群）を通すまで未接続のままにする。調査したコードと出荷するコードを
+# 同一にするため、プロトタイプを別に書くのではなく本体に置いて調査から呼ぶ。
+#
+# 判定は「ゲート」と「照合」の2段。どちらも実測（着地63行）で外せないことを確認済み。
+#   ゲート: NFKC(接尾辞を除いた着地先タイトル) != NFKC(入力原文) のときだけ照合に進む。
+#     - **変種ではなく入力原文と比べる**。`[47]`（本編）と`[55]`（スピンオフ）は同じ記事に
+#       着地するので、分ける鍵は入力側にしかない。変種と比べると`[55]`の後置注記除去変種が
+#       着地先と一致してゲートが閉じ、規則が発動しなくなる。
+#     - 曖昧さ回避接尾辞は除く。`日常`→`日常 (漫画)`のように入力が正しくても常にゲートが
+#       開く行が生まれるため（実測7行）。`(漫画)`は`_pick_article()`自身がprobeとして
+#       組み立て`_accept_article()`が信頼している表記なので、ここで差異扱いすると一貫しない。
+#   照合: リード文の1文ごとに、入力タイトルが『』に囲まれ、かつ同じ文に派生作品マーカーが
+#     あるかを見る。**『』内と入力はNFKC完全一致でなければならない。** 部分一致にすると
+#     実測で2件壊れる: (1)`[47]`の入力は`[55]`の『』内の前方部分文字列なのでゲートだけが
+#     頼りになる、(2)`[111]`（精霊の守り人→守り人シリーズ・期待は完結）が
+#     『ジン～アニメ精霊の守り人外伝～』に引っかかり、**ゲートが開いているので守れない**。
+#
+# 【なぜ言及の有無を条件にしないか】言及は「入力の作品である」証拠にも「別作品である」
+# 証拠にもならない。`幽遊白書`は着地先`幽☆遊☆白書`のリードに文字列として現れず（装飾記号）、
+# 逆に`彼女、人見知ります`は現れる。倒す向きが逆になるので、*どういう文脈で*言及されて
+# いるかだけが情報を持つ。
+#
+# 【fail-open】`_is_person_article()`と同じく、既知の悪いパターンだけを名指しで除外する
+# 装置である。正の証拠が取れない限り従来の挙動を変えない。既定値をfail-closedにすると、
+# 別名・略称・シリーズ着地（ワンピース→ONE PIECE、こち亀→こちら葛飾区亀有公園前派出所、
+# 精霊の守り人→守り人シリーズ等）がまとめて落ちる。
+DERIVATIVE_WORK_MARKERS = ("スピンオフ",)
+_QUOTED_WORK_RE = re.compile(r"『([^』]*)』")
+# 末尾の丸括弧1組だけを落とす。`(漫画)`固定にしないのは`風光る (渡辺多恵子の漫画)`のような
+# 形があるため。入れ子や本文中の括弧まで落とさないよう、末尾かつ1組に限定している。
+_DISAMBIGUATION_SUFFIX_RE = re.compile(r"\s*[（(][^（()）]*[)）]\s*$")
+
+
+def _strip_disambiguation_suffix(page_title):
+    """記事名から曖昧さ回避の接尾辞（「 (漫画)」等）を取り除く。"""
+    return _DISAMBIGUATION_SUFFIX_RE.sub("", page_title).strip()
+
+
+def _mentions_as_derivative_work(extract, input_title, markers=DERIVATIVE_WORK_MARKERS):
+    """リード文が入力タイトルを「派生作品」として紹介しているかを判定する。
+
+    Trueなら、この記事は入力タイトルの作品についての記事ではない（＝別作品の記事に
+    着地している）。判定できない場合はFalse（上のコメントの「fail-open」の実装であり、
+    この既定値を変えてはならない）。
+
+    `markers`を引数にしているのは、Issue #51のコーパス調査が語彙の候補を差し替えながら
+    **同じ関数で**掃くためである。調査で確定した語彙を既定値に反映すること。
+    """
+    if not extract or not input_title:
+        return False
+    normalized_title = _normalize(input_title)
+    if not normalized_title:
+        return False
+    for sentence in _split_sentences(extract):
+        if not any(marker in sentence for marker in markers):
+            continue
+        for quoted in _QUOTED_WORK_RE.findall(sentence):
+            if _normalize(quoted) == normalized_title:
+                return True
+    return False
+
+
 # Issue #12: 本文解析（_judge_extract）が判定不能のときだけ参照する補助情報源。
 # {{Infobox animanga/Manga}}テンプレートの終了系フィールドが空欄かどうかは、本文解析より
 # 頑健な連載中/完結シグナルになりうることを実現可能性検証で確認した一方、記事内に
