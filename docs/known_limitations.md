@@ -211,6 +211,41 @@
   future regression here will not show up there. `scripts/survey_m6d4_infobox.py --verify`
   is what pins it, against the 96 labelled rows in `scripts/m6d4_labels.py`.
 
+- **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
+  about 7 seconds per input row (Issue #40).** `_api_get()` sleeps before each request and
+  retries a 429 up to six times with a `5.0 × attempt` backoff. Before #40 there was no
+  pacing at all in the production path: `judge()` fires **2–4 requests per row**
+  (`_resolve_titles` → `_fetch_extract` → `_fetch_wikitext` when the prose is inconclusive
+  → a search when neither resolves) and they went out back to back. That burst is what
+  tripped a 429 during the Issue #51 corpus work.
+  **Budget from the upper figure, not the average.** Measured 2026-07-30, a 94-row run of
+  `scripts/measure_false_negative_rate.py` took 425 s — but 44% of those rows are
+  `記事なし` and never fetch an article body, so they are cheap. **A sheet where every
+  title resolves costs about 7 s per row.**
+
+  | Input rows | Upper estimate (~7 s/row) | Measured average (4.5 s/row, 55.6% coverage) |
+  |---|---|---|
+  | 72 (the real-world sheet) | **~8.4 min** | ~5.4 min |
+  | 100 | **~12 min** | ~7.5 min |
+  | 300 | **~35 min** | ~22 min |
+  | 500 | **~58 min** | ~38 min |
+  | 1,000 | **~117 min** | ~75 min |
+
+  **The 1.0 s value is deliberately conservative and its basis is thin.** It was chosen in
+  #51 because 429s stopped appearing — nothing more. Wikimedia publishes no hard rate limit
+  for anonymous read requests; what it asks for is serial access at a sensible rate, and
+  this tool is already serial, so the 429 was most likely caused by the burst rather than
+  the rate. A shorter interval might well be enough. **That is an untested hypothesis**, and
+  the asymmetry favours waiting: erring fast risks a 429 that aborts the whole run, erring
+  slow only costs time. Measure before lowering it.
+- **A run cannot be cancelled once it starts (Issue #61).** `gui.py` has no stop control;
+  `_run_worker` calls `main.run()` and it goes to completion. Progress reporting keeps
+  working — the window does not freeze — but on a 500-row sheet that means roughly an hour
+  with no way out short of killing the process. Picking the wrong file and pressing run
+  commits you to the whole thing. This became worth flagging when #40 made runs ~1.6×
+  longer. It is a separate problem from #33 (the worker thread reading Tk variables
+  directly), though both live in `_run_worker` and will collide if worked on at once.
+
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
 Everything below only applies when a row falls back to manba.co.jp — it never affects a
