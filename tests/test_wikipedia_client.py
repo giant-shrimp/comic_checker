@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 from comic_checker.wikipedia_client import (
@@ -9,6 +10,7 @@ from comic_checker.wikipedia_client import (
     WikipediaJudgment,
     _declares_merged_coverage,
     _extract_braced_blocks,
+    _has_continuation_evidence,
     _has_ongoing_signal,
     _is_person_article,
     _judge_extract,
@@ -729,11 +731,32 @@ def _manga_infobox_block(fields):
 # Issue #12: 事前調査（転生したらスライムだった件・呪術廻戦・NARUTO -ナルト-）で確認した
 # 構造を模した合成フィクスチャ。本編ブロックは`タイトル`欄が無く、スピンオフブロックは
 # 明示的な`タイトル`欄を持つ。
+# Issue #56: 終了系が空欄なだけでは`連載中`と断定しなくなったので、継続の証拠
+# （`巻数`の`既刊`表記）を持たせる。**値そのものは上と同じく合成である**（実在の記事から
+# 採った値ではない）。形は M6-D-4（Issue #53）で実測した実データに倣っており、たとえば
+# `うしろの正面カムイさん`の`既刊12巻（2026年2月現在）`が同じ形。実値は
+# `scripts/m6d4_labels.py` に96行分ある。
+# この経路が誤りやすいことの根拠: 実データ1,800件の調査で、この経路が`連載中`と答えた
+# 75行のうち46行（61.3%）が実際には完結していた。
 MAIN_BLOCK_ONGOING = _manga_infobox_block(
     [
         ("作者", "[[某作者]]"),
         ("出版社", "[[集英社]]"),
         ("開始号", "2015年1号"),
+        ("巻数", "既刊20巻（2026年6月現在）"),
+        ("終了号", ""),
+        ("終了日", ""),
+    ]
+)
+
+# Issue #56: 終了系は空欄だが継続の証拠が無い形（合成）。実データではこの形の61.3%が
+# 完結していたので、`連載中`と断定せず判定不能に倒す。
+MAIN_BLOCK_NO_EVIDENCE = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2015年1号"),
+        ("巻数", "全12巻"),
         ("終了号", ""),
         ("終了日", ""),
     ]
@@ -780,6 +803,7 @@ NESTED_MAIN_BLOCK = (
     "|作者 = [[某作者]]\n"
     "|出版社 = {{small|[[集英社]]}}\n"
     "|開始号 = 2015年1号\n"
+    "|巻数 = 既刊20巻（2026年6月現在）\n"
     "|終了号 = \n"
     "|終了日 = \n"
     "}}"
@@ -787,11 +811,19 @@ NESTED_MAIN_BLOCK = (
 
 
 def test_judge_via_infobox_main_block_is_ongoing_when_end_fields_are_empty():
-    # HUNTER×HUNTER形: 本編ブロックの終了号/終了日が空欄なら連載中。
+    # HUNTER×HUNTER形: 本編ブロックの終了号/終了日が空欄で、かつ継続の証拠があれば連載中。
     wikitext = MAIN_BLOCK_ONGOING + "\n\n" + SPINOFF_BLOCK
-    status, evidence = _judge_via_infobox(wikitext)
+    status, evidence = _judge_via_infobox(wikitext, today=date(2026, 7, 29))
     assert status == "連載中"
     assert "インフォボックス" in evidence
+
+
+def test_judge_via_infobox_stays_unknown_without_continuation_evidence():
+    # Issue #56: 空欄だけでは足りない。同じ構造でも継続の証拠が無ければ判定不能のまま。
+    wikitext = MAIN_BLOCK_NO_EVIDENCE + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext, today=date(2026, 7, 29))
+    assert status is None
+    assert evidence is None
 
 
 def test_judge_via_infobox_main_block_is_completed_when_end_field_has_value():
@@ -1272,7 +1304,9 @@ def test_judge_upgrades_unknown_to_ongoing_via_infobox():
         "comic_checker.wikipedia_client.requests.get",
         side_effect=_infobox_probe_responses() + [wikitext_response],
     ) as mock_get:
-        result = judge("インフォ実験作品")
+        # Issue #56: 基準日を固定して渡す。実行日を使うとフィクスチャの`既刊…2026年`が
+        # 5年後に古くなり、コードを変えていないのにテストが落ちる。
+        result = judge("インフォ実験作品", today=date(2026, 7, 29))
 
     assert result.status == "連載中"
     assert "インフォボックス" in result.evidence
@@ -1631,3 +1665,121 @@ def test_different_work_check_is_not_applied_to_the_trusted_path():
         assert _accept_article(
             "親作品 (漫画)", trusted=False, input_title="彼女、人見知ります"
         ) is None
+
+
+# --- Issue #56 (M6-B-4): インフォボックスの「終了系が空欄 ⇒ 連載中」に継続の証拠を要求 ---
+#
+# M6-D-4（Issue #53）の実測: 作品記事1,800件から「地の文が判定不能かつインフォボックスが
+# 連載中」の75行を人手判定したところ、**46行（61.3%）が実際には完結していた**。別に取った
+# ホールドアウト500記事・21行でも 13行（61.9%）で、2つの独立した標本で率がほぼ一致した。
+#
+# 空欄は「連載が続いている記録」ではなく「誰も書かなかった」場合と見分けがつかない。
+# そこで継続の**積極的な証拠**（`巻数`の`既刊`表記）を要求する。設計は #53 の B-7。
+
+# 2026-07-29 時点の実データから採った`巻数`フィールドの実値。
+KIKAN_RECENT = "既刊12巻（2026年2月現在）"          # うしろの正面カムイさん
+KIKAN_STALE = "既刊5巻（2017年5月現在）"             # ガンダム Gのレコンギスタ（実際は完結）
+KIKAN_NO_DATE = "既刊46巻"                          # やくならマグカップも（連載中）
+ZEN_ONLY = "全3巻"                                   # 機動戦士ガンダム外伝（完結）
+ZEN_AND_KIKAN = (                                    # コボちゃん（連載中）
+    "既刊120巻（蒼鷹社版全60巻+芳文社版既刊61巻）<br />（2026年7月現在）"
+)
+MULTI_DATE = (                                       # 鬼平犯科帳（連載中）
+    "単行本：既刊127巻（2026年4月現在）<br />ワイド版：既刊65巻（2026年4月現在）"
+    "<br />文庫版：既刊77巻（2025年4月現在）"
+)
+WITH_REF_TAG = (                                     # 初めて恋をした日に読む話（連載中）
+    "既刊20巻（2026年7月23日現在）<ref name=\"hajikoi\">{{Cite web|和書|"
+    "url=https://example.invalid |accessdate=2026-07-23}}</ref>"
+)
+TODAY = date(2026, 7, 29)  # #53 の測定日。実行日に依存させないため固定して渡す
+
+
+def test_continuation_evidence_covers_the_four_shapes_from_the_survey():
+    # Issue #56: M6-D-4 で見つかった4類型。単純な「既刊があるか」では設計できない。
+    # 全N巻だけ → 完結の表現。証拠なし
+    assert _has_continuation_evidence(ZEN_ONLY, today=TODAY) is False
+    # 既刊だが日付が古い → 更新が止まっている。証拠なし
+    assert _has_continuation_evidence(KIKAN_STALE, today=TODAY) is False
+    # 全N巻と既刊の同居 → **新しい既刊があるので証拠あり**。否定条件を並べる設計だと
+    # ここを誤って弾く（コボちゃんは連載中）。正の証拠を見るからこそ通る。
+    assert _has_continuation_evidence(ZEN_AND_KIKAN, today=TODAY) is True
+    # 既刊はあるが日付なし → **証拠と認める**（B-7）。日付を書かない編集者が一定数おり、
+    # 認めない設計(B-6)だとホールドアウトで副作用が25%に達した。
+    assert _has_continuation_evidence(KIKAN_NO_DATE, today=TODAY) is True
+
+
+def test_continuation_evidence_takes_the_newest_of_several_dates():
+    # Issue #56: 版ごとに更新時期が違うだけなので、最新が「最後に更新された時点」を表す。
+    # 鬼平犯科帳は 2026/2026/2025 を持つ。最も古い2025を採ると判定が変わる年が出るため、
+    # 最新を採ることを固定する。
+    assert _has_continuation_evidence(MULTI_DATE, today=date(2029, 1, 1)) is True
+    # 最新(2026)からも5年経てば証拠にならない。
+    assert _has_continuation_evidence(MULTI_DATE, today=date(2031, 6, 1)) is False
+
+
+def test_continuation_evidence_reads_dates_through_markup():
+    # Issue #56: `<br>` `<ref>` 等のタグを除去せず `(\d{4})年` で走査する。最新を採る
+    # 方針なら、ref内の日付を拾っても結論は変わらない。
+    assert _has_continuation_evidence(WITH_REF_TAG, today=TODAY) is True
+
+
+def test_continuation_evidence_does_not_depend_on_the_run_date():
+    # Issue #56: 「5年以内」は実行時点に依存するので、基準日を注入できないと
+    # 2026年に「2022年は新しい」と書いたテストが2028年に落ちる。
+    volumes = "既刊3巻（2022年5月現在）"
+    assert _has_continuation_evidence(volumes, today=date(2026, 1, 1)) is True
+    assert _has_continuation_evidence(volumes, today=date(2028, 1, 1)) is False
+
+
+def test_continuation_evidence_falls_closed_without_a_field():
+    # Issue #56: `巻数`フィールド自体が無い形。証拠が取れないので判定不能に倒す。
+    # ⚠ 実測では連載中の作品（`一人之下`）もこの形を取りうる。合算96行での副作用1件は
+    # これで、日付の扱いでは対処できない（docs/known_limitations.md 参照）。
+    assert _has_continuation_evidence(None, today=TODAY) is False
+    assert _has_continuation_evidence("", today=TODAY) is False
+
+
+def test_judge_via_infobox_requires_continuation_evidence():
+    # Issue #56: 終了系が空欄でも、継続の証拠が無ければ連載中と断定しない。
+    wikitext_stale = (
+        # 本編ブロックは`タイトル`フィールドを持たないもの（_find_main_manga_block）。
+        "{{Infobox animanga/Manga\n|巻数 = " + KIKAN_STALE
+        + "\n|終了号 = \n|終了日 = \n}}"
+    )
+    status, _evidence = _judge_via_infobox(wikitext_stale, today=TODAY)
+    assert status is None
+
+    wikitext_recent = (
+        "{{Infobox animanga/Manga\n|巻数 = " + KIKAN_RECENT
+        + "\n|終了号 = \n|終了日 = \n}}"
+    )
+    status, evidence = _judge_via_infobox(wikitext_recent, today=TODAY)
+    assert status == "連載中"
+    assert "既刊" in evidence
+
+
+def test_judge_via_infobox_still_reports_completion_from_a_filled_field():
+    # Issue #56: 完結方向は変えていない。終了系に値があれば継続の証拠を見るまでもない。
+    wikitext = (
+        "{{Infobox animanga/Manga\n|巻数 = " + ZEN_ONLY
+        + "\n|終了号 = 2020年12号\n}}"
+    )
+    status, evidence = _judge_via_infobox(wikitext, today=TODAY)
+    assert status == "完結"
+    assert "終了号" in evidence
+
+
+def test_infobox_decided_rows_keep_their_continuation_evidence():
+    # Issue #56: M6-D-3 の INFOBOX_DECIDED 6行。実運用でこの経路が決めている行で、
+    # 6行とも期待値は`連載中`。#53 の実測では B-7 で発動0/6件だった。
+    # 巻数の実値は 2026-07-29 に取得したもの。
+    for volumes in (
+        "既刊12巻（2026年2月現在）",   # [13] うしろの正面カムイさん
+        "既刊15巻（2026年4月現在）",   # [19] てんぷる
+        "既刊33巻（2026年6月現在）",   # [28] カッコウの許嫁
+        "既刊15巻（2026年7月現在）",   # [52] 月曜日のたわわ
+        "既刊8巻（2026年1月現在）",    # [57] リコリス・リコイル
+        "既刊21巻（2026年6月現在）",   # [72] 魔都精兵のスレイブ
+    ):
+        assert _has_continuation_evidence(volumes, today=TODAY) is True, volumes

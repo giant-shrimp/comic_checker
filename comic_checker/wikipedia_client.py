@@ -1,3 +1,4 @@
+from datetime import date
 import re
 import unicodedata
 from urllib.parse import quote
@@ -466,6 +467,8 @@ TITLE_FIELD_NAME = "タイトル"
 # （HUNTER×HUNTER・こち亀等）で確認済み。`終了`は念のため追加した未確認の候補で、
 # 実際のインフォボックスで観測できたわけではない。
 END_FIELD_NAMES = ("終了号", "終了日", "終了")
+# 継続の証拠を読むフィールド（Issue #56）。`既刊N巻（YYYY年M月現在）`の形。
+VOLUME_FIELD_NAME = "巻数"
 
 
 class WikipediaJudgment:
@@ -615,11 +618,68 @@ def _find_main_manga_block(blocks):
     return titleless[0]
 
 
-def _judge_via_infobox(wikitext):
+# Issue #56 (M6-B-4): 「終了系フィールドが空欄 ⇒ 連載中」は、`完結`方向の推論の対偶であって
+# ずっと弱い。**空欄は「連載が続いている記録」ではなく、「誰も書かなかった」場合と見分けが
+# つかない。** `完結`方向には#30でゲートが付いたのに、`連載中`方向には反証チェックが無かった。
+#
+# M6-D-4（Issue #53）の実測でこの推論が高頻度で誤ることが確定した。作品記事1,800件から
+# 「地の文が判定不能かつインフォボックスが連載中」の75行を人手判定したところ、**46行
+# （61.3%）が実際には完結していた**。別に取ったホールドアウト500記事・21行でも13行
+# （61.9%）で、2つの独立した標本で率がほぼ一致している。
+#
+# そこで空欄の消極的解釈をやめ、**継続の積極的な証拠**を要求する。`巻数`フィールドは新刊が
+# 出るたびに更新されるので、`既刊N巻（YYYY年M月現在）`は継続を積極的に記録したものである。
+# 【前提】5年間更新が止まっている記事は、編集者が追随をやめたか作品自体が完結している
+# 可能性が高い。この経験則が成り立たない場合（編集が活発でない記事の連載中作品）が副作用。
+#
+# CONTINUATION_STALE_YEARS は**実データの分布から決めた。決め打ちではない。**
+# `既刊`があり日付が読めた行の年をラベル別に並べると（#53 本調査、現在=2026年）:
+#   失敗(実は完結) n=8 : 2012, 2013, 2015, 2016, 2017, 2019, 2021 ‖ 2023
+#   正解(連載中)  n=28 : 2022 ‖ 2023, 2024×3, 2025×4, 2026×19
+# **切れ目は 2021|2022**（2026-2021 = 5年）。3年だと副作用3件、4年で2件、5年で1件、
+# 6年では検出だけ落ちる。⚠ **分布は完全には分離していない**（失敗側に2023年、正解側に
+# 2022年があり逆転している）。**日付は有効な条件だが完全な分離器ではない。**
+# この値を動かすときは同じ分布を測り直すこと。
+#
+# 【日付が読めないときは証拠として認める】これが設計の要点で、実測で決めた。認めない案
+# （B-6）だと本調査75行では副作用3.4%と出るが、**ホールドアウト21行では25.0%（8倍）**に
+# なった。日付を書かない編集者が一定数いるためである。認める案（B-7）は検出を5件失う代わりに
+# 副作用を1/3にする。取りこぼしは誤答が残る危険側、副作用は偽陰性で安全側だが、**現状は
+# 59件すべてが誤答**なので、54件を消せるなら副作用を抑える方を採る。
+# 合算96行の実測: 検出 54/59 = 91.5% / 副作用 1/37 = 2.7%。
+CONTINUATION_STALE_YEARS = 5
+CONTINUATION_MARKER = "既刊"
+_VOLUME_YEAR_RE = re.compile(r"(\d{4})年")
+
+
+def _has_continuation_evidence(volumes_field, today=None):
+    """`巻数`フィールドが連載の継続を積極的に記録しているか（Issue #56）。
+
+    `today`を注入可能にしているのは回帰テストのためである。実行日に依存する判定を固定日で
+    テストしないと、2026年に「2022年は新しい」と書いたテストが2028年に落ちる。本番はNone
+    （＝実行日）で呼ぶ。
+
+    日付は**最新を採る**。`鬼平犯科帳`のように版ごとの巻数が並ぶ形（単行本2026・ワイド版
+    2026・文庫版2025）では、最新が「最後に更新された時点」を表すため。`<br>`や`<ref>`等の
+    マークアップは除去せずに走査する ―― 最新を採る方針なら、ref内の日付を拾っても結論は
+    変わらない。
+    """
+    if not volumes_field or CONTINUATION_MARKER not in volumes_field:
+        return False
+    years = [int(year) for year in _VOLUME_YEAR_RE.findall(volumes_field)]
+    if not years:
+        # 日付が書かれていないだけ。`既刊`という積極的な記録があるので証拠と認める。
+        return True
+    reference = today or date.today()
+    return (reference.year - max(years)) < CONTINUATION_STALE_YEARS
+
+
+def _judge_via_infobox(wikitext, today=None):
     """wikitextから本編漫画のインフォボックスを特定し、連載中/完結を判定する。
 
-    本編を確信を持って特定できない場合、または終了系フィールドが1つも存在せず
-    判定材料が無い場合は、(None, None)を返す（呼び出し側は判定不能のまま維持する）。
+    本編を確信を持って特定できない場合、終了系フィールドが1つも存在せず判定材料が無い場合、
+    および終了系が空欄でも継続の証拠が取れない場合（Issue #56）は、(None, None)を返す
+    （呼び出し側は判定不能のまま維持する）。
     """
     blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
     main_block = _find_main_manga_block(blocks)
@@ -634,7 +694,11 @@ def _judge_via_infobox(wikitext):
         if value:
             return "完結", f"インフォボックス: {field_name} = {value}"
 
-    return "連載中", "インフォボックス: 終了号/終了日等が空欄"
+    # 終了系は空欄。ここで`連載中`と断定するには継続の積極的な証拠が要る（Issue #56）。
+    volumes = _infobox_field(main_block, VOLUME_FIELD_NAME)
+    if not _has_continuation_evidence(volumes, today=today):
+        return None, None
+    return "連載中", f"インフォボックス: 終了号/終了日等が空欄、巻数 = {volumes}"
 
 
 def _api_get(params):
@@ -917,12 +981,15 @@ def _pick_article(title):
             or _pick_via_search(variants, set(probes), title))
 
 
-def judge(title, use_infobox=True):
+def judge(title, use_infobox=True, today=None):
     """タイトルからWikipedia記事を探し、連載中/完結を判定する。
 
     use_infobox=False にすると、Issue #12のインフォボックス補助経路を無効化し、本文解析
     のみで判定する（Issue #16: 補助経路のOn/Off比較計測専用のフラグ。判定条件そのものは
     変更しない）。
+
+    todayはIssue #56の継続の証拠判定に使う基準日。回帰テストが実行日に依存しないよう
+    注入できるようにしてある。本番はNone（＝実行日）で呼ぶ。
     """
     article = _pick_article(title)
     if article is None:
@@ -934,7 +1001,7 @@ def judge(title, use_infobox=True):
     if use_infobox and status == STATUS_UNKNOWN:
         wikitext = _fetch_wikitext(matched_title)
         if wikitext is not None:
-            infobox_status, infobox_evidence = _judge_via_infobox(wikitext)
+            infobox_status, infobox_evidence = _judge_via_infobox(wikitext, today=today)
             # M6-B-3（Issue #30）: 本文に明確な現在形の連載シグナルがあるのに本文解析が
             # 決着しなかった場合、インフォボックスの終了系フィールドを根拠に完結と
             # 断定してはならない。
