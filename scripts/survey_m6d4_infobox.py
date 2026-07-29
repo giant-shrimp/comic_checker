@@ -9,6 +9,12 @@
 出荷中の `_has_continuation_evidence()` を当て、検出力と副作用を出す。Issue #56 の
 ゲートを触ったあとの回帰確認はこれで足りる。
 
+    python scripts/survey_m6d4_infobox.py --verify --expect 54/59,1/37
+
+`--expect 検出/失敗数,副作用/正解数` を渡すと、実測と一致しなければ非ゼロ終了する。
+比較は**整数の分子・分母**で行う（表示文字列や丸めた百分率で比べない）。`scripts/verify.sh`
+はこの形で呼んでいる。
+
 ## 母集団は「弱い推論が実際に決めている行」そのもの
 
 インフォボックス経路は `_judge_extract()` が `判定不能` を返したときにしか走らない。
@@ -158,11 +164,26 @@ def volume_field(wikitext):
 LABEL_OBSERVED_ON = date(2026, 7, 29)  # ラベルを付けた日。巻数の日付判定の基準にする
 
 
-def verify_against_labels():
+def _parse_expectation(argv):
+    """`--expect 54/59,1/37` を ((det, fail), (side, ok)) に解く。無ければ None。"""
+    if "--expect" not in argv:
+        return None
+    raw = argv[argv.index("--expect") + 1]
+    detection, side_effect = raw.split(",")
+    det, fail = (int(part) for part in detection.split("/"))
+    side, ok = (int(part) for part in side_effect.split("/"))
+    return (det, fail), (side, ok)
+
+
+def verify_against_labels(expectation=None):
     """人手ラベル96行に対して、出荷中の判定を当てて検出力と副作用を出す（API不使用）。
 
     **ラベルは `scripts/m6d4_labels.py` にあり、このスクリプトは読むだけで書かない。**
     調査の出力（`.m6d4_*.json`）とは別物なので、調査を何度再実行してもラベルは動かない。
+
+    `expectation` を渡すと、実測と一致しない場合に非ゼロ終了する。比較は整数の分子・分母で
+    行う ―― 表示文字列や丸めた百分率で比べると、桁揃えの変更や 91.5% に丸まる別の値を
+    取り違える。
     """
     # 遅延 import。この関数は Issue #56 で追加されるので、ゲート未導入の時点でも
     # スクリプト自体は（--pilot 等で）動くようにしておく。
@@ -210,10 +231,25 @@ def verify_against_labels():
                 label.volumes, today=LABEL_OBSERVED_ON):
             print(f"    {label.title}  {label.volumes!r}")
 
+    if expectation is None:
+        return
+    observed = ((totals["det"], totals["fail"]), (totals["side"], totals["ok"]))
+    if observed != expectation:
+        (edet, efail), (eside, eok) = expectation
+        (odet, ofail), (oside, ook) = observed
+        raise SystemExit(
+            "\nVERIFY FAILED: Issue #53 の実測値と一致しません\n"
+            f"  検出   期待 {edet}/{efail}  実測 {odet}/{ofail}\n"
+            f"  副作用 期待 {eside}/{eok}  実測 {oside}/{ook}\n"
+            "  ゲートを変えたなら scripts/survey_m6d4_infobox.py を再実行して"
+            "ラベルと期待値を測り直すこと。"
+        )
+    print("\n  ✓ Issue #53 の実測値と一致")
+
 
 def main():
     if "--verify" in sys.argv:
-        verify_against_labels()
+        verify_against_labels(expectation=_parse_expectation(sys.argv))
         return
     if "--pilot" in sys.argv:
         count, start, label = PILOT_ARTICLES, 0, "パイロット"
