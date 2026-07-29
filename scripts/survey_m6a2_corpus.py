@@ -44,7 +44,6 @@ import json
 import os
 import random
 import sys
-import time
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -65,7 +64,9 @@ NORMAL_ARTICLES = 200
 PAGE_SIZE = 50
 SAMPLE_SIZE = 30
 SAMPLE_SEED = 20260728  # 取りこぼし率の推定に使う無作為抽出のシード。変えないこと
-REQUEST_INTERVAL = 1.0  # Issue #40 が未対応なので、間隔はこのスクリプト側で持つ
+# Issue #40: リクエスト間隔と429時のバックオフは `wikipedia_client._api_get` が
+# 持つようになったので、ここでは持たない。**キャッシュヒット時は `_api_get` を
+# 呼ばないので待機も発生しない** ―― この性質が崩れると再実行が実用不能になる。
 MAX_NORMAL_OFFSET = 3000
 
 # 入力ノイズは**実運用 Excel（#47 拡張群72行）で観測された文字列のみ**。創作しない。
@@ -122,32 +123,30 @@ def _save_cache():
 
 
 def _get(params, cache_key):
-    """1秒間隔＋429時の指数的待機。結果はディスクにキャッシュする。"""
+    """APIを叩いて結果をディスクにキャッシュする。
+
+    **リクエスト間隔と429時のバックオフは `wikipedia_client._api_get` が持つ**（Issue #40）。
+    ここで待つと二重待ちになる。**キャッシュヒット時は `_api_get` を呼ばないので待機も
+    発生しない** ―― この性質が崩れると、キャッシュがあるのに再実行が数十分かかることになり、
+    調査が実用不能になる。
+    """
     if cache_key in _cache:
         return _cache[cache_key]
-    for attempt in range(6):
-        time.sleep(REQUEST_INTERVAL)
-        _stats["requests"] += 1
-        try:
-            data = _api_get(params)
-        except requests.exceptions.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 429:
-                _stats["429"] += 1
-                print(f"  !! HTTP 429（{_stats['429']}回目）。待って再試行します",
-                      flush=True)
-                time.sleep(5.0 * (attempt + 1))
-                continue
-            raise
-        _cache[cache_key] = data
-        _save_cache()
-        return data
-    raise RuntimeError("429 が解消しないので中止する")
+    _stats["requests"] += 1
+    try:
+        data = _api_get(params)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 429:
+            _stats["429"] += 1
+        raise
+    _cache[cache_key] = data
+    _save_cache()
+    return data
 
 
 def _extract_of(title):
     key = f"extract:{title}"
     if key not in _cache:
-        time.sleep(REQUEST_INTERVAL)
         _stats["requests"] += 1
         article = _fetch_extract(title)
         _cache[key] = article[1] if article else ""

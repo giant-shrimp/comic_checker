@@ -13,7 +13,6 @@ On/Off切り替えて実行し、判定不能件数を比較する。comic_check
     python3 scripts/measure_unknown_rate.py
 """
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -56,7 +55,9 @@ ISSUE_13_TITLES = [
 
 TITLES = ISSUE_11_TITLES + ISSUE_13_TITLES
 
-REQUEST_INTERVAL_SECONDS = 1.0
+# Issue #40: リクエスト間隔とリトライは `wikipedia_client._api_get` が持つように
+# なった。ここで待つと二重待ちになるので落とした。以前はこの定数で1.0秒/行
+# 待っていたが、1行が出す2〜4リクエストは間隔ゼロで連射されたままだった。
 
 
 def _run(use_infobox):
@@ -64,7 +65,6 @@ def _run(use_infobox):
     for title in TITLES:
         result = judge(title, use_infobox=use_infobox)
         results.append((title, result.status))
-        time.sleep(REQUEST_INTERVAL_SECONDS)
     return results
 
 

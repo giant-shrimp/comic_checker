@@ -37,7 +37,6 @@ Issue #35（M6-D-2）で測定した各指標を測り直す。2つの群を**�
     python3 scripts/measure_false_negative_rate.py
 """
 import sys
-import time
 import unicodedata
 from collections import Counter
 from pathlib import Path
@@ -56,7 +55,9 @@ from m6d3_labels import (
     UNKNOWN,
 )
 
-REQUEST_INTERVAL_SECONDS = 2.5
+# Issue #40: リクエスト間隔とリトライは `wikipedia_client._api_get` が持つように
+# なった。ここで待つと二重待ちになるので落とした。以前はこの定数で2.5秒/行
+# 待っていたが、1行が出す2〜4リクエストは間隔ゼロで連射されたままだった。
 
 # 拡張群向けの参考値（#35 の全体57行に対する値）。**母集団もラベル定義も異なるので
 # 同一条件の比較ではない。** 同一母集団での直接比較は回帰群 × BASELINE_REGRESSION で行う。
@@ -116,7 +117,6 @@ def _run(labels, group_name):
         result = judge(label.title)
         rows.append((label, result, _classify(label, result)))
         print(f"  [{index}/{len(labels)}] {label.title} -> {result.status}", flush=True)
-        time.sleep(REQUEST_INTERVAL_SECONDS)
     return rows
 
 
@@ -316,7 +316,6 @@ def _print_definition_debt(regression_rows):
     candidates = []
     for label, _result, _klass in regression_rows:
         found, desc = _infobox_end_fields(label.expected_page)
-        time.sleep(REQUEST_INTERVAL_SECONDS)
         # 旧定義で `判定不能` としている行にインフォボックスの判定材料があれば、
         # 新定義ならラベルが変わりうる。
         changeable = found and label.expected == UNKNOWN
@@ -334,7 +333,6 @@ def _print_definition_debt(regression_rows):
 def main():
     total = len(REGRESSION_LABELS) + len(LABELS)
     print(f"回帰群 {len(REGRESSION_LABELS)}件 ＋ 拡張群 {len(LABELS)}件 = {total}件 を計測します")
-    print(f"リクエスト間隔 {REQUEST_INTERVAL_SECONDS} 秒")
 
     regression_rows = _run(REGRESSION_LABELS, "回帰群（#35 のカテゴリ1＋対照群・旧定義）")
     expansion_rows = _run(LABELS, "拡張群（実運用 Excel 全数・新定義）")
