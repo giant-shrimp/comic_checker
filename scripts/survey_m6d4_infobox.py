@@ -50,6 +50,7 @@ FULL_ARTICLES = 1800  # 人手判定 N>=60 が目標（歩留まり3.3%想定）
 PAGE_SIZE = 50
 REQUEST_INTERVAL = 1.0  # Issue #40 が未対応なので、間隔はこのスクリプト側で持つ
 PROGRESS_EVERY = 100    # 進捗報告と打ち切り判定の間隔
+HOLDOUT_ARTICLES = 500  # 閾値の検証用。本調査(1800件)の先から取る
 
 CACHE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -114,9 +115,17 @@ def _require_population(query):
     return hits
 
 
-def collect_articles(count):
+def collect_articles(count, start_offset=0):
+    """`start_offset` から `count` 件。ホールドアウト標本は本調査の先から取る。
+
+    **閾値を選んだ標本と、閾値を評価する標本は分けなければならない。** 同じ標本で
+    「副作用が最小になる閾値」を選ぶと、報告される検出力・副作用は実力より良く出る。
+    Issue #53 の日付閾値は失敗側2023年・正解側2022年で分布が重なっており、
+    1〜2件の当たり外れで数字が動く領域にある（#51 の距離12は完全な切れ目があったので
+    この問題が無かった）。
+    """
     _require_population(BASE_QUERY)
-    titles, offset = [], 0
+    titles, offset = [], start_offset
     while len(titles) < count:
         data = _get({"action": "query", "list": "search", "srsearch": BASE_QUERY,
                      "srlimit": PAGE_SIZE, "sroffset": offset},
@@ -140,11 +149,16 @@ def volume_field(wikitext):
 
 
 def main():
-    count = PILOT_ARTICLES if "--pilot" in sys.argv else FULL_ARTICLES
-    label = "パイロット" if "--pilot" in sys.argv else "本調査"
-    print(f"Issue #53 (M6-D-4) {label}: 作品記事 {count} 件\n")
+    if "--pilot" in sys.argv:
+        count, start, label = PILOT_ARTICLES, 0, "パイロット"
+    elif "--holdout" in sys.argv:
+        count, start, label = HOLDOUT_ARTICLES, FULL_ARTICLES, "ホールドアウト標本"
+    else:
+        count, start, label = FULL_ARTICLES, 0, "本調査"
+    print(f"Issue #53 (M6-D-4) {label}: 作品記事 {count} 件"
+          f"（sroffset {start} から）\n")
 
-    titles = collect_articles(count)
+    titles = collect_articles(count, start_offset=start)
     print(f"  {len(titles)} 件を取得\n")
 
     unknown, decided = [], []
@@ -223,9 +237,9 @@ def main():
             print(f"      地の文に完結の記述あり = {row['completion_hint']}"
                   f" / 連載シグナルあり = {row['has_ongoing_signal']}")
 
+    out = ".m6d4_holdout.json" if "--holdout" in sys.argv else ".m6d4_result.json"
     json.dump({"titles": titles, "unknown": unknown, "decided": decided},
-              open(os.path.join(os.path.dirname(CACHE_PATH),
-                                ".m6d4_result.json"), "w", encoding="utf-8"),
+              open(os.path.join(os.path.dirname(CACHE_PATH), out), "w", encoding="utf-8"),
               ensure_ascii=False)
 
 

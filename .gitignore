@@ -8,6 +8,7 @@ __pycache__/
 # scripts/survey_m6d4_infobox.py の取得結果・中間結果（Issue #53）
 .m6d4_infobox_cache.json
 .m6d4_result.json
+.m6d4_holdout.json
 build/
 dist/
 logs/
