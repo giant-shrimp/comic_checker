@@ -33,7 +33,6 @@ import json
 import os
 import re
 import sys
-import time
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,7 +60,9 @@ BASE_QUERY = 'hastemplate:"Infobox animanga/Manga"'
 PILOT_ARTICLES = 30
 FULL_ARTICLES = 1800  # 人手判定 N>=60 が目標（歩留まり3.3%想定）
 PAGE_SIZE = 50
-REQUEST_INTERVAL = 1.0  # Issue #40 が未対応なので、間隔はこのスクリプト側で持つ
+# Issue #40: リクエスト間隔と429時のバックオフは `wikipedia_client._api_get` が
+# 持つようになったので、ここでは持たない。**キャッシュヒット時は `_api_get` を
+# 呼ばないので待機も発生しない** ―― この性質が崩れると再実行が実用不能になる。
 PROGRESS_EVERY = 100    # 進捗報告と打ち切り判定の間隔
 HOLDOUT_ARTICLES = 500  # 閾値の検証用。本調査(1800件)の先から取る
 
@@ -88,29 +89,29 @@ def _save_cache():
 
 
 def _get(params, cache_key):
+    """APIを叩いて結果をディスクにキャッシュする。
+
+    **リクエスト間隔と429時のバックオフは `wikipedia_client._api_get` が持つ**（Issue #40）。
+    ここで待つと二重待ちになる。**キャッシュヒット時は `_api_get` を呼ばないので待機も
+    発生しない** ―― この性質が崩れると、キャッシュがあるのに再実行が数十分かかることになり、
+    調査が実用不能になる。
+    """
     if cache_key in _cache:
         return _cache[cache_key]
-    for attempt in range(6):
-        time.sleep(REQUEST_INTERVAL)
-        _stats["requests"] += 1
-        try:
-            data = _api_get(params)
-        except requests.exceptions.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 429:
-                _stats["429"] += 1
-                print(f"  !! HTTP 429（{_stats['429']}回目）", flush=True)
-                time.sleep(5.0 * (attempt + 1))
-                continue
-            raise
-        _cache[cache_key] = data
-        _save_cache()
-        return data
-    raise RuntimeError("429 が解消しないので中止する")
+    _stats["requests"] += 1
+    try:
+        data = _api_get(params)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 429:
+            _stats["429"] += 1
+        raise
+    _cache[cache_key] = data
+    _save_cache()
+    return data
 
 
 def _cached(key, producer):
     if key not in _cache:
-        time.sleep(REQUEST_INTERVAL)
         _stats["requests"] += 1
         _cache[key] = producer()
         _save_cache()

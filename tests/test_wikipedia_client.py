@@ -1,12 +1,20 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
+
 from comic_checker.wikipedia_client import (
+    API_MAX_ATTEMPTS,
+    API_REQUEST_INTERVAL,
+    API_RETRY_BACKOFF_SECONDS,
     COMPLETED_STRONG_RE,
     _accept_article,
+    _api_get,
     MANGA_INFOBOX_MARKER,
     STATUS_NOT_FOUND,
     STATUS_UNKNOWN,
+    USER_AGENT,
     WikipediaJudgment,
     _declares_merged_coverage,
     _extract_braced_blocks,
@@ -1783,3 +1791,134 @@ def test_infobox_decided_rows_keep_their_continuation_evidence():
         "既刊21巻（2026年6月現在）",   # [72] 魔都精兵のスレイブ
     ):
         assert _has_continuation_evidence(volumes, today=TODAY) is True, volumes
+
+
+# --- Issue #40: Wikipedia API 利用の作法（間隔・リトライ・User-Agent） -----------------
+#
+# 本番（CLI・GUI）は`_api_get`にも`main.py`の行ループにも待機が無く、1行あたり2〜4
+# リクエストを間隔ゼロで連射していた。M6-A-2（#51）の調査中に実際に429を踏んでいる。
+# 調査スクリプト側は自前で待機を持っていたが、間隔の値も待機の単位もばらばらだった
+# （measure系は「1行ごと」、survey系は「1リクエストごと」）。`_api_get`に一本化する。
+
+
+def _ok_response(payload=None):
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = payload if payload is not None else {"query": {}}
+    return response
+
+
+def _throttled_get(responses):
+    """`requests.get`と`time.sleep`を差し替えて、待機の呼ばれ方を記録する。"""
+    sleeps = []
+    patch_get = patch(
+        "comic_checker.wikipedia_client.requests.get", side_effect=responses
+    )
+    patch_sleep = patch(
+        "comic_checker.wikipedia_client.time.sleep", side_effect=sleeps.append
+    )
+    return sleeps, patch_get, patch_sleep
+
+
+@pytest.mark.real_wait_settings
+def test_api_get_waits_once_before_each_request():
+    # Issue #40: 待機は**1リクエストごと**に入る。1行が2〜4リクエストを出すので、
+    # 「1行ごと」に待つ従来のmeasureスクリプトではバーストが残っていた。
+    # **期待値は定数ではなくリテラルで書く。** 定数を両辺に使うと、値を変えても期待値が
+    # 一緒に動いてしまい、変更を検出できない（`API_MAX_ATTEMPTS`で実際にそうなっていた）。
+    # 1.0秒という値は#40で意図して選んだもの（速い側に倒すと429で実行全体が落ちるのに対し、
+    # 遅い側は待つだけなので fail-safe）なので、黙って変わらないように固定する。
+    assert API_REQUEST_INTERVAL == 1.0, "間隔を変えるなら、このテストの期待値も意図して更新すること"
+
+    sleeps, patch_get, patch_sleep = _throttled_get([_ok_response()])
+    with patch_get, patch_sleep:
+        _api_get({"action": "query"})
+    assert sleeps == [1.0]
+
+    sleeps, patch_get, patch_sleep = _throttled_get([_ok_response(), _ok_response()])
+    with patch_get, patch_sleep:
+        _api_get({"action": "query"})
+        _api_get({"action": "query"})
+    assert sleeps == [1.0, 1.0]
+
+
+@pytest.mark.real_wait_settings
+def test_api_get_backs_off_exponentially_on_429():
+    # Issue #40: 429は待って再試行する。待機はリクエスト間隔とは別に、
+    # 試行回数に比例して伸ばす（5秒・10秒・15秒…）。
+    too_many = MagicMock()
+    too_many.status_code = 429
+    sleeps, patch_get, patch_sleep = _throttled_get([too_many, too_many, _ok_response()])
+    with patch_get, patch_sleep:
+        _api_get({"action": "query"})
+    # 各試行の前に間隔、429のたびにバックオフが入る。
+    assert sleeps == [
+        API_REQUEST_INTERVAL,
+        API_RETRY_BACKOFF_SECONDS * 1,
+        API_REQUEST_INTERVAL,
+        API_RETRY_BACKOFF_SECONDS * 2,
+        API_REQUEST_INTERVAL,
+    ]
+
+
+@pytest.mark.real_wait_settings
+def test_api_get_gives_up_after_six_attempts():
+    # Issue #40: 無限に粘らない。上限まで429が続いたらHTTPErrorを投げて呼び出し側に返す
+    # （測定スクリプトはここで止まって、何回目で諦めたかを報告できる）。
+    #
+    # **期待値は定数ではなくリテラルで書く。** `API_MAX_ATTEMPTS`を両辺に使うと、定数を
+    # 変えてもテストの期待値が一緒に動いてしまい、上限の変更を検出できない
+    # （実際に6→3に変えても落ちない空振りテストになっていた）。
+    assert API_MAX_ATTEMPTS == 6, "上限を変えるなら、このテストの期待値も意図して更新すること"
+    too_many = MagicMock()
+    too_many.status_code = 429
+    too_many.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "429 Client Error", response=too_many
+    )
+    sleeps, patch_get, patch_sleep = _throttled_get([too_many] * 6)
+    with patch_get, patch_sleep:
+        with pytest.raises(requests.exceptions.HTTPError):
+            _api_get({"action": "query"})
+    # 6回試行し、そのうち5回は429で待ってから再試行している。
+    assert sleeps.count(API_REQUEST_INTERVAL) == 6
+    assert sleeps.count(API_RETRY_BACKOFF_SECONDS * 5) == 1
+
+
+@pytest.mark.real_wait_settings
+def test_api_get_does_not_retry_other_http_errors():
+    # Issue #40: 429以外（403・404等）は待っても直らないので即座に投げる。
+    # #51で自前のrequests.getを書いて403を踏んだが、原因はUser-Agent未送信であり、
+    # リトライで解決する種類のものではなかった。
+    forbidden = MagicMock()
+    forbidden.status_code = 403
+    forbidden.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "403 Client Error", response=forbidden
+    )
+    sleeps, patch_get, patch_sleep = _throttled_get([forbidden])
+    with patch_get, patch_sleep:
+        with pytest.raises(requests.exceptions.HTTPError):
+            _api_get({"action": "query"})
+    assert sleeps == [API_REQUEST_INTERVAL]
+
+
+@pytest.mark.real_wait_settings
+def test_api_get_sends_a_contactable_user_agent():
+    # Issue #40 §1: WikimediaのUser-Agentポリシーは「連絡可能なURLまたはメールアドレス」を
+    # 求めている。プレースホルダの`https://github.com/`は連絡先として機能していなかった。
+    assert "github.com/giant-shrimp/comic_checker" in USER_AGENT
+    assert "https://github.com/;" not in USER_AGENT
+
+    sleeps, patch_get, patch_sleep = _throttled_get([_ok_response()])
+    with patch_get as mocked, patch_sleep:
+        _api_get({"action": "query"})
+    assert mocked.call_args.kwargs["headers"]["User-Agent"] == USER_AGENT
+
+
+def test_callers_that_skip_api_get_do_not_wait():
+    # Issue #40: 待機は`_api_get`の中にしかない。ディスクキャッシュを持つ調査スクリプトは
+    # ヒット時に`_api_get`を呼ばないので、待機も発生しない。ここが崩れると、
+    # キャッシュがあるのに再実行が数十分かかることになり、調査が実用不能になる。
+    sleeps, _patch_get, patch_sleep = _throttled_get([])
+    with patch_sleep:
+        pass  # `_api_get`を呼ばなければ待機は1度も起きない
+    assert sleeps == []
