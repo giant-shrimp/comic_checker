@@ -246,6 +246,77 @@ monkeypatch が戻したのは**ステータスを決める判定だけ**で、�
 成立しない。変更が複数の出力（ステータスと根拠文字列など）に及ぶなら、フラグもそこまで
 届いているかを確かめる。
 
+### 落とし穴：同じ `time.sleep(定数)` に見えて、待機の単位が違う（Issue #40で踏んだ）
+
+待機を持つコードが4箇所あり、どれも `time.sleep(定数)` の形をしていたので同じ仕組みだと
+思っていた。**単位が違った。**
+
+- `measure_*` 系（`measure_false_negative_rate.py` / `measure_unknown_rate.py`）は
+  **1行ごと**に待つ（2.5秒 / 1.0秒）
+- `survey_*` 系（`survey_m6a2_corpus.py` / `survey_m6d4_infobox.py`）は
+  **1リクエストごと**に待つ（1.0秒）
+
+`judge()` は1行あたり **2〜4リクエスト**を出す（`_resolve_titles` → `_fetch_extract` →
+判定不能なら `_fetch_wikitext` → 必要なら `_search_titles`）。つまり measure 系は
+**「2.5秒待って2〜4連射」を繰り返す**形で、**バーストは残ったまま**だった。Issue #51 の
+調査で429を踏んだのも、間隔ゼロで連射する probe スクリプトが原因である。
+
+**対策**：待機は**リクエスト単位**で入れる。API を叩く関数そのもの（`_api_get`）に置けば、
+呼び出し側が何行処理しようと1リクエストごとに効く。
+
+**教訓**：待機を持つコードを比較するときは、**定数の値ではなく「何を1単位として待って
+いるか」**を見る。値が同じでも単位が違えば別物である。Issue #40 の棚卸しでこの違いに
+気づくまで、「measure 系は間隔を持たない」と誤って報告していた（実際は持っていて、
+持っていないのはリトライのほうだった）。
+
+### 落とし穴：`patch("module.time.sleep")` はプロセス全域に効く（Issue #40で踏んだ）
+
+`_api_get` に待機を入れた直後、テストが 0.2秒から53秒に伸びた。`requests.get` だけを
+モックしている既存テストが実時間で待つためである。そこで
+`patch("comic_checker.wikipedia_client.time.sleep")` で無効化したが、**これはプロセス全域に
+効く**。
+
+    >>> import comic_checker.wikipedia_client as w, comic_checker.manba_client as m, time
+    >>> w.time is time, m.time is time
+    (True, True)
+
+`import time` はどのモジュールでも**同じモジュールオブジェクト**を束縛する。
+`module.time.sleep` へのパッチは、そのオブジェクトの属性を差し替えるので、
+`manba_client` の待機まで巻き添えになる。「`wikipedia_client` の待機を無効化する」つもりの
+フィクスチャが、実際には全域に効いていた。
+
+**対策**：無効化はモジュール固有の**定数を差し替える**形で行う。
+
+    monkeypatch.setattr(wikipedia_client, "API_REQUEST_INTERVAL", 0)
+
+これなら範囲がそのモジュールに閉じるうえ、`time.sleep(0)` は実際に呼ばれるので、待機の
+呼ばれ方を検証するテストは従来どおり観測できる。
+
+**教訓**：フィクスチャの**説明文と実際の適用範囲が一致しているか**を確認する。説明が
+「Aの待機を無効化する」なのに実装がプロセス全域なら、読み手は範囲を誤解する。
+
+### 落とし穴：定数を期待値と入力の両方に使うテストは、定数を変えても落ちない（Issue #40で踏んだ）
+
+    sleeps, ... = _throttled_get([too_many] * API_MAX_ATTEMPTS)   # 入力
+    ...
+    assert sleeps.count(API_REQUEST_INTERVAL) == API_MAX_ATTEMPTS  # 期待値
+
+**両辺が同じ定数なので、値を変えると期待値も一緒に動く。** `API_MAX_ATTEMPTS` を 6→3 に
+変えても1件も落ちなかった。
+
+Issue #40 で本番の定数8個を実際に変異させて `pytest tests/` を回したところ、**5個が1件も
+落ちなかった**（`STATUS_UNKNOWN` / `STATUS_NOT_FOUND` / `MARKER_MAX_DISTANCE` /
+`API_MAX_ATTEMPTS` / `API_REQUEST_INTERVAL`）。うち2個は #40 で修正し、3個は #62 に起票した。
+
+**対策**：値を固定したいテストは**期待値をリテラルで書き**、定数値そのものを別途アサート
+する。
+
+    assert API_MAX_ATTEMPTS == 6, "上限を変えるなら、このテストの期待値も意図して更新すること"
+
+**教訓**：新しい定数を導入したら、**その場で変異させて落ちることを確認する**。
+`CLAUDE.md` の「`verify.sh` にゲートを足したら壊して確認する」と同じ話で、対象が定数に
+広がっただけである。
+
 ## 実行結果でしか確定しない値を、実行前に報告に書いてはいけない（Issue #47）
 
 **事象**: `gh issue comment 47` を実行する**前に**応答本文へ「投稿しました: …#issuecomment-
