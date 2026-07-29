@@ -1,13 +1,41 @@
 from datetime import date
 import re
+import time
 import unicodedata
 from urllib.parse import quote
 
 import requests
 
 API_URL = "https://ja.wikipedia.org/w/api.php"
-USER_AGENT = "comic-checker/0.1 (https://github.com/; local tool, contact via repo issues)"
+# Issue #40 §1: WikimediaのUser-Agentポリシーは「連絡可能なURLまたはメールアドレス」を
+# 求めている。以前の値はURL部分が`https://github.com/`のままでリポジトリを指しておらず、
+# 連絡先として機能していなかった。
+USER_AGENT = (
+    "comic-checker/0.1 "
+    "(https://github.com/giant-shrimp/comic_checker; contact via repo issues)"
+)
 REQUEST_TIMEOUT = 15
+
+# Issue #40 §2: 本番（CLI・GUI）には待機もリトライも無く、1行あたり2〜4リクエストを
+# 間隔ゼロで連射していた。M6-A-2（#51）の調査中に実際に429を踏んでいる。
+#
+# 【待機は1リクエストごとに入れる】以前は調査スクリプト側が自前で持っていたが、単位が
+# ばらばらだった。measure系は「1行ごと」に2.5秒/1.0秒待つ形で、1行が出す2〜4リクエストは
+# 間隔ゼロで連射されたままだった。survey系は「1リクエストごと」に1.0秒。バーストが残る
+# 前者では作法として不十分なので、`_api_get`に置いて全経路で1リクエストごとに効かせる。
+#
+# 【1.0秒の根拠は弱いが、下げない】この値は#51で「429が出なくなった」という経験から
+# 選んだだけである。Wikimediaは匿名のread APIに明示的なrate limitを公開しておらず、
+# 求めているのは直列実行と良識的な頻度で、本ツールは既に直列なので、#51の429は
+# **バーストが原因だった可能性が高い**。だとすれば0.3〜0.5秒でも足りるかもしれないが、
+# **これは未実測の仮説である**。速い側に倒して429を踏むと実行全体が落ちるのに対し、
+# 遅い側に倒しても待つだけなので、**遅い側がfail-safe**である。下げるなら実測してから。
+#
+# 【429以外はリトライしない】403・404は待っても直らない。#51で自前のrequests.getを書いて
+# 403を踏んだが、原因はUser-Agent未送信であり、リトライで解決する種類ではなかった。
+API_REQUEST_INTERVAL = 1.0
+API_RETRY_BACKOFF_SECONDS = 5.0
+API_MAX_ATTEMPTS = 6
 
 # 「連載中」が現在の連載状況を表すのは述語位置にあるときだけで、直後に助詞や名詞が続く形は
 # 「連載していた期間」を指す修飾語か、他作品への言及である。除外する形は、M6-D-2（Issue #35）
@@ -702,11 +730,25 @@ def _judge_via_infobox(wikitext, today=None):
 
 
 def _api_get(params):
+    """MediaWiki APIを1回叩く。待機とリトライはここにしかない（Issue #40）。
+
+    **待機はこの関数の中だけで行う。** ディスクキャッシュを持つ調査スクリプトは、ヒット時に
+    この関数を呼ばないので待機も発生しない。呼び出し側で待つ実装を足すと二重待ちになる。
+    """
     headers = {"User-Agent": USER_AGENT}
     query = {"format": "json", **params}
-    response = requests.get(API_URL, params=query, headers=headers, timeout=REQUEST_TIMEOUT)
+    for attempt in range(API_MAX_ATTEMPTS):
+        time.sleep(API_REQUEST_INTERVAL)
+        response = requests.get(
+            API_URL, params=query, headers=headers, timeout=REQUEST_TIMEOUT
+        )
+        if response.status_code == 429 and attempt < API_MAX_ATTEMPTS - 1:
+            time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            continue
+        response.raise_for_status()
+        return response.json()
+    # 上限まで429が続いた場合。最後の応答をそのまま投げて、呼び出し側に判断を委ねる。
     response.raise_for_status()
-    return response.json()
 
 
 # exintro=true (段落見出しの手前まで)だけでは、連載状況が最初の段落ではなく最初の
