@@ -9,6 +9,7 @@ from comic_checker.wikipedia_client import (
     API_REQUEST_INTERVAL,
     API_RETRY_BACKOFF_SECONDS,
     COMPLETED_STRONG_RE,
+    MARKER_MAX_DISTANCE,
     _accept_article,
     _api_get,
     MANGA_INFOBOX_MARKER,
@@ -1922,3 +1923,36 @@ def test_callers_that_skip_api_get_do_not_wait():
     with patch_sleep:
         pass  # `_api_get`を呼ばなければ待機は1度も起きない
     assert sleeps == []
+
+# --- Issue #62: 定数を期待値と入力の両方に使うと、定数を変えてもテストが落ちない ---------
+#
+# #40 の棚卸しで本番の定数8個を変異させたところ、5個が1件も落ちなかった。うち
+# `API_MAX_ATTEMPTS` と `API_REQUEST_INTERVAL` は #40 で直した。残る3つをここで固定する。
+#
+# **値を固定する目的は「この値が正しい」と主張することではない。** 変えるときに意図的な
+# 更新を強制することである。根拠は各アサートのコメントに書いてある。
+
+
+def test_marker_max_distance_is_pinned():
+    # Issue #51 で実測から選んだ値。**この値を変えるなら、同じ分布を測り直すこと。**
+    #
+    # 出所: 発動32件の距離分布で、(b)（検出すべき）は 1〜11 に密集し、併合宣言を持たない
+    # (a)（誤除外）は `閃光のハサウェイ` の92だけだった。
+    #
+    # ⚠ **12〜91 のどの値でもラベル済みデータ上の結果は同一である。** 中間距離の (a)
+    # （15・16・27・48）は全て併合記事で、条件B（`_declares_merged_coverage`）が先に
+    # 止めているため。距離条件が単独で守っているのは距離92の1件のみ。
+    #
+    # したがって**挙動を固定するテストではこの定数の変更を検出できない**（12→5 も 12→40 も
+    # 結果が変わらない）。境界のフィクスチャを合成して埋める案は採らなかった ―― 距離13の
+    # (a) 相当は実データに存在せず、存在しない形を固定すると根拠のない挙動を固めることに
+    # なる（#53 で踏んだ「分布から読めない型」と同じ構造）。値の固定だけを行う。
+    assert MARKER_MAX_DISTANCE == 12
+
+
+def test_status_strings_are_pinned():
+    # Excel の状況列にそのまま書き戻される文字列なので、変わると利用者の出力が変わる。
+    # `tests/test_row_counts.py` 等がリテラルをワークブックの中身として書いているが、
+    # 定数と突き合わせてはいないため、定数側を変えても検出できなかった（#62）。
+    assert STATUS_UNKNOWN == "判定不能"
+    assert STATUS_NOT_FOUND == "記事なし"
