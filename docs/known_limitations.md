@@ -168,27 +168,48 @@
   warning in `docs/architecture.md`. Recall on the Issue #51 adversarial corpus was low by
   design; that corpus is deliberately enriched with derivative works and is not the real
   input distribution (category 3 was 2/72 rows there).
-- **The infobox path's "empty end field ⇒ `連載中`" inference has no gate, and on real
-  input it is not a fallback — it decides 14.3% of the rows** (measured 2026-07-28,
-  M6-D-3 / Issue #47; article content changes over time, so re-verify against that date).
-  `_judge_via_infobox()` exists to read "終了系 field is non-empty ⇒ `完結`". The opposite
-  reading — empty ⇒ `連載中` — is its contrapositive, and it is much weaker: **an empty
-  field is not a record that serialization is continuing, it is equally what you get when
-  nobody filled it in.** The asymmetry is concrete: the `完結` direction *was* found to be
-  unsound (サタノファニ's `終了日` is non-empty while the run continues) and #30 added a
-  gate for it — `judge()` refuses an infobox-sourced `完結` whenever the prose has an
-  ongoing signal. **Nothing gates the `連載中` direction.**
-  What makes this worth flagging is the scale. On the M6-D-3 census (72 real input rows,
-  42 of which landed on an article), the prose analysis `_judge_extract()` returned
-  `判定不能` for 8 rows, and the infobox path decided **6 of them**: `うしろの正面カムイさん`,
+- **The infobox path's "empty end field ⇒ `連載中`" inference now requires positive
+  evidence that the run is continuing (M6-B-4, Issue #56), because the bare inference was
+  measured wrong 61.3% of the time.** `_judge_via_infobox()` exists to read "終了系 field is
+  non-empty ⇒ `完結`". The opposite reading — empty ⇒ `連載中` — is its contrapositive and is
+  much weaker: **an empty field is not a record that serialization is continuing, it is
+  equally what you get when nobody filled it in.** The `完結` direction had a gate since #30
+  (`judge()` refuses an infobox-sourced `完結` whenever the prose has an ongoing signal); the
+  `連載中` direction had none.
+  M6-D-4 (Issue #53) measured what that cost. Sampling 1,800 work articles and keeping the
+  rows where the prose was inconclusive *and* the infobox said `連載中`, **46 of 75 (61.3%)
+  were actually completed**; an independent 500-article holdout gave 13 of 21 (61.9%).
+  `_has_continuation_evidence()` therefore requires the `巻数` field to carry `既刊` and,
+  when a year is readable, to be newer than `CONTINUATION_STALE_YEARS` (5). Measured over
+  the 96 labelled rows: **detection 54/59 = 91.5%, false-exclusion 1/37 = 2.7%**.
+  Three things about it are worth knowing before touching it.
+  - **`既刊` with no date counts as evidence.** Refusing it looked better on the sample the
+    threshold was chosen from (3.4% false-exclusion) but cost 25.0% on the holdout, because
+    some editors simply never write the date. See the `ERRORS.md` entry on holdout samples.
+  - **The 5-year threshold is not a clean separator.** The failing rows' years were 2012,
+    2013, 2015, 2016, 2017, 2019, 2021 and **2023**, the correct ones **2022** onward — the
+    two overlap. Re-measure the distribution before changing the constant.
+  - **What still gets through**: one false exclusion (`一人之下`, an ongoing work whose
+    article has no `巻数` field at all — no date rule can help) and five misses
+    (`もし高校野球の…`, `Ef - a fairy tale of the two.`, `ノブナガ・ザ・フール` carry `既刊`
+    with no date while being complete; `空の境界` and `俺、つしま` carry recent dates while
+    being complete).
+- **The `判定根拠` column's wording changed for infobox-decided rows (M6-B-4, Issue #56).**
+  It used to read `インフォボックス: 終了号/終了日等が空欄`, which said only that a field was
+  blank and never said why that meant the work was running. It now reads
+  `インフォボックス: 終了号/終了日等が空欄、巻数 = 既刊12巻（2026年2月現在）` — the volume
+  count is the actual basis for the verdict, so it belongs in the column the user reads.
+  **This is a user-visible change**: `判定根拠` is written back to the spreadsheet
+  (`--evidence-column`). The status itself is unchanged.
+- **This path still decides a large share of real rows.** On the M6-D-3 census (72 real
+  input rows, 40 of which land on an article after Issue #51), the prose analysis returned
+  `判定不能` for 8 rows and the infobox decided **6 of them** — `うしろの正面カムイさん`,
   `てんぷる`, `カッコウの許嫁`, `月曜日のたわわ`, `リコリス・リコイル`, `魔都精兵のスレイブ`
-  — **6/42 = 14.3%**. All six came out correct, so this is not a list of known bugs; the
-  point is that `docs/architecture.md` describes this path as a "補助情報源" consulted
-  "only when the prose analysis is inconclusive", and on real-world input that description
-  understates what it is doing. Those six rows have **no serialization verdict from the
-  prose at all** — the answer is the infobox's alone, on the weaker of its two inferences,
-  with no gate. Before relying on the M6-D-3 accuracy figures as evidence that the prose
-  heuristics are healthy, subtract these six.
+  — **6/40 = 15.0%**. All six carry a 2026 `既刊` date, so the M6-B-4 gate passes every one
+  of them and the 94-row regression showed **zero** changed rows. That is the point worth
+  remembering: **the regression corpus never exercises this gate's detecting side**, so a
+  future regression here will not show up there. `scripts/survey_m6d4_infobox.py --verify`
+  is what pins it, against the 96 labelled rows in `scripts/m6d4_labels.py`.
 
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
