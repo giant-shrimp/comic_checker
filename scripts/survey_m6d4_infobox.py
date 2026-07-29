@@ -3,7 +3,11 @@
 **これは pytest の対象ではない**（実ネットワークI/Oを伴う）。
 `scripts/measure_false_negative_rate.py` と同じ扱いで、必要なときに手で走らせる。
 
-    python scripts/survey_m6d4_infobox.py [--pilot]
+    python scripts/survey_m6d4_infobox.py [--pilot | --holdout | --verify]
+
+`--verify` は**API を叩かない**。`scripts/m6d4_labels.py` の人手ラベル96行に対して
+出荷中の `_has_continuation_evidence()` を当て、検出力と副作用を出す。Issue #56 の
+ゲートを触ったあとの回帰確認はこれで足りる。
 
 ## 母集団は「弱い推論が実際に決めている行」そのもの
 
@@ -24,11 +28,14 @@ import os
 import re
 import sys
 import time
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import requests
 
+from m6d4_labels import COMPLETED, HOLDOUT, LABELS, MAIN
 from comic_checker.wikipedia_client import (
     END_FIELD_NAMES,
     MANGA_INFOBOX_MARKER,
@@ -148,7 +155,66 @@ def volume_field(wikitext):
     return _infobox_field(main, "巻数"), ends
 
 
+LABEL_OBSERVED_ON = date(2026, 7, 29)  # ラベルを付けた日。巻数の日付判定の基準にする
+
+
+def verify_against_labels():
+    """人手ラベル96行に対して、出荷中の判定を当てて検出力と副作用を出す（API不使用）。
+
+    **ラベルは `scripts/m6d4_labels.py` にあり、このスクリプトは読むだけで書かない。**
+    調査の出力（`.m6d4_*.json`）とは別物なので、調査を何度再実行してもラベルは動かない。
+    """
+    # 遅延 import。この関数は Issue #56 で追加されるので、ゲート未導入の時点でも
+    # スクリプト自体は（--pilot 等で）動くようにしておく。
+    try:
+        from comic_checker.wikipedia_client import _has_continuation_evidence
+    except ImportError:
+        raise SystemExit(
+            "_has_continuation_evidence() がありません。--verify は Issue #56 の"
+            "ゲート導入後に使えます。"
+        )
+
+    print("Issue #53 のラベル96行に対する検証（APIは使わない）")
+    print(f"基準日: {LABEL_OBSERVED_ON}（ラベルを付けた日）\n")
+    totals = {"det": 0, "fail": 0, "side": 0, "ok": 0}
+    for group in (MAIN, HOLDOUT):
+        rows = [label for label in LABELS if label.group == group]
+        det = fail = side = ok = 0
+        for label in rows:
+            evidence = _has_continuation_evidence(label.volumes, today=LABEL_OBSERVED_ON)
+            if label.label == COMPLETED:      # 実際は完結 ＝ 実装の誤答
+                fail += 1
+                det += not evidence           # ゲートが発動すれば誤答を潰せる
+            else:                             # 実際に連載中 ＝ 実装は正しい
+                ok += 1
+                side += not evidence          # ゲートが発動すると判定不能に倒れる
+        print(f"  {group:8} 検出 {det:2d}/{fail:2d} ({det / fail * 100:5.1f}%)"
+              f"   副作用 {side}/{ok} ({side / ok * 100:5.1f}%)")
+        totals["det"] += det
+        totals["fail"] += fail
+        totals["side"] += side
+        totals["ok"] += ok
+    print(f"  {'合算':8} 検出 {totals['det']:2d}/{totals['fail']:2d}"
+          f" ({totals['det'] / totals['fail'] * 100:5.1f}%)"
+          f"   副作用 {totals['side']}/{totals['ok']}"
+          f" ({totals['side'] / totals['ok'] * 100:5.1f}%)")
+
+    print("\n  副作用（実際は連載中だが判定不能に倒れる行）:")
+    for label in LABELS:
+        if label.label != COMPLETED and not _has_continuation_evidence(
+                label.volumes, today=LABEL_OBSERVED_ON):
+            print(f"    {label.title}  {label.volumes!r}")
+    print("  取りこぼし（実際は完結だが連載中のまま残る行）:")
+    for label in LABELS:
+        if label.label == COMPLETED and _has_continuation_evidence(
+                label.volumes, today=LABEL_OBSERVED_ON):
+            print(f"    {label.title}  {label.volumes!r}")
+
+
 def main():
+    if "--verify" in sys.argv:
+        verify_against_labels()
+        return
     if "--pilot" in sys.argv:
         count, start, label = PILOT_ARTICLES, 0, "パイロット"
     elif "--holdout" in sys.argv:
