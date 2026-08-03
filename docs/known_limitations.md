@@ -238,13 +238,20 @@
   the rate. A shorter interval might well be enough. **That is an untested hypothesis**, and
   the asymmetry favours waiting: erring fast risks a 429 that aborts the whole run, erring
   slow only costs time. Measure before lowering it.
-- **A run cannot be cancelled once it starts (Issue #61).** `gui.py` has no stop control;
-  `_run_worker` calls `main.run()` and it goes to completion. Progress reporting keeps
-  working — the window does not freeze — but on a 500-row sheet that means roughly an hour
-  with no way out short of killing the process. Picking the wrong file and pressing run
-  commits you to the whole thing. This became worth flagging when #40 made runs ~1.6×
-  longer. It is a separate problem from #33 (the worker thread reading Tk variables
-  directly), though both live in `_run_worker` and will collide if worked on at once.
+- **A run can be cancelled, but only at row boundaries (Issue #61).** The GUI's stop button
+  sets a `cancel_event` that `run()` checks at the top of each row, so pressing it does not
+  stop the row already in flight — expect to wait one row (4.5s/row measured, ~7s/row as
+  the upper bound). Waits inside `wikipedia_client._api_get` are not interrupted, so a row
+  caught in 429 retry backoff takes longer still. Results up to that point are always
+  saved, and `skip_filled=True` picks up where it left off on the next run; note that
+  cancelling a *rejudge* (`skip_filled=False`) leaves the not-yet-revisited rows holding
+  their old values, and those count as judged, so resuming needs "rejudge all" again.
+  Immediately after pressing stop, the status line briefly flips back to `処理中… N/M 件`
+  when the in-flight row finishes, then settles on `中断しました` — `_on_progress` does not
+  know a cancellation was requested. The final message is correct. Removing the flicker
+  means handing the cancel state to `_on_progress`, which adds a worker-thread read of that
+  state, so it is deliberately left alone. Still a separate problem from #33 (the worker
+  thread reading Tk variables directly), though both live in `_run_worker`.
 
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
