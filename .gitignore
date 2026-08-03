@@ -13,3 +13,9 @@ build/
 dist/
 logs/
 .claude/settings.local.json
+# セッション間の引継ぎ資料と実装計画（個人の作業メモ。追跡しない）。
+# work_loop.sh はプリフライト3で作業ツリーが汚れていたら中断するため、これらを
+# 未追跡のまま置いておくとループが起動できない。ワイルドカードにしてあるので、
+# 今後の handoff ファイルも自動的に対象になる。
+ai-loop-implementation-plan_v*.md
+handoff_comic_checker_*.md
