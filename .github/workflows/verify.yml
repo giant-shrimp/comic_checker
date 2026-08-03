@@ -1,0 +1,87 @@
+# PR と main への push で VERIFY Gate（./scripts/verify.sh）を回す。
+#
+# 設計の要点:
+#  - verify.sh は改変しない。あれは .claude/settings.json で Edit/Write を deny している
+#    唯一のゲートであり、CI 用の分岐を持ち込むと「手元とCIで違うものを通す」ことになる。
+#    そのため CI 側が .venv を作り、手元と同じ前提（CLAUDE.md の Setup 手順）を用意する。
+#  - origin/main を明示的に取得し、解決できたことを検査してから verify.sh を呼ぶ。
+#    verify.sh の skip/xfail 検出は origin/main が無いと「見つからないためスキップ」と
+#    出力して通ってしまう。浅いクローンで検査が黙って素通りする状態は、実装計画書 v8 の
+#    1-3 が v7 の不備として直したものと同型なので、素通りをこちら側で不合格にする。
+#  - GUI テスト 51件（test_gui_run.py 34 + test_gui_skip_filled.py 17）が tk.Tk() を作る。
+#    $DISPLAY が無いと TclError で落ちるため xvfb 経由で実行する。
+#  - Python は 3.13 のみ。手元の開発環境は 3.8.10 なので差は残るが（ERRORS.md の
+#    nametofont(root=) の件がその実例）、3.8 ジョブは 3.13 が緑になってから別PRで足す。
+#  - build-windows.yml とはトリガ（あちらは workflow_dispatch と v* タグ）も
+#    concurrency group も重ならない。あちらは pytest を回していないので役割も重複しない。
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# artifact も push もしない。読み取りだけ。
+# ADR-001「受け入れたリスク」3（CIからのpushは pre-push では止められない）に従い、
+# CI には push 権限を伴う仕事をさせない。
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # verify.sh の skip/xfail 検出が origin/main を必要とする。
+          fetch-depth: 0
+
+      # PR では checkout がマージ ref を取るだけで origin/main を作らないことがある。
+      # 明示的に取り、解決できなければジョブを失敗させる（黙って素通りさせない）。
+      - name: Ensure origin/main exists
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main || true
+          if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+            echo "origin/main を解決できません。verify.sh の skip/xfail 検出が" >&2
+            echo "無言でスキップされる状態なので、ここで失敗させます。" >&2
+            exit 1
+          fi
+          echo "origin/main = $(git rev-parse --short origin/main)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      # setup-python の Linux ビルドに _tkinter が同梱されているかは未実測。
+      # 含まれていなければ GUI テストの前に import エラーで落ちるので、
+      # ここで先に切り分けられるようにしておく（失敗しても後続の判断材料になる）。
+      - name: Check tkinter availability
+        run: python -c "import tkinter; print('tkinter', tkinter.TkVersion)"
+
+      # GUI テスト 51件が tk.Tk() を作るため X サーバが必要。
+      - name: Install X virtual framebuffer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      # verify.sh は .venv/bin/activate を source する。手元と同じ前提を CI 側で作る。
+      # requirements-dev.txt = openpyxl / requests / tkinterdnd2 / playwright / pytest。
+      # playwright のブラウザ本体は入れない。test_manba_client.py は sync_playwright を
+      # モックしており、収集時に playwright パッケージが import できれば足りる。
+      - name: Create venv and install dev requirements
+        run: |
+          python -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements-dev.txt
+
+      - name: Run VERIFY Gate
+        run: xvfb-run -a ./scripts/verify.sh
