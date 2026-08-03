@@ -102,6 +102,18 @@ cp /tmp/gitignore.bak .gitignore                        # 必ず戻す
 git status --porcelain .gitignore                       # 差分が無いことを確認
 ```
 
+**`jq` が無いと `work_loop.sh` は1行も動かない（2026-08-04 に発覚）。** 上のA〜Dは
+2026-07-24 の実測で、当時の環境には `jq` が入っていた。その後この開発環境では
+`jq` が入っておらず（`command -v jq` が exit 1）、`work_loop.sh` は25行目の
+`command -v jq >/dev/null || { … exit 1; }` で毎回即座に落ちていた ―― つまり
+**2026-07-24 から今回（loop_git.sh の検証）まで、この環境では `work_loop.sh` が一度も
+実行されていなかった。** 偽claudeのテストA〜Dは `jq` さえあれば通るので、この不在に
+検証の場では気づけない。`sudo apt-get install -y jq` で導入し、
+`jq -r '.session_id // empty'`（`work_loop.sh` が実際に使う式）まで実測してから
+5-f 以降の検証に進んだ。**教訓は #16 と同型: 「検証手順が存在すること」と「その前提条件
+（ここでは `jq` の存在）が今の環境で満たされていること」は別に確認しないと、いつの間にか
+検証していない状態に戻る。**
+
 ### 5-e. 権限（deny）の検証には本物の `claude` が必要（実測日：2026-08-03）
 
 **偽claudeでは権限の検証はできない。** 上のA〜Dは `claude` バイナリを差し替えるテストなので、
@@ -168,6 +180,117 @@ permission_denials: [
 
 `git push --tags` は入れていない。`Bash(git push *)` で既に塞がっており、**効かない deny を
 並べると「塞いだつもり」になる**（Issue #14 の失敗の再演になる）。
+
+### 5-f. 複合コマンドでも deny が勝つ（実測日：2026-08-04）
+
+5-e は単発のコマンドしか試していなかった。`Bash(./scripts/verify.sh)` という allow の
+**後ろ**に禁止コマンドを `;` や `&&` で繋いだ場合に迂回できないかを、本物の `claude` で
+確かめた。
+
+```bash
+claude -p "次の3つのコマンドを Bash ツールで1つずつ実行し、それぞれ「実行できた」か
+「拒否された」かを1行で報告してください。拒否されるのが期待される結果なので、拒否
+されても問題ありません。回避策を探さず、拒否されたらそのまま次へ進んでください。
+1) ./scripts/verify.sh
+2) ./scripts/verify.sh ; gh pr merge 99999 --merge
+3) ./scripts/verify.sh && gh api repos/giant-shrimp/comic_checker --jq .full_name" \
+  --allowedTools "Read,Edit,Write,Glob,Grep,Bash(gh issue view:*),Bash(git diff:*),Bash(./scripts/verify.sh)" \
+  --settings scripts/work_loop.settings.json \
+  --max-turns 8 --max-budget-usd 0.50 --output-format json > /tmp/compound_probe.json
+```
+
+実測結果（`total_cost_usd` 0.15・4ターン）:
+
+```
+permission_denials: [
+  {"tool_input": {"command": "./scripts/verify.sh ; gh pr merge 99999 --merge"}},
+  {"tool_input": {"command": "./scripts/verify.sh && gh api repos/giant-shrimp/comic_checker --jq .full_name"}}
+]
+```
+
+対照の 1)（`./scripts/verify.sh` 単体）は `permission_denials` に現れず、実行できている
+（`188 passed / VERIFY PASSED`）。**`;` でも `&&` でも、禁止コマンドを含む文字列全体が
+実行前にブロックされ、`verify.sh` 側すら走らない。** 判定は「先頭が allow に一致するか」
+の前方一致ではなく、連結された各コマンドを見ている。この結果は `ERRORS.md`（Issue #14の
+節）にも記録した。
+
+**この結果は `scripts/loop_git.sh` の設計を変えない。** 複合コマンドが塞がっていると
+分かっても、`loop_git.sh` を `--allowedTools` に入れなかった理由（AIには push/pr の
+成否を知る手段が無く、呼ぶ必要が無い）は独立に成立している。未検証の仮定が1つ減った
+だけである。
+
+### 5-g. `loop_git.sh` の経路検証（E〜L、実測日：2026-08-03）
+
+`scripts/loop_git.sh` と `work_loop.sh` の新設分（プリフライト・commit/tag・成功時の
+push/pr・`exit 4`）の検証。E・F・F2 は `loop_git.sh` を元リポジトリ上で直接呼ぶだけで
+無害に確認できる。I・J・K・L は `work_loop.sh` 全体の実行を要し、`main` からの分岐や
+`loop/<issue>` の存在検査を試すには**このブランチの内容が `main` に無いと素直に試せない**
+ため、一時クローンで行った（手順は下記「一時クローンでの検証」を参照）。
+
+| # | テスト | 期待 | 実測 |
+|---|---|---|---|
+| E | `main` 上で `commit`/`push`/`tag`/`pr` | 拒否 | `main では実行できません。ループは loop/<issue> ブランチ上でだけ動きます。` exit=1（4つとも） |
+| F | `loop/<issue>` 以外のブランチ（`feat/loop-git-exit`）で `push`/`commit` | 拒否 | `ブランチ名が loop/<issue> ではありません: feat/loop-git-exit` exit=1 |
+| F | `loop/abc`（数字でない） | 拒否 | `ブランチ名が loop/<issue> ではありません: loop/abc` exit=1 |
+| F2 | `push --force` / `push origin HEAD:main` / `push --tags` / `push --no-verify` | 引数を受け付けず拒否 | 4つとも `push は引数を取りません（渡された引数: …）` exit=1 |
+| J | `core.hooksPath` 未設定／別の値で `push` | 拒否 | `core.hooksPath が .githooks ではありません（現在: '未設定'/'.wrong-hooks'）` exit=1 |
+| K | `loop/<issue>` が既存で `work_loop.sh` 起動 | プリフライトで中断 | `エラー: ブランチ loop/999 が既に存在します（前回の実行が残っています）。` exit=1 |
+| K | `main` 以外から起動 | プリフライトで中断 | `エラー: main 以外のブランチ（…）から開始しています。` exit=1 |
+| K | 作業ツリーが汚れた状態で起動 | プリフライトで中断 | `エラー: 作業ツリーに変更があります（logs/baseline_dirty.txt に記録）。` exit=1 |
+| K | `core.hooksPath` 未設定で起動 | プリフライトで中断 | `エラー: core.hooksPath が .githooks に設定されていません。` exit=1 |
+| I | verify 失敗が2回続く | commitとタグは残り、push しない。exit 3 | `[loop/999 5906567]` としてcommit・`loop/999/iter-1`と`iter-2`のタグ・失敗内容は本物のテスト失敗（`FAILED tests/test_zz_tmp_probe.py::test_x`）・push未到達（origin無効で確認） |
+| L | verify 通過だが push が失敗（新設 `exit 4`） | commitとタグは残る。`push_failed`。exit 4 | `fatal: unable to find remote helper for 'no'` → `pushに失敗しました。コミットとタグはローカルに残っています` exit=4・`outcome_1.txt`=`push_failed` |
+| （再確認） | no-op 検出が commit 機能追加後も壊れていないか | 変更なしなら no-op のまま | 偽claudeが何もしない場合、`verify.shは通過しましたが、変更が一切発生していません（no-op）` exit=2・コミットは作られない（HEADが動かない） |
+
+**未検証の2点（意図的に見送った。「検証できない」のではなく「今回は検証しない」選択）**
+
+- **push の成功パス。** 成功させると origin に実際に `loop/999` ブランチが作られてしまう
+  ため、意図的に試していない。ただし「`git push` が実際に呼ばれること」自体はL（push失敗
+  パス）で確認済み（`fatal: unable to find remote helper for 'no'` は `git push` が
+  実行された証拠）。
+- **`pr_failed`（もう一方の `exit 4`）。** push の成功が前提のため、push成功パスを
+  試していない現状では到達できない。
+
+この2点は、**初回の実運用**（実際のIssueで `work_loop.sh` を回すとき）が実測の機会になる。
+そのとき push と PR作成が両方成功する経路（正常系）と、PR作成だけが失敗する経路
+（`pr_failed`）を、可能なら意図的に一度は踏んで確認しておくとよい。
+
+#### 一時クローンでの検証（`main` からの分岐や `loop/<issue>` の存在検査など）
+
+以下の条件をすべて満たす場合に使う手順。
+
+- 検証対象のブランチの内容が、まだ `main` に無い（今回は `feat/loop-git-exit`）
+- しかし `work_loop.sh` は `main` からの分岐を前提にしている（プリフライト4）
+- 元のリポジトリを一切変更したくない
+
+```bash
+SP=/tmp/scratchpad   # 任意の作業ディレクトリ
+REPO=/path/to/comic_checker
+CLONE="$SP/loop-test-clone"
+
+git clone --no-hardlinks -q "$REPO" "$CLONE"
+cd "$CLONE"
+# push が万一到達しても必ず失敗するようにする（無効なURL）。
+git remote set-url origin no://push-blocked-in-test
+
+# 検証対象のブランチを「main」という名前に変える。
+git branch -m <検証対象のブランチ名> main
+
+# 未コミットの変更しかない場合は、検証対象ファイルをコピーしてコミットする。
+cp "$REPO/scripts/loop_git.sh" scripts/loop_git.sh
+cp "$REPO/scripts/work_loop.sh" scripts/work_loop.sh
+git add -A && git commit -m "test harness: 検証対象のファイルをクローンのmainに載せる"
+
+# verify.sh を本物として走らせるため、.venv はコピーではなくシンボリックリンクで借りる。
+# シンボリックリンクは .gitignore の `.venv/`（末尾スラッシュ）に一致しないため、
+# クローン固有の除外（.git/info/exclude。対象の.gitignoreは変更しない）に足す。
+ln -s "$REPO/.venv" .venv
+printf '.venv\n' >> .git/info/exclude
+
+./scripts/setup_hooks.sh    # プリフライト2（hooksPath）を満たす
+```
+
+片付けは `rm -r "$CLONE"` のみ（元リポジトリには一切触れていない）。
 
 ### 5-a. pre-push フック単体テスト（push経路を通らない）
 

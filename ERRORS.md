@@ -50,6 +50,16 @@
    実行環境側（`permissions.deny`・`git status`によるdiff確認）で裏付けを取って初めて
    信頼できる、という同じ構造の教訓である。
 
+**併せて（2026-08-04 実測）: 複合コマンドでも deny が勝つ。** `Bash(./scripts/verify.sh)`
+を allow した状態で `./scripts/verify.sh ; gh pr merge 99999 --merge` と
+`./scripts/verify.sh && gh api repos/giant-shrimp/comic_checker --jq .full_name` を試すと、
+**どちらもコマンド全体が実行前に拒否された**（`permission_denials` に記録。`verify.sh`
+自身も走らない）。判定は「先頭が allow に一致するか」の前方一致ではなく、連結された各
+コマンドを見ている。**したがって「allow したコマンドの後ろに禁止コマンドを繋ぐ」形の
+迂回はできない。** ただしこれに安全を預けるより、そもそも入口を作らない方が確実である
+（`scripts/loop_git.sh` を非対話ループの `--allowedTools` に入れていないのはその判断。
+詳細は `docs/work_loop_testing.md` 5-f）。
+
 ## 開発環境をUbuntu(20.04/Python3.8)へ移植したらGUIテストが1件失敗
 
 Windows(WSL)から Ubuntu PC へ開発環境を移した際、`verify.sh`で
