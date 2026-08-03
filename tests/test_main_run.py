@@ -200,6 +200,163 @@ def test_run_without_on_progress_does_not_raise(tmp_path):
     assert total == 1
 
 
+# ------------------------------------------------------------ 中断（Issue #61）
+
+
+class FakeCancelEvent:
+    """`is_set()` だけを持つ中断要求。
+
+    run() は threading.Event を要求せず、`is_set()` を持つものなら何でも受ける
+    （main.py は threading を import しない）。この偽物でテストが通ることが、その
+    ダックタイピングを固定する。
+    """
+
+    def __init__(self):
+        self._set = False
+
+    def set(self):
+        self._set = True
+
+    def is_set(self):
+        return self._set
+
+
+def make_filled_workbook(tmp_path, rows):
+    """(タイトル, 連載状況) の並びから、判定済みの行を含むブックを作る。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["タイトル", "連載状況"])
+    for title, status in rows:
+        ws.append([title, status])
+    path = tmp_path / "filled.xlsx"
+    wb.save(path)
+    return path
+
+
+def test_run_stops_at_row_boundary_when_cancelled_and_saves_finished_rows(tmp_path):
+    excel_path = make_workbook(tmp_path, ["A", "B", "C", "D", "E"])
+    cancel_event = FakeCancelEvent()
+
+    def judge(title):
+        # 2行目を判定し終えた時点で中断を要求する（＝実行中に押された状況）。
+        if title == "B":
+            cancel_event.set()
+        return WikipediaJudgment(query=title, status="完結", matched_title=title)
+
+    calls = []
+
+    def on_progress(index, total, title, status, matched_title, error=None):
+        calls.append((index, total, title))
+
+    with patch("comic_checker.main.wikipedia_client.judge", side_effect=judge):
+        total = run(excel_path, on_progress=on_progress, cancel_event=cancel_event)
+
+    # 戻り値は「処理対象の行数（5）」ではなく「実際に処理した行数（2）」。
+    assert total == 2
+    # 中断要求より後の行は判定にすら入らない（3行目のtotalは通知されない）。
+    assert calls == [(1, 5, "A"), (2, 5, "B")]
+
+    # save_every=5 に達する前に抜けているので、ループ後の保存が効いていないと
+    # 2行とも消える。「破棄しない」の確認はここ。
+    ws = _reload(excel_path).active
+    assert read_row(ws, 2)["連載状況"] == "完結"
+    assert read_row(ws, 3)["連載状況"] == "完結"
+    # 未処理の行は空欄のまま＝次回 skip_filled=True の対象として残る。
+    assert read_row(ws, 4)["連載状況"] is None
+    assert read_row(ws, 5)["連載状況"] is None
+    assert read_row(ws, 6)["連載状況"] is None
+
+
+def test_run_without_cancel_event_processes_every_row(tmp_path):
+    excel_path = make_workbook(tmp_path, ["A", "B", "C"])
+
+    with patch(
+        "comic_checker.main.wikipedia_client.judge",
+        side_effect=lambda title: WikipediaJudgment(
+            query=title, status="連載中", matched_title=title
+        ),
+    ):
+        total = run(excel_path, cancel_event=None)
+
+    assert total == 3
+    ws = _reload(excel_path).active
+    assert [read_row(ws, row)["連載状況"] for row in (2, 3, 4)] == ["連載中"] * 3
+
+
+def test_cancelled_run_resumes_from_the_unprocessed_rows(tmp_path):
+    excel_path = make_workbook(tmp_path, ["A", "B", "C", "D"])
+    cancel_event = FakeCancelEvent()
+
+    def judge_then_cancel(title):
+        if title == "B":
+            cancel_event.set()
+        return WikipediaJudgment(query=title, status="完結", matched_title=title)
+
+    with patch("comic_checker.main.wikipedia_client.judge", side_effect=judge_then_cancel):
+        assert run(excel_path, cancel_event=cancel_event) == 2
+
+    # 中断後に skip_filled=True で再実行すると、残り2行だけを続きから処理する。
+    with patch(
+        "comic_checker.main.wikipedia_client.judge",
+        side_effect=lambda title: WikipediaJudgment(
+            query=title, status="連載中", matched_title=title
+        ),
+    ) as resumed_judge:
+        assert run(excel_path) == 2
+
+    assert [call.args[0] for call in resumed_judge.call_args_list] == ["C", "D"]
+    ws = _reload(excel_path).active
+    # 1回目に処理した行は再判定されず、2回目の行だけが新しい値になる。
+    assert [read_row(ws, row)["連載状況"] for row in (2, 3, 4, 5)] == [
+        "完結",
+        "完結",
+        "連載中",
+        "連載中",
+    ]
+
+
+def test_cancelled_rejudge_leaves_stale_rows_that_skip_filled_will_not_revisit(tmp_path):
+    """skip_filled=False の実行を中断した場合の注意点（設計時に洗い出した挙動）。
+
+    全件再判定を途中で止めると、まだ再判定していない行にも古い判定結果が残っている。
+    それらは「判定済み」なので、次に skip_filled=True で実行しても**拾われない**。
+    続きから再判定するには、もう一度「すべて再判定」を選ぶ必要がある（GUIは #32 の
+    確認ダイアログでそれを選べる）。ここではその挙動を仕様として固定する。
+    """
+    excel_path = make_filled_workbook(
+        tmp_path, [("A", "連載中"), ("B", "連載中"), ("C", "連載中")]
+    )
+    cancel_event = FakeCancelEvent()
+
+    def judge_then_cancel(title):
+        if title == "A":
+            cancel_event.set()
+        return WikipediaJudgment(query=title, status="完結", matched_title=title)
+
+    with patch("comic_checker.main.wikipedia_client.judge", side_effect=judge_then_cancel):
+        assert run(excel_path, skip_filled=False, cancel_event=cancel_event) == 1
+
+    ws = _reload(excel_path).active
+    # 再判定できたのは1行だけ。残り2行には古い「連載中」が残っている。
+    assert [read_row(ws, row)["連載状況"] for row in (2, 3, 4)] == ["完結", "連載中", "連載中"]
+
+    # skip_filled=True の再実行では、その古い2行は判定済み扱いで処理されない。
+    with patch("comic_checker.main.wikipedia_client.judge") as never_judged:
+        assert run(excel_path) == 0
+    never_judged.assert_not_called()
+
+    # 「すべて再判定」（skip_filled=False）を選べば、残りも新しい値に更新できる。
+    with patch(
+        "comic_checker.main.wikipedia_client.judge",
+        side_effect=lambda title: WikipediaJudgment(
+            query=title, status="完結", matched_title=title
+        ),
+    ):
+        assert run(excel_path, skip_filled=False) == 3
+    ws = _reload(excel_path).active
+    assert [read_row(ws, row)["連載状況"] for row in (2, 3, 4)] == ["完結"] * 3
+
+
 def _reload(excel_path):
     from openpyxl import load_workbook
 

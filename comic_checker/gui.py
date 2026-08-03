@@ -39,6 +39,7 @@ STATUS_COLORS = {
 SECTION_ICONS = {
     "file": "📁",
     "run": "▶",
+    "cancel": "■",
     "progress": "📊",
     "log": "📝",
 }
@@ -501,6 +502,9 @@ class App(ttk.Frame):
         self.summary_text = tk.StringVar(value="—")
         self._counts = {}
         self._summary_chips = []
+        # 実行中の中断要求（Issue #61）。実行していない間は None。生成も差し替えも
+        # メインスレッド（_on_run）だけで行い、ワーカーへは引数で渡す。
+        self._cancel_event = None
         self._theme = _apply_theme(master)
         self._build_widgets()
         self.excel_path.trace_add("write", self._on_path_changed)
@@ -559,6 +563,17 @@ class App(ttk.Frame):
             style=button_style,
         )
         self.run_button.pack(side="left")
+
+        # 中断ボタンは実行中だけ有効にする（Issue #61）。数百行の入力では実行が
+        # 1時間近くかかるので、強制終了せずに止められる必要がある。
+        self.cancel_button = ttk.Button(
+            frame,
+            text=self._decorate("cancel", "中断"),
+            command=self._on_cancel,
+            state="disabled",
+        )
+        self.cancel_button.pack(side="left", padx=(8, 0))
+
         ttk.Label(
             frame,
             text="「タイトル」列のある .xlsx を選んで実行してください。",
@@ -766,26 +781,61 @@ class App(ttk.Frame):
         if skip_filled is None:
             return
 
+        self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
+        self.cancel_button.config(state="normal")
         threading.Thread(
-            target=self._run_worker, kwargs={"skip_filled": skip_filled}, daemon=True
+            target=self._run_worker,
+            kwargs={"skip_filled": skip_filled, "cancel_event": self._cancel_event},
+            daemon=True,
         ).start()
 
-    def _run_worker(self, skip_filled=True):
+    def _on_cancel(self):
+        """中断を要求する（Issue #61）。実際に止まるのは現在の行を処理し終えてから。"""
+        if self._cancel_event is None or self._cancel_event.is_set():
+            return
+        # 押した瞬間にボタンを落として「効いていない」ように見せない。実際の停止は
+        # run() が次の行の切れ目で気づくまで待つことになるので、そのことも書く。
+        self.cancel_button.config(state="disabled")
+        self._log("中断します（現在の行の処理を終えるまでお待ちください）")
+        self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
+        self._cancel_event.set()
+
+    def _run_worker(self, skip_filled=True, cancel_event=None):
         excel_path = self.excel_path.get()
         self._reset_run_state()
         self._log_threadsafe(f"実行開始: {excel_path}")
         try:
-            total = run(excel_path, on_progress=self._on_progress, skip_filled=skip_filled)
-            self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
-            self._set_status_threadsafe(f"完了しました（{total}件処理）")
-            self.after(0, self._set_progress_done, True)
+            total = run(
+                excel_path,
+                on_progress=self._on_progress,
+                skip_filled=skip_filled,
+                cancel_event=cancel_event,
+            )
+            # 中断で抜けた場合、total は「処理対象の行数」ではなく「実際に処理した行数」。
+            # 完了と中断で表示を分けないと、途中で止めたのに完了したように見える。
+            if cancel_event is not None and cancel_event.is_set():
+                self._log_threadsafe(
+                    f"中断しました（{total}件処理・保存済み、保存先: {excel_path}）"
+                )
+                self._set_status_threadsafe(f"中断しました（{total}件処理・保存済み）")
+                self.after(0, self._set_progress_done, False)
+            else:
+                self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
+                self._set_status_threadsafe(f"完了しました（{total}件処理）")
+                self.after(0, self._set_progress_done, True)
         except Exception as exc:
             self._log_threadsafe(f"エラーが発生しました: {exc}")
             self._set_status_threadsafe("エラーで中断しました")
             self.after(0, self._set_progress_done, False)
         finally:
-            self.after(0, lambda: self.run_button.config(state="normal"))
+            self.after(0, self._reset_buttons_after_run)
+
+    def _reset_buttons_after_run(self):
+        """実行後のボタン状態を戻す。ワーカーからは after() 経由でのみ呼ぶこと。"""
+        self.run_button.config(state="normal")
+        self.cancel_button.config(state="disabled")
+        self._cancel_event = None
 
     def _on_progress(self, index, total, title, status, matched_title, error=None):
         key = "エラー" if error is not None else status

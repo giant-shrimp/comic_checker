@@ -73,6 +73,8 @@ def test_message_states_how_many_rows_remain_when_some_are_pending():
 
 
 # --------------------------------------------------------------------- 結線
+# ここで見たいのは skip_filled の値だけなので、kwargs 全体ではなくその1件を取り出す
+# （Issue #61 で cancel_event が加わった。そちらの結線は test_gui_run.py で見る）。
 
 
 def test_runs_without_dialog_when_nothing_is_judged(app):
@@ -84,7 +86,7 @@ def test_runs_without_dialog_when_nothing_is_judged(app):
                 app._on_run()
 
     mock_dialog.assert_not_called()
-    assert mock_thread_cls.call_args.kwargs["kwargs"] == {"skip_filled": True}
+    assert mock_thread_cls.call_args.kwargs["kwargs"]["skip_filled"] is True
 
 
 def test_skip_choice_runs_with_skip_filled_true(app):
@@ -95,7 +97,7 @@ def test_skip_choice_runs_with_skip_filled_true(app):
             with patch("comic_checker.gui.threading.Thread") as mock_thread_cls:
                 app._on_run()
 
-    assert mock_thread_cls.call_args.kwargs["kwargs"] == {"skip_filled": True}
+    assert mock_thread_cls.call_args.kwargs["kwargs"]["skip_filled"] is True
 
 
 def test_rejudge_choice_runs_with_skip_filled_false(app):
@@ -106,7 +108,7 @@ def test_rejudge_choice_runs_with_skip_filled_false(app):
             with patch("comic_checker.gui.threading.Thread") as mock_thread_cls:
                 app._on_run()
 
-    assert mock_thread_cls.call_args.kwargs["kwargs"] == {"skip_filled": False}
+    assert mock_thread_cls.call_args.kwargs["kwargs"]["skip_filled"] is False
 
 
 def test_cancel_choice_does_not_run_and_leaves_button_usable(app):
@@ -160,7 +162,7 @@ def test_run_continues_when_row_count_cannot_be_determined(app):
                 app._on_run()
 
     mock_dialog.assert_not_called()
-    assert mock_thread_cls.call_args.kwargs["kwargs"] == {"skip_filled": True}
+    assert mock_thread_cls.call_args.kwargs["kwargs"]["skip_filled"] is True
     assert "確認できませんでした" in log_text(app)
 
 

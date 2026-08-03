@@ -219,12 +219,24 @@ def run(
     max_delay=6.0,
     save_every=5,
     on_progress=None,
+    cancel_event=None,
 ):
     """Excelを読み込み、Wikipedia（必要に応じてmanba.co.jp）を検索して連載状況を書き戻す。
 
     1行処理するごとに on_progress(index, total, title, status, matched_title, error=None)
     を呼び出す。成功時は error=None、行単位で例外が起きた場合は捕捉した例外を渡す。
-    on_progress が None の場合は何もしない。戻り値は処理対象だった行数。
+    on_progress が None の場合は何もしない。戻り値は実際に処理した行数で、中断しなければ
+    処理対象の行数と一致する。
+
+    cancel_event に `is_set()` を持つオブジェクトを渡すと、**行の切れ目ごと**に中断要求を
+    見て処理を打ち切る（Issue #61）。`threading.Event` を想定しているが、型は要求しない
+    （テストから偽物を渡せるようにするため、main.py は threading を import しない）。
+    行の途中では止まらないので、中断してから実際に止まるまで1行分（実測4.5秒/行・
+    上限見積り約7秒/行）かかる。`wikipedia_client._api_get` の待機は割り込まないため、
+    429のリトライ中はさらに待つ。
+
+    **中断してもそこまでの結果は保存する。** 判定結果の5セルは1行ぶんまとめて書くので、
+    中断地点に半端な行は残らない。skip_filled=True の次回実行が続きから再開できる。
 
     fallback_to_manba が真の場合のみ、Wikipediaで判定不能だった行についてManbaClientを
     （最初に必要になった時点で一度だけ）起動し、以降の該当行で使い回す。
@@ -270,8 +282,15 @@ def run(
             manba_client_holder["client"] = client
         return manba_client_holder["client"]
 
+    processed = 0
     try:
         for i, (row, title) in enumerate(rows, start=1):
+            # 中断要求は行の切れ目でだけ見る。判定の途中で抜けると、書き込み済みの
+            # セルと未書き込みのセルが同じ行に混在しうるため。
+            if cancel_event is not None and cancel_event.is_set():
+                print(f"中断しました（{processed}件処理）")
+                break
+
             error = None
             try:
                 status, source, matched_title, url, evidence = _judge_row(
@@ -286,6 +305,7 @@ def run(
             ws.cell(row=row, column=evidence_col, value=evidence)
             ws.cell(row=row, column=matched_col, value=matched_title)
             ws.cell(row=row, column=url_col, value=url)
+            processed = i
             on_progress(i, total, title, status, matched_title, error=error)
 
             if i % save_every == 0:
@@ -294,9 +314,11 @@ def run(
         if manba_client_holder["client"] is not None:
             manba_client_holder["client"].__exit__(None, None, None)
 
+    # 中断した場合もここへ落として保存する（そこまでの結果を捨てない・Issue #61）。
     wb.save(excel_path)
-    print("完了しました")
-    return total
+    if processed == total:
+        print("完了しました")
+    return processed
 
 
 def _print_progress(index, total, title, status, matched_title, error=None):
