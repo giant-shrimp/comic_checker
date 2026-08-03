@@ -114,4 +114,7 @@ AI Loop（`scripts/work_loop.sh`）の検証で分かったことなど、過去
   5個が1件も落ちなかった）。定数を追加・変更するときに一度行えば足りるので、
   `verify.sh` には常設しない（全定数の変異は約20秒で、`verify.sh` 全体の約9倍になる）
 - コミット・pushは明示的な許可があるときだけ行う
+- 自律ループ（`scripts/work_loop.sh` 等）はfeature branchへのcommit・push・PR作成まで
+  行ってよい（対話セッションでの上記ルールとは別。`main`への直pushとPRのmergeは
+  引き続き人間が行う。ADR-001、GUI merge運用）
 - 秘密情報を読まない・出力しない
