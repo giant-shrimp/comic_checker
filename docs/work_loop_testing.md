@@ -292,6 +292,89 @@ printf '.venv\n' >> .git/info/exclude
 
 片付けは `rm -r "$CLONE"` のみ（元リポジトリには一切触れていない）。
 
+### 5-h. Issue #75: is_error/terminal_reason の可視化検証（実測日：2026-08-04）
+
+`work_loop.sh` の outcome判定が「verify通過 かつ 変更あり」のみを見ており、claude実行が
+`is_error: true`（例: `terminal_reason: "max_turns"`）で打ち切られていても
+`outcome_N.txt` が `success` の1行で終わっていた問題（Issue #75）への対処を検証した。
+併せて `loop_git.sh cmd_pr` に任意の第2引数（注記ファイル）を追加し、PR本文へも
+同じ情報を反映できるようにした。
+
+**検証環境**: `docs/work_loop_testing.md` 5-g の「一時クローンでの検証」手順を使用。
+`origin` を実GitHubではなく使い捨てのbare repo（`git init --bare` で作成）に向け、
+`claude` と `gh` の両方を偽物に差し替えた（後者は新設。`gh pr create` の
+`--title`/`--body` を捕捉してファイルに書き出し、実際のAPIには触れない）。
+
+```bash
+# 偽claude: session_id に加えて is_error/terminal_reason を返す
+cat > "$SP/fakebin/claude" <<'EOS'
+#!/usr/bin/env bash
+echo '{"session_id":"fake-session-0001","is_error":true,"terminal_reason":"max_turns"}'
+EOS
+chmod +x "$SP/fakebin/claude"
+
+# 偽gh: `gh pr create` の --title/--body を捕捉し、実APIを呼ばない
+cat > "$SP/fakebin/gh" <<'EOS'
+#!/usr/bin/env bash
+if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --title) printf '%s' "$2" > "${FAKE_GH_TITLE_OUT:?}"; shift 2 ;;
+      --body)  printf '%s' "$2" > "${FAKE_GH_BODY_OUT:?}"; shift 2 ;;
+      --draft) shift ;;
+      --base|--head) shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  echo "https://example.invalid/fake/pull/999"
+  exit 0
+fi
+echo "fakebin/gh: unsupported: $*" >&2; exit 1
+EOS
+chmod +x "$SP/fakebin/gh"
+```
+
+| # | シナリオ | 期待 | 実測 |
+|---|---|---|---|
+| M1 | 常に同一失敗（`tests/test_zz_tmp_probe.py`をmainにコミット）＋偽claudeがis_error:true・`MAX_ITER=2` | `outcome_1.txt`=`verify_failed`+warning、`outcome_2.txt`=`no_progress`+warning | 一致（`warning: claude実行がis_error=true（terminal_reason=max_turns）で終了しています…`が両方に付与） |
+| M2 | `cmd_pr <issue> <note-file>` を直接呼ぶ（注記ファイルに2行） | PR本文末尾に `## 注意` 節が追記される | 一致（捕捉した本文に `## 注意` 以下2行が反映） |
+| M3 | `cmd_pr <issue>`（第2引数省略、後方互換） | 本文は従来どおり `## 注意` 節なし | 一致（追記なし） |
+| M4 | 偽claudeが実際にファイルを書き換え、verify通過・`push`・`pr`まで成功パスを通しで実行 | `outcome_1.txt`=`success`+warning。`logs/pr_note_1.txt`に is_error行とコミットメッセージ自動生成行の両方。PR本文に反映 | 初回は is_error行のみ出て自動生成行が欠落（後述のバグ）。修正後は両方一致 |
+| E（再確認） | `main`上で`commit`/`push`/`tag`/`pr` | 拒否 | 4つとも従来どおり拒否（メッセージ不変） |
+| F2（再確認） | `push --force`/`origin HEAD:main`/`--tags`/`--no-verify` | 引数拒否 | 4つとも従来どおり拒否 |
+
+#### 発見したバグ: `COMMIT_MSG_WAS_FALLBACK` がサブシェルに閉じ込められる
+
+M4の初回実測で、`logs/pr_note_1.txt` に is_error の注記は出たが、**コミットメッセージが
+自動生成だった旨の注記が欠落**した（実際のコミット件名は自動生成パターンだったにもかかわらず）。
+
+**原因**: `checkpoint()` 内の `msg_file="$(compose_commit_message "$iter")"` はコマンド
+置換であり、bashはこれを**サブシェルで実行する**。`compose_commit_message()` 内で
+`COMMIT_MSG_WAS_FALLBACK=1` と代入しても、その代入はサブシェル内だけの変更であり、
+呼び出し元のシェルには伝播しない。
+
+**なぜ設計レビューでは気づけず、実測で判明したか**: コード上は「関数内で変数に代入し、
+呼び出し元でその変数を読む」という自然な流れに見え、`local` を使い忘れたわけでもない
+（意図的にグローバル変数として代入している）。問題は代入先の変数ではなく、**関数の
+呼び出され方**（`$(...)` によるコマンド置換）がサブシェルを作ることにある。静的な読み
+だけでは「この関数呼び出しがサブシェルを経由するかどうか」を見落としやすく、
+`bash -n` の構文チェックでも検出できない（構文として正しいため）。実際に実行し、
+`logs/pr_note_1.txt` の中身を確認して初めて欠落に気づいた。
+
+**修正**: 変数ではなく `logs/commit_msg_fallback_${iter}.txt` に `"0"`/`"1"` を書き出す
+ファイル経由の方式に変更（サブシェルをまたいでも確実に受け渡せる）。修正後、M4を再実行し
+両方の注記が正しく出ることを確認した。
+
+#### 「意図的に壊す」確認
+
+`write_outcome()` 内の `elif [ "${IS_ERROR:-false}" = "true" ]` を `elif false` に
+一時的に書き換えてM4を再実行したところ、`outcome_1.txt` が `success` の1行のみとなり
+**warning行が消えることを確認した**（検出がvacuousでないことの実証）。元の条件式に戻し、
+正しい修正版とdiffが無いことを確認したうえで再実行し、warning行が復元されることも
+確認した（この回は偶然 `pr_failed` 経路になったが、そちらでも警告行が正しく付与される
+ことを追加で確認できた）。
+
 ### 5-a. pre-push フック単体テスト（push経路を通らない）
 
 フックは stdin から `<local ref> <local oid> <remote ref> <remote oid>` を1行ずつ

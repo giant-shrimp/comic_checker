@@ -22,6 +22,13 @@
 #              |                            | ローカルに残っている（originには何も出ていない）
 #   4          | pr_failed                  | pushは成功したが gh pr create に失敗した
 #
+# outcome_N.txt は1行目に上記いずれかの値のみを書く。claude実行が is_error=true
+# （例: terminal_reason=max_turns）で終わっていた場合は、outcomeの値に関わらず
+# 2行目に warning: 行を追記する（Issue #75。「success なのにターン上限で打ち切られて
+# いた」ことがPR/outcomeから読み取れなかった問題への対処）。session_id自体が
+# 取得できなかった failed の場合は is_error/terminal_reason を断定できないため
+# note: 行にする（write_outcome() 参照）。
+#
 # 詳細は logs/verify_N.log（検証出力）と logs/run_N.json（is_error / stop_reason /
 # num_turns）を参照。ループ開始時にツリーが汚れていた場合は logs/baseline_dirty.txt。
 #
@@ -169,15 +176,22 @@ echo "ブランチ ${BRANCH} を作成しました（main から分岐）。"
 # エージェントが書いたコミットメッセージを使う。書かれていなければ自動生成に落とす
 # （書き忘れでループが止まるのは得がない）。末尾にイテレーション番号を残し、どのコミットが
 # どの iter-N タグに対応するかを後から追えるようにする。
+# フォールバックだったか否かは logs/commit_msg_fallback_N.txt に "0"/"1" で書き出す
+# （Issue #75）。checkpoint() 側の `msg_file="$(compose_commit_message ...)"` は
+# コマンド置換＝サブシェルで実行されるため、この関数内で通常の変数へ代入しても
+# 呼び出し元には伝わらない。ファイル経由にすることで確実に受け渡す。
 compose_commit_message() {
   local iter="$1"
   local agent_msg="logs/commit_msg_${iter}.txt"
   local out="logs/commit_message_${iter}.final.txt"
+  local fallback_flag="logs/commit_msg_fallback_${iter}.txt"
   if [ -s "$agent_msg" ]; then
     cat "$agent_msg" > "$out"
+    echo 0 > "$fallback_flag"
   else
     printf '#%s work_loop.sh iteration %s の変更\n\nエージェントがコミットメッセージを書かなかったため自動生成しています。\n' \
       "$ISSUE" "$iter" > "$out"
+    echo 1 > "$fallback_flag"
   fi
   printf '\n[work_loop.sh iter-%s]\n' "$iter" >> "$out"
   printf '%s' "$out"
@@ -191,10 +205,30 @@ checkpoint() {
   ./scripts/loop_git.sh tag "$iter"
 }
 
+# outcome_N.txt を書く共通ヘルパー（Issue #75）。1行目は従来どおりoutcomeの値のみ。
+# IS_ERROR=true のときだけ2行目に warning: を追記する。read_error=1 を渡すと、
+# run_N.json からsession_idを取得できず is_error/terminal_reason 自体が不明な
+# ケース（failed）として、断定を避けた note: にする。
+write_outcome() {
+  local iter="$1" outcome="$2" read_error="${3:-0}"
+  local file="logs/outcome_${iter}.txt"
+  echo "$outcome" > "$file"
+  if [ "$read_error" = "1" ]; then
+    echo "note: logs/run_${iter}.json からsession_idを取得できなかったため、is_error/terminal_reasonは不明です。" >> "$file"
+  elif [ "${IS_ERROR:-false}" = "true" ]; then
+    echo "warning: claude実行がis_error=true（terminal_reason=${TERMINAL_REASON:-unknown}）で終了しています。ターン上限到達等により途中で打ち切られた可能性があります。commitメッセージが自動生成の場合があります（logs/commit_message_${iter}.final.txt を確認）。" >> "$file"
+  fi
+}
+
 SESSION=""
 
 for ((i = 1; i <= MAX_ITER; i++)); do
   echo "=== iteration ${i}/${MAX_ITER} ==="
+  # このイテレーションのis_error/terminal_reasonを毎回リセットする。リセットしないと
+  # run_N.jsonの読み取りに失敗したとき前回の値が残り、write_outcomeが誤った
+  # warningを出しかねない（Issue #75）。
+  IS_ERROR=""
+  TERMINAL_REASON=""
   # コミットはループ側で行うので、エージェントにはメッセージだけ書かせる。
   # /work のリテラル呼び出しは先頭に残す（ERRORS.md #14: プロンプト文字列に
   # リテラルな /skill-name が無いとスキルが発火しない）。
@@ -234,10 +268,15 @@ logs/commit_msg_${i}.txt に Write ツールで書いてください（1行目�
   NEW_SESSION=$(jq -r '.session_id // empty' "logs/run_${i}.json" 2>/dev/null || true)
   if [ -z "$NEW_SESSION" ]; then
     echo "実行に失敗しました（logs/run_${i}.err を確認。timeoutによる強制終了の可能性も含む）。中断します。" >&2
-    echo "failed" > "logs/outcome_${i}.txt"
+    write_outcome "$i" "failed" 1
     exit 1
   fi
   SESSION="$NEW_SESSION"
+
+  # is_error/terminal_reason を読む（Issue #75）。session_idが取得できた時点で
+  # run_N.jsonは最低限パース可能なので、ここでの取得は信頼できる。
+  IS_ERROR=$(jq -r '.is_error // false' "logs/run_${i}.json" 2>/dev/null || echo false)
+  TERMINAL_REASON=$(jq -r '.terminal_reason // empty' "logs/run_${i}.json" 2>/dev/null || true)
 
   if ./scripts/verify.sh > "logs/verify_${i}.log" 2>&1; then
     # verify.shが通ることは「タスクが完了した証拠」にはならない。エージェントが
@@ -249,27 +288,39 @@ logs/commit_msg_${i}.txt に Write ツールで書いてください（1行目�
       echo "verify.shは通過しましたが、変更が一切発生していません（no-op）。実装が完了して" >&2
       echo "いない可能性が高いです。logs/run_${i}.json（is_error / stop_reason / num_turns）" >&2
       echo "を確認してください。" >&2
-      echo "no-op" > "logs/outcome_${i}.txt"
+      write_outcome "$i" "no-op"
       exit 2
     fi
     echo "verified — 停止します"
     checkpoint "$i"
     if ! ./scripts/loop_git.sh push; then
       echo "pushに失敗しました。コミットとタグはローカルに残っています（originには何も出ていません）。" >&2
-      echo "push_failed" > "logs/outcome_${i}.txt"
+      write_outcome "$i" "push_failed"
       exit 4
     fi
-    if ! ./scripts/loop_git.sh pr "$ISSUE"; then
+    # PRの注記ファイル（Issue #75）。is_error=trueだった旨、コミットメッセージが
+    # 自動生成だった旨を、該当する場合だけ書く。空なら loop_git.sh 側で無視される。
+    COMMIT_MSG_WAS_FALLBACK="$(cat "logs/commit_msg_fallback_${i}.txt" 2>/dev/null || echo 0)"
+    PR_NOTE_FILE="logs/pr_note_${i}.txt"
+    : > "$PR_NOTE_FILE"
+    if [ "${IS_ERROR:-false}" = "true" ]; then
+      printf -- '- claude実行がis_error=true（terminal_reason=%s）で終了しています。ターン上限到達等により途中で打ち切られた可能性があります。\n' \
+        "${TERMINAL_REASON:-unknown}" >> "$PR_NOTE_FILE"
+    fi
+    if [ "${COMMIT_MSG_WAS_FALLBACK:-0}" = "1" ]; then
+      printf -- '- コミットメッセージはエージェントが書かず、work_loop.shが自動生成しました。\n' >> "$PR_NOTE_FILE"
+    fi
+    if ! ./scripts/loop_git.sh pr "$ISSUE" "$PR_NOTE_FILE"; then
       echo "PR作成に失敗しました。ブランチはpush済みなので、GitHub上で手動でPRを作成できます。" >&2
-      echo "pr_failed" > "logs/outcome_${i}.txt"
+      write_outcome "$i" "pr_failed"
       exit 4
     fi
-    echo "success" > "logs/outcome_${i}.txt"
+    write_outcome "$i" "success"
     exit 0
   fi
 
   echo "検証失敗（詳細は logs/verify_${i}.log）"
-  echo "verify_failed" > "logs/outcome_${i}.txt"
+  write_outcome "$i" "verify_failed"
   # 失敗した版もコミットしてタグを打つ。「落ち方がましだった版へ戻れる」ことが iter-N タグの
   # 目的なので、失敗版を捨てない。pushはしないのでoriginには出ない。
   checkpoint "$i"
@@ -297,11 +348,11 @@ logs/commit_msg_${i}.txt に Write ツールで書いてください（1行目�
         echo "検証は失敗しているのに、失敗行を2回連続で抽出できませんでした。" >&2
         echo "検証自体が成立していない可能性があります（collection error / .venv不在 /" >&2
         echo "verify.shの異常終了など）。logs/verify_${i}.log を直接確認してください。" >&2
-        echo "no_progress_unmeasurable" > "logs/outcome_${i}.txt"
+        write_outcome "$i" "no_progress_unmeasurable"
       else
         echo "前回とまったく同じ失敗が2回続きました。アプローチが変わっていません。中断します。" >&2
         echo "（失敗内容は logs/verify_${i}.log を確認してください）" >&2
-        echo "no_progress" > "logs/outcome_${i}.txt"
+        write_outcome "$i" "no_progress"
       fi
       exit 3
     fi
@@ -309,5 +360,5 @@ logs/commit_msg_${i}.txt に Write ツールで書いてください（1行目�
 done
 
 echo "最大反復に到達しました．人間の確認が必要です．"
-echo "max_iterations" > "logs/outcome_${MAX_ITER}.txt"
+write_outcome "$MAX_ITER" "max_iterations"
 exit 1

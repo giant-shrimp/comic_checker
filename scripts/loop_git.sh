@@ -48,7 +48,7 @@ usage: ./scripts/loop_git.sh <subcommand>
   commit <message-file>   現在のループブランチにコミットする
   tag <iteration>         loop/<issue>/iter-<iteration> を現在のHEADに打つ
   push                    現在のループブランチを origin へ push する（引数なし）
-  pr <issue>              draft PR を作る
+  pr <issue> [note-file]  draft PR を作る（note-fileがあれば本文に追記, Issue #75）
 
 work_loop.sh から呼ばれることを想定している（AIの --allowedTools には入れていない）。
 USAGE
@@ -149,8 +149,8 @@ cmd_push() {
 }
 
 cmd_pr() {
-  [ "$#" -eq 1 ] || die "pr はissue番号を1つだけ取ります（渡された引数: $#）"
-  local issue="$1"
+  [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "pr はissue番号（と任意の注記ファイル）を取ります（渡された引数: $#）"
+  local issue="$1" note_file="${2:-}"
   local branch subject title body
   branch="$(require_loop_branch)"
 
@@ -175,6 +175,13 @@ cmd_pr() {
   （ADR-001）
 EOF
 )"
+
+  # 注記ファイルが渡され、かつ中身があれば本文に追記する（Issue #75:
+  # is_error/terminal_reason やコミットメッセージ自動生成の有無をレビュアーに伝える）。
+  # ファイルが無い/空なら何もしない（従来どおりの本文のまま）。
+  if [ -n "$note_file" ] && [ -s "$note_file" ]; then
+    body="$(printf '%s\n\n## 注意\n\n%s' "$body" "$(cat "$note_file")")"
+  fi
 
   # --draft 固定。マージは人間が行う（ADR-001）。
   gh pr create --draft --base main --head "$branch" --title "$title" --body "$body"
