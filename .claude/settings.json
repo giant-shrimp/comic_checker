@@ -16,6 +16,8 @@
       "Write(.claude/skills/work/SKILL.md)",
       "Edit(.claude/skills/decompose/SKILL.md)",
       "Write(.claude/skills/decompose/SKILL.md)",
+      "Edit(.claude/skills/post-merge-cleanup/SKILL.md)",
+      "Write(.claude/skills/post-merge-cleanup/SKILL.md)",
       "Edit(.claude/settings.json)",
       "Write(.claude/settings.json)",
       "Edit(.github/workflows/**)",
