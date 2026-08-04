@@ -227,6 +227,28 @@ TONKATSU_DJ_AGETARO_EXTRACT = (
     "掲載された。\n\n\n"
 )
 
+# Issue #38: 実際の『日常』の記事から抜粋。COMPLETED_WEAK_REの「まで...連載」は、
+# 「まで」と「連載」の間に語が挟まる言い回し（TONKATSU_DJ_AGETARO_EXTRACT参照）に対応する
+# ため間隔を20文字まで許容していたが、「10月まで読み切りを掲載したのち、同年11月から
+# 連載に移行。」のように読点をまたいで20文字以内に収まる場合、前半（読み切り掲載の終了）
+# と後半（連載の*開始*）という別々の節を一つに束ねて誤爆していた。この文は連載の開始を
+# 述べており、完結とは正反対の内容。読点をまたぐ場合を除外して回避する
+# （動機だったとんかつDJアゲ太郎の「まで毎週木曜更新で連載。」は読点をまたがないため、
+# 引き続き完結と判定できることをtest_tonkatsu_dj_agetaro_main_completion_not_confused_with_spinoffで
+# 確認済み）。
+#
+# さらに次の文には継続を示す語（「再開」）があるが、CONTINUATION_VETO_REは同一文内しか
+# 見ないため前の文には効かず、ONGOING_RE（「連載中」「連載されている」）にも一致しない
+# ため、M6-B-3のhas_ongoing_elsewhereによる抑止も発火しない。このケースでは
+# 「まで...連載」自体を誤爆させないことが直接の対処になる。
+NICHIJOU_EXTRACT = (
+    "『日常』（にちじょう）は、あらゐけいいちによる日本の漫画作品。"
+    "『月刊少年エース』（KADOKAWA（旧角川書店）において2006年5月から10月まで"
+    "読み切りを掲載したのち、同年11月から連載に移行。"
+    "2015年12月号を最後に連載を一旦終了するも、2021年12月号から再開したが、"
+    "2025年2月号から多忙によるスケジュール調整により長期休載となっている。"
+)
+
 # 合成フィクスチャ（実データでは未発見）。本編は連載中、番外編は完結済みという、
 # TONKATSU_DJ_AGETARO_EXTRACTとは逆に食い違うパターン。番外編の完結文を本編より先に
 # 配置し、番外編の文につられて誤った「完結」を返さないこと（スキップされ、本編自身の
@@ -458,6 +480,21 @@ def test_tonkatsu_dj_agetaro_main_completion_not_confused_with_spinoff():
     assert status == "完結"
     assert "番外編" not in evidence
     assert "毎週木曜更新で連載" in evidence
+
+
+def test_nichijou_serialization_resumption_across_comma_is_not_completed():
+    # 回帰テスト（実際に本番で誤判定していたケース、Issue #38）: 「10月まで読み切りを
+    # 掲載したのち、同年11月から連載に移行。」は読点をまたいで「まで」と「連載」が
+    # 20文字以内に収まってしまい、連載の*開始*を述べる文なのに完結と誤爆していた。
+    # 読点をまたぐ場合を除外した結果、この文からは完結・連載中のどちらの断定もできなく
+    # なる（後続文の「連載を一旦終了するも、再開したが、休載となっている」も、
+    # CONTINUATION_VETO_REが同一文内しか見ないため、あるいはONGOING_REに一致しない
+    # ため決着しない）。断定できない以上、判定不能に倒すのが正しい
+    # （Issue #8以来のfail-closed方針）。最低限守るべきは「完結」という誤った断定を
+    # 返さないことである。
+    status, _ = _judge_extract(NICHIJOU_EXTRACT)
+    assert status != "完結"
+    assert status == STATUS_UNKNOWN
 
 
 def test_magazine_transfer_across_sentences_is_not_completed():
