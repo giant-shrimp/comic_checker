@@ -66,6 +66,21 @@ jobs:
             exit 1
           fi
 
+      - name: Count comments before review
+        # work_loop.sh の no-op 検出（Issue #16）と同じ考え方。「Actionが成功と
+        # 報告すること」と「実際にレビューコメントが投稿されること」は別の事象
+        # だと判明した（run 31111080310で実測: is_error:false・num_turns:9で
+        # 正常終了したにもかかわらず、コメント0件だった）。実行前後のコメント数を
+        # 比較し、増えていなければ後段のstepで落とす。
+        id: comments_before
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          COUNT="$(gh pr view "${{ inputs.pr_number }}" --json comments --jq '.comments | length')"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -99,6 +114,18 @@ jobs:
             - `./scripts/verify.sh` を実行しないでください（ツール権限でも
               許可していません）。判定はすべて `gh pr diff` で取得した差分を
               **読んで**行ってください。
+
+            ## Bashコマンドの制約（必ず守ること）
+            - Bashコマンドを `;` `&&` `|` `>` で連結しないでください。
+              1回のBash呼び出しにつき1コマンドだけ実行してください。
+            - ファイルへのリダイレクト（`>`等）はせず、コマンドの出力を
+              そのまま読んでください。
+            - 許可されているコマンドは `gh pr diff` と `gh pr view` だけです。
+              `wc`・`cat`・`echo`等、他のコマンドは使えません。
+            - コマンドが拒否された場合、**人間に承認を求めず**、単一コマンドに
+              分割して再試行してください。**このワークフローは非対話実行であり、
+              承認する人間はその場にいません。** 「承認いただければ続行します」
+              のような応答で終了しないでください。
 
             ## 事前に取得・確認するもの
             - `gh pr diff ${{ inputs.pr_number }}` でこのPRの差分を取得する
@@ -156,3 +183,21 @@ jobs:
           # 対処済み。「Ensure origin/main exists」step参照）。gh pr diff / gh pr view
           # はGitHub側のAPIから直接取得するためこの問題を回避できる。
           claude_args: "--model sonnet --max-turns 15 --allowedTools Read,Glob,Grep,Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      - name: Verify a review comment was posted
+        # 「Count comments before review」で控えた件数と比較する。増えていなければ
+        # Actionの終了コードに関わらずこのstepをfail-closedで落とす。
+        # verify.shの「わざと壊してexit 1を確認する」対象にもなる
+        # （このifの条件を反転させれば、常に検出しない壊れ方を再現できる）。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BEFORE="${{ steps.comments_before.outputs.count }}"
+          AFTER="$(gh pr view "${{ inputs.pr_number }}" --json comments --jq '.comments | length')"
+          if [ "$AFTER" -le "$BEFORE" ]; then
+            echo "::error::Actionは成功したがレビューコメントが投稿されていません（実行前 ${BEFORE} 件 → 実行後 ${AFTER} 件）。"
+            exit 1
+          fi
+          echo "レビューコメントが投稿されたことを確認しました（${BEFORE} 件 → ${AFTER} 件）。"
