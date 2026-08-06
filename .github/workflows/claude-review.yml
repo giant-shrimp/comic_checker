@@ -1,0 +1,124 @@
+# v8計画 5-2（PR自動レビュー）相当だが、5-6 の Step 1（コメントするだけ、
+# コード変更なし）に厳密に限定してある。ADR-004 決定2の前提（contents: write
+# を与えない）を守るため、permissions に contents: write は含めていない。
+# 含めた場合、mainのサーバサイド保護が無い状態（403で確認済み）でActionsが
+# 書き込み権限を持つことになり、決定2が崩れる。
+#
+# 認証は CLAUDE_CODE_OAUTH_TOKEN（ADR-005。ADR-004決定1をsupersede）。
+# サブスク枠を消費する経路のため --max-budget-usd は使えない。トリガーを
+# workflow_dispatch のみに絞り、--max-turns で歯止めをかけている（詳細は
+# ADR-005「代替の制御手段」）。ADR-004決定2・決定3はこのADR-005と独立に
+# 有効なまま。
+#
+# workflow_dispatch のみで起動する。pr_number 入力を必須にしてある。
+# cron等での常時稼働は、この構成（金銭上限が掛けられない）では想定しない。
+# 実行のたびに対話セッション側の枠への影響を人間が観測すること（ADR-005）。
+
+name: Claude PR Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "レビュー対象のPR番号（必須）"
+        required: true
+        type: number
+
+# contents: write は与えない（ADR-004 決定2）。
+# コメント投稿にのみ必要な pull-requests: write と、チェックアウトに要る
+# contents: read だけを与える。
+permissions:
+  contents: read
+  pull-requests: write
+
+# 連続手動実行でレビューが積み上がらないようにする。トリガーが
+# workflow_dispatch のみになったため、キーは inputs.pr_number だけでよい。
+concurrency:
+  group: claude-review-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # 旧if:（github.event_name == 'workflow_dispatch' || github.event.pull_request...）は
+    # 削除した。workflow_dispatchイベントにはgithub.event.pull_requestが存在せず
+    # 常にfalseになるため、この条件は恒真式（常にtrue）になっており機能を
+    # 失っていた（pull_requestトリガー時代の名残）。
+    #
+    # ただし「forkのPRをpr_numberで指定できてしまう」リスクは条件式の話とは別に
+    # 残っていたため、それは下のstep（Reject cross-repository PR）で
+    # コード側に落とした。運用者の確認任せにはしていない。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Reject cross-repository (fork) PR
+        # このstepは actions/checkout より前にあるため、作業ディレクトリに
+        # まだgitリポジトリが無い。gh pr view はカレントのgitリモートから
+        # 対象リポジトリを推定するため、その推定が効かない。GH_REPO で
+        # 対象リポジトリを明示することで、この状態でも動くようにする。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IS_CROSS="$(gh pr view "${{ inputs.pr_number }}" --json isCrossRepository --jq .isCrossRepository)"
+          if [ "$IS_CROSS" != "false" ]; then
+            echo "::error::PR #${{ inputs.pr_number }} はfork（別リポジトリ）からのPRのため、シークレットを渡すレビューを中止します。"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # workflow_dispatch は pr_number からPRのHEADを明示的に取得する。
+          ref: refs/pull/${{ inputs.pr_number }}/head
+
+      - name: Claude PR Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            この PR の差分をレビューしてください。
+
+            ## 制約（必ず守ること）
+            - コードは一切変更しないでください。コメントのみ投稿してください。
+            - 新しいブランチを作成しないでください。
+            - この PR をクローズ・マージ・承認しないでください。
+            - Issue のクローズも行わないでください。
+
+            ## 事前に読むもの
+            - `CLAUDE.md`（このプロジェクトの作業ルール）
+            - `ERRORS.md`（過去に詰まった失敗。同種の問題が今回の差分に
+              含まれていないか確認するため）
+
+            ## レビュー観点
+            - 既存の挙動を壊していないか
+            - テストが追加・更新されているか
+            - テストが削除・スキップされていないか
+            - エラー処理と境界値
+            - 秘密情報のハードコード
+            - **`./scripts/verify.sh` のゲートが空洞化していないか**
+              （チェックの削除、`continue-on-error` の追加、対象からの除外等）
+            - **fail-closed の原則が崩れていないか**
+              （判定不能に倒すべき場面で断定に倒していないか。特に
+              `comic_checker/wikipedia_client.py` 周辺の変更で確認すること）
+            - **`ERRORS.md` への追記が必要な失敗が、この差分の作業過程に
+              含まれていないか**（PR本文やコミットメッセージから、2回以上の
+              試行を要した問題が読み取れる場合は、追記漏れとして指摘する）
+
+            指摘は重要度順に最大5件までにしてください。
+            些細なスタイルの指摘はしないでください。
+
+            各指摘には必ず次を含めてください。
+            - 該当箇所（ファイルと行）
+            - 期待される挙動
+            - 実際に起きること
+            - そう判断した根拠（差分の該当行、または再現手順）
+            - 最小の修正案
+            根拠を示せない指摘は書かないでください。
+          # --max-budget-usd は付けていない（ADR-005）。CLAUDE_CODE_OAUTH_TOKEN は
+          # サブスク枠を消費する経路であり、ドル建ての従量課金ではないため
+          # このフラグに対応する予算上限が存在しない。--max-turns を代わりの
+          # 歯止めとして使う。
+          claude_args: "--model sonnet --max-turns 15"
