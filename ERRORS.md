@@ -497,3 +497,80 @@ Code側の実装、またはプラットフォーム側のポリシー）が、d
 追従しているとは限らない。**「〜のはず」という記述を信じず、実際にコマンドを
 1つ実行して確認する**という、このプロジェクトで繰り返されてきた原則
 （Issue #14・#40・ADR-001など）が今回も有効だった。
+
+## `claude-review.yml`（Phase 5 Step 1）: `workflow_dispatch`実行がコメント投稿まで到達しない
+
+Phase 5 Step 1（PR自動レビュー、コメント投稿のみ・コード変更なし）を
+`gh workflow run claude-review.yml -f pr_number=82`で3回実測した
+（PR #82対象。run 31094393958 / 31111080310 / 31113307119）。
+
+**観測**: 3回とも拒否の種類が異なった。
+
+- 1回目（run 31094393958、`--allowedTools`未設定）: `subtype: "error_max_turns"`、
+  `is_error: true`、`num_turns: 16`（`--max-turns 15`超過）、
+  `permission_denials_count: 8`。`show_full_output: false`（既定値）だったため
+  拒否の内訳は当時観測できていない。
+- 2回目（run 31111080310、`--allowedTools`設定後）: `is_error: false`、
+  `num_turns: 9`、`subtype: "success"`だが、コメントは0件のままだった。
+  `permission_denied`が1件発生し、`decision_reason_type: "subcommandResults"`、
+  メッセージ原文は
+  `"This Bash command contains multiple operations. The following parts require
+  approval: gh pr diff 82, gh pr view 82 --json title,body,commits,number,url,files,
+  wc -l /tmp/pr82.diff, cat /tmp/pr82.json"`。拒否されたコマンドは
+  `gh pr diff 82 > /tmp/pr82.diff; gh pr view 82 --json ... > /tmp/pr82.json;
+  wc -l /tmp/pr82.diff; echo "---"; cat /tmp/pr82.json`という`;`連結の複合コマンド
+  だった。
+- 3回目（run 31113307119、プロンプトに複合コマンド禁止を追記した後）:
+  複合コマンドは一度も試行されなかったが、単一コマンド9件
+  （`gh pr diff 82`・`gh pr view 82`・`gh --version`・
+  `git fetch origin pull/82/head`・WebFetch）がすべて拒否された。Bashに対する
+  8件は全件`decision_reason_type: "other"`、メッセージ原文はすべて
+  `"This command requires approval"`だった（2回目の`"subcommandResults"`とは
+  別の拒否理由）。`--allowedTools`の`Bash(gh pr diff:*)`/`Bash(gh pr view:*)`に
+  文字列として一致する`gh pr diff 82`/`gh pr view 82`自体も拒否され、
+  `"dangerouslyDisableSandbox": true`を付けた再試行（2件）も同じ理由で拒否された。
+
+**観測**: 3回目で`git remote -v`（`--allowedTools`のいずれのパターンにも一致しない
+コマンド）を実測したところ、`permission_denied`は発生せず`is_error: false`で
+成功した。**したがって「Bashツールが一律で承認待ちになっている」という説明は
+この実測データで直接反証される。**
+
+**観測**: 3回目時点では`claude-review.yml`に「成果物ゼロ検出」step
+（`Verify a review comment was posted`、実行前後のPRコメント数を比較し増えて
+いなければ`exit 1`）が追加済みだった（PR #86）。この回、`Claude PR Review`step
+自体は`is_error: false`・`subtype: "success"`で「成功」と報告していたにも
+かかわらず、`Verify a review comment was posted`stepは
+`実行前 0 件 → 実行後 0 件`を正しく検出し、ワークフロー全体をfail-closedで
+落とした。
+
+**訂正**: 2回目の結果（`decision_reason_type: "subcommandResults"`、`;`連結の
+複合コマンドが一括拒否）を見て、「複合コマンドが拒否の主因である」という推定を
+事実であるかのように扱い、その推定に基づいて対応（プロンプトへの複合コマンド
+禁止の追記。PR #86）を作った。3回目の結果、複合コマンドの再発は防げたが
+（この点でPR #86の変更自体は効いた）、単一コマンドでも別の理由
+（`decision_reason_type: "other"`）で拒否が続き、コメントは3回とも0件のままだった。
+**複合コマンドは拒否の主因ではなかった**。推定を検証済みの事実として次の対応の
+前提に使ってしまった、という経緯自体をここに記録する。
+
+**未確定**: 根本原因は判定不能。反証されたのは「Bashツールが一律で承認待ち」
+という説明（上記`git remote -v`の観測）のみで、「ネットワークアクセスの有無が
+拒否を分けている」という説明も、ネットワークを伴わないはずの`gh --version`が
+ネットワークを伴う`gh pr diff 82`等と全く同一の理由（`decision_reason_type:
+"other"` / `"This command requires approval"`）で拒否されている事実と、ログ上
+だけでは矛盾なく整合させられない（`gh`バイナリが`--version`実行時にも内部的に
+ネットワークへアクセスしている可能性はあるが、これはログに記録されておらず
+外部知識による推測になるため採用しない）。この1点が未説明のまま残っている。
+
+**教訓**: 公式Actionのモード分岐は、トリガーを変えると変わる。
+`anthropics/claude-code-action`の`src/modes/detector.ts`を実測後に確認したところ、
+`workflow_dispatch`に対応する`case`は無く、コメント`// Default to agent mode
+(which won't trigger without a prompt)`の通り"agent"モードにフォールバックする。
+`src/modes/agent/index.ts`によれば、agentモードはPRのdiff/メタデータを自動取得
+せず、コメント追跡用の`CLAUDE_COMMENT_ID`も`undefined`のまま
+（コード内コメント`"// No tracking comment in agent mode"`）になる。
+**`on: pull_request`等の別トリガーを前提に設計されたプロンプト・期待（自動で
+PRコンテキストが渡る、コメントが投稿できる）は、トリガーを`workflow_dispatch`に
+変えた時点で、ドキュメントを読まない限り気づけない形で成立しなくなっていた。**
+3回の実測を経て初めて、この一次情報（Actionのソースコード）を確認する必要が
+あると気づいた。トリガーの選定は「動くかどうか」だけでなく「Action内部の
+どのコード経路を選ぶか」まで一次情報で確認すべきだった。
