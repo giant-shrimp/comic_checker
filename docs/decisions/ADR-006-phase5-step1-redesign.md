@@ -155,6 +155,99 @@ prompt)`の通り"agent"モードにフォールバックしていた。`src/mod
   「`gh`バイナリの呼び出しが一律拒否される」パターンとは異なる経路である
   可能性はあるが、断定はしない。
 
+**残存リスクの追加検証（一次情報）**:
+
+1. **tagモードは`prompt:`入力を使うか**: 使う。ただし既定プロンプトへの
+   追記という形。`src/create-prompt/index.ts`の`generatePrompt()`該当行:
+   ```typescript
+   const defaultPrompt = generateDefaultPrompt(
+     context,
+     githubData,
+     useCommitSigning,
+   );
+
+   if (context.githubContext?.inputs?.prompt) {
+     return (
+       defaultPrompt +
+       `
+
+   <custom_instructions>
+   ${context.githubContext.inputs.prompt}
+   </custom_instructions>`
+     );
+   }
+   ```
+   `context.inputs.prompt`（現行yamlの`prompt:`）は失われず
+   `<custom_instructions>`タグ内に追記されるが、既定プロンプト
+   （`generateDefaultPrompt()`、約400行相当と報告された長大なテンプレート）が
+   先に置かれ、両者が同時にClaudeへ渡る。既定プロンプト側にコード変更・
+   コミット関連の一般的な指示が含まれるため、こちらのリポジトリ固有の
+   「コードは一切変更しない」という制約とどちらが優先されるかは
+   **実測していないため確認できず**。
+   https://github.com/anthropics/claude-code-action/blob/main/src/create-prompt/index.ts
+
+2. **`--allowedTools`明示指定でコメント投稿用MCPツールが弾かれないか**:
+   `docs/configuration.md`に次の記述がある（逐語引用）:
+   > "By default, Claude only has access to:
+   > - File operations (reading, committing, editing files, read-only git commands)
+   > - Comment management (creating/updating comments)
+   > - Basic GitHub operations"
+
+   > "The base GitHub tools are always included. Use `--allowedTools` to add
+   > additional tools (including specific Bash commands), and
+   > `--disallowedTools` to prevent specific tools from being used."
+
+   「base GitHub toolsは常に含まれる」と明記されており、コメント管理用
+   ツール（`mcp__github_comment__update_claude_comment`）はbase toolに
+   該当すると考えられるため、`--allowedTools`を明示指定しても弾かれない
+   可能性が高い（3回目に拒否されたWebFetchはbase toolに含まれない汎用
+   ツールであり、構造が異なる）。ただし文書自体に「`--allowedTools`が
+   既定を保持するのか除去するのか曖昧」という趣旨の注記もあり、**一次情報
+   だけでは断定できず、実測での確認が必要**。
+   https://github.com/anthropics/claude-code-action/blob/main/docs/configuration.md
+
+3. **tagモードは`contents: write`を要求しないか**: `src/mcp/github-file-ops-server.ts`
+   が`commit_files`・`delete_files`という2つのMCPツールを登録しており、
+   上記のFile operations（committing含む）はこれに該当すると見られる。
+   ただしこのサーバは独自の昇格された権限を持たず、ワークフロー自身の
+   `GITHUB_TOKEN`を使うだけである。ソース該当行:
+   ```javascript
+   const githubToken = process.env.GITHUB_TOKEN;
+   if (!githubToken) {
+     throw new Error("GITHUB_TOKEN environment variable is required");
+   }
+   ```
+   APIコールは`Authorization: Bearer ${githubToken}`で行われるため、
+   **ワークフローYAMLの`permissions: contents: read`（ADR-004決定2）を
+   維持する限り、Claudeが`commit_files`を呼んでもGitHub API側で拒否される
+   はずである。** ADR-004決定2による保護は、ツールの有無ではなくこの
+   トークン権限そのものにあり、案A採用後もこの保護は変わらない。
+   `commit_files`呼び出しがトークン権限不足で失敗した場合にClaudeが
+   どう振る舞うか（エラーを認識して停止するか、リトライでターン数を
+   消費するか）は**実測していないため確認できず**。
+   https://github.com/anthropics/claude-code-action/blob/main/src/mcp/github-file-ops-server.ts
+
+4. **fork PRの扱い**: GitHub公式ドキュメントによれば、`on: pull_request`
+   （`pull_request_target`ではない）のfork由来の実行は次の通り
+   （逐語引用）:
+   > "With the exception of `GITHUB_TOKEN`, secrets are not passed to the
+   > runner when a workflow is triggered from a forked repository. The
+   > `GITHUB_TOKEN` has read-only permissions in pull requests from forked
+   > repositories."
+
+   これは現行の自作`Reject cross-repository (fork) PR`stepより強い
+   プラットフォーム側の保護である。fork由来の`pull_request`実行では
+   `CLAUDE_CODE_OAUTH_TOKEN`のようなリポジトリシークレット自体がruner側に
+   渡らないため、`Claude PR Review`stepはfork判定stepの有無に関わらず
+   認証エラーで失敗するはずである。既存の`Reject cross-repository (fork)
+   PR`stepは`workflow_dispatch`前提で書かれているが、`pull_request`
+   トリガーへ変えても無害な二重の防御として残せると考えられる。
+   https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows
+   （`github.event.pull_request.head.repo.full_name`が常に参照可能かは
+   **確認できず**。GitHub公式のWebhookペイロード仕様ページを確認したが、
+   `pull_request`オブジェクトのネストしたフィールド仕様までは記載が
+   見つからなかった）
+
 **欠点（必ず記載）**:
 
 - PRが開く・更新されるたびに起動する構成になり、ADR-005が問題視した
@@ -164,6 +257,52 @@ prompt)`の通り"agent"モードにフォールバックしていた。`src/mod
 - ADR-005の「代替の制御手段」（起動を人間の`workflow_dispatch`実行回数だけに
   絞る）を放棄することになり、ADR-005自体の再検討（決定のsupersede）が
   必要になる。
+- **費用ガードレールの再整理が要る。** `--max-budget-usd`が使えない前提で
+  残る歯止めは、`concurrency`（同一PRの多重実行防止のみ、PR本数自体は
+  防げない）、`timeout-minutes`、`--max-turns`、`types`の限定
+  （`opened`のみにして`synchronize`を外す等。ただし追加コミットを
+  レビューしなくなる）、`paths`/`paths-ignore`（ドキュメントのみのPRを
+  除外）。いずれも「起動回数そのものの上限」にはならない。
+- **月額上限の概算（実測ベース）**: 3回の実測実費（`0.291408` /
+  `0.2815584` / `0.472` USD、平均`0.3483` USD、最大`0.472` USD）から
+  概算すると、20 PR/月で約6.97〜9.44 USD、50 PR/月で約17.42〜23.60 USD、
+  100 PR/月で約34.83〜47.20 USD。plan v8のPhase 7見積もり表
+  （「PRレビュー | 上限/回 $1.00 | 回数の目安 20 PR | 月額上限 $20」、
+  `--max-budget-usd`の上限値×想定回数という最悪値モデル）と比べると、
+  20 PR/月の想定では実測ベースの方が小さい。ただし**この3回はいずれも
+  途中で拒否されて終了した実行の費用であり**、サンドボックス問題が
+  解消してレビューが最後まで走るようになった場合は`--max-turns`の
+  上限まで消費する可能性があり、費用が上がる方向に変わりうる。加えて、
+  OAuth経由はドル建て従量課金ではなくサブスク枠の消費（ADR-005）のため、
+  このUSD換算はターン数・トークン消費の規模感の参考値に過ぎず、
+  ADR-005が明記した「月額の金銭的上限を見積もる手段が無い」という制約は
+  案A採用後も変わらない。
+
+**決定に伴う影響（ADR-005の扱い）**: 案Aを採用する場合、ADR-005が
+「代替の制御手段」として決定した「トリガーは当面`workflow_dispatch`
+のみとする。`pull_request`トリガーは使わない」という一文と正面から
+矛盾する。この扱いには少なくとも次の選択肢がある（結論は書かない）。
+
+- **選択肢1: ADR-005の当該決定をsupersedeする新ADRを別途起こす。**
+  ADR-005が「PR #83 / ADR-005」の形でADR-004決定1をsupersedeしたのと
+  同じ形式。ADR-005の他の決定（認証方式そのもの）は変更しないため、
+  supersedeの対象を「代替の制御手段」の項目に限定する必要がある。
+- **選択肢2: 本ADR-006自体でADR-005の当該項目をsupersedeする。**
+  新しいADRを起こさず、本ADRの「決定」節に「ADR-005の『代替の制御手段』
+  の1項目目をsupersedeし、`pull_request`トリガーを許可する」旨を書く形。
+  ADR間の参照が1つ増えずに済むが、ADR-006が「設計のやり直し」と
+  「認証方式の制御手段の再決定」という2つの話題を1つのADRに含むことになる。
+- **選択肢3: `workflow_dispatch`と`pull_request`を併存させる。**
+  `on:`に両方のトリガーを持たせ、`pull_request`側にのみ
+  `track_progress: true`を設定する。ADR-005の決定文言（「`pull_request`
+  トリガーは使わない」）とは字面上矛盾するため、これも実質的には
+  ADR-005の再検討を要する。
+
+**未確認**: 上記いずれの選択肢を取るにせよ、ADR-005が「代替の制御手段」で
+挙げていた3項目（トリガー限定・`--max-turns`・実行のたびの枠観測）のうち、
+後者2つは案Aでも維持できるのか（`--max-turns`は`claude_args`にそのまま
+残せるはずだが、`track_progress: true`の付与がターン数の消費傾向に
+影響するかは実測していない）は確認できていない。
 
 ### 案B: `workflow_dispatch`を維持し、I/OをClaudeから剥がす
 
