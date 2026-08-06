@@ -1,11 +1,13 @@
 # ADR-006: Phase 5 Step 1（`claude-review.yml`）の設計をやり直す
 
 - 日付：2026-08-07
-- 状態：草案（`決定`節はTBD、人間の判断待ち）
+- 状態：採用
+- **[ADR-005](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-005-auth-oauth-token.md)
+  の「代替の制御手段」1項目目（`workflow_dispatch`限定）をsupersedeする。
+  ADR-005の認証方式の決定と、残り2項目（`--max-turns`・実行のたびの
+  枠観測）は有効なまま**
 - 関連: [ADR-004](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-004-phase5-preconditions.md)
-  （決定2・決定3は本ADRの対象外で有効なまま）、
-  [ADR-005](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-005-auth-oauth-token.md)
-  （本ADRが再検討する決定を含む）
+  （決定2・決定3は本ADRの対象外で有効なまま）
 
 ## 背景
 
@@ -376,4 +378,62 @@ runner側の通常step（Claudeのサンドボックスを経由しない、Acti
 
 ## 決定
 
-TBD（人間の判断待ち）
+**案A（`on: pull_request` + `track_progress: true`）を採用する。**
+
+**ADR-005の決定のうち「代替の制御手段」1項目目——「トリガーは当面
+`workflow_dispatch`のみとする。`pull_request`トリガーは使わない」——を
+本ADRでsupersedeする。** ADR-005のもう一つの決定（認証は
+`CLAUDE_CODE_OAUTH_TOKEN`を使う）は有効なまま維持する。ADR-005の
+「代替の制御手段」の残り2項目（`--max-turns`を上限として使う、実行の
+たびに対話セッション側の枠への影響を人間が観測する）も有効なまま維持する。
+
+**supersedeする理由**: `workflow_dispatch`限定という決定は、
+`anthropics/claude-code-action`のモード判定（`src/modes/detector.ts`）
+において`workflow_dispatch`イベントに対応する`case`が無く"agent"モードへ
+フォールバックするという副作用を持っていた。これによりPRコンテキストの
+自動供給（`fetchGitHubData()`）とコメント追跡（`CLAUDE_COMMENT_ID`）の
+両方が失われ、3回の実測（run 31094393958 / 31111080310 / 31113307119）
+すべてでコメント投稿に到達しなかった。この副作用はADR-005の検討時点では
+認識されておらず、`workflow_dispatch`限定によって得られていたはずの
+コスト制御（起動回数を人間の実行回数だけに絞る）は、**そもそも機能する
+ワークフローを実現できていない以上、代償に見合っていなかった。**
+
+**コスト制御の代替手段**: `--max-budget-usd`が引き続き使えない
+（OAuth経由、ADR-005）前提のまま、次の組み合わせで歯止めをかける。
+
+- `concurrency`（group: PR番号、cancel-in-progress: true）で同一PRの
+  多重実行を防ぐ
+- `timeout-minutes: 15`で1回の実行時間を制限する
+- `--max-turns 15`でターン数を制限する
+- `types: [opened]`に限定し、`synchronize`（追加コミットのたびの
+  再起動）を含めない。これにより起動回数はPR作成回数と一致し、
+  更新頻度には比例しない
+
+**前提の訂正**: ADR-005は「ドル建ての月額上限」という枠組みで費用を
+統制しようとしていたが、OAuth経由はサブスク枠の消費であり従量課金では
+ないため、**そもそもドル建ての上限という枠組み自体がこの経路には
+当てはまらない。** 本ADRの費用試算（3回の実測実費0.291408〜0.472 USDを
+基にした月額概算）も、実際の課金ではなくターン数・トークン消費の
+規模感を掴むための参考値に過ぎない。この制約は案A採用後も変わらない。
+
+**採用にあたって残る未検証事項**（配置前に実測で確認すること）:
+
+- `mcp__github_comment__update_claude_comment`ツールの呼び出しが、
+  3回の実測で観測したBashサンドボックスの承認要求（`decision_reason_type:
+  "other"`）と同じ経路を通るかどうか（作業7-2で確認できずのまま）
+- `--allowedTools`を明示指定してもbase GitHub tools（コメント管理）が
+  弾かれないという理解が正しいか（`docs/configuration.md`の記述は
+  一次情報としてやや曖昧、作業7-2）
+- `--disallowedTools`が`mcp__github_file_ops__commit_files`等のMCP
+  ツールを実際にブロックするか、`--allowedTools`との優先順位（作業8-2、
+  確認できず）
+- `generateDefaultPrompt()`の「Smart branch handling」節が実際に
+  Claudeの挙動へ影響するか、custom_instructions側の打ち消し文で
+  十分抑えられるか（作業8-3）
+- 「PRの最新コメント＝Claudeのトラッキングコメント」という前提が
+  実際に成立するか、成果物ゼロ検出stepの新ロジック（プレースホルダ
+  残骸の検出＋本文長）が実runで正しく機能するか（作業8-1・8-4の
+  下書きコメントに明記済み）
+
+これらはいずれも`claude-review.yml.draft`（`~/comic_checker-agent-notes/`）
+に反映済みだが、**配置前に実測での検証が必要**。
