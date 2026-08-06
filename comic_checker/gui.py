@@ -773,11 +773,12 @@ class App(ttk.Frame):
         return True
 
     def _on_run(self):
-        if not self.excel_path.get():
+        excel_path = self.excel_path.get()
+        if not excel_path:
             self._log("Excelファイルを選択してください")
             return
 
-        skip_filled = self._resolve_skip_filled(self.excel_path.get())
+        skip_filled = self._resolve_skip_filled(excel_path)
         if skip_filled is None:
             return
 
@@ -786,7 +787,11 @@ class App(ttk.Frame):
         self.cancel_button.config(state="normal")
         threading.Thread(
             target=self._run_worker,
-            kwargs={"skip_filled": skip_filled, "cancel_event": self._cancel_event},
+            kwargs={
+                "excel_path": excel_path,
+                "skip_filled": skip_filled,
+                "cancel_event": self._cancel_event,
+            },
             daemon=True,
         ).start()
 
@@ -801,8 +806,7 @@ class App(ttk.Frame):
         self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
         self._cancel_event.set()
 
-    def _run_worker(self, skip_filled=True, cancel_event=None):
-        excel_path = self.excel_path.get()
+    def _run_worker(self, excel_path, skip_filled=True, cancel_event=None):
         self._reset_run_state()
         self._log_threadsafe(f"実行開始: {excel_path}")
         try:

@@ -31,7 +31,7 @@ def test_run_worker_calls_run_with_excel_path_and_on_progress(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
     with patch("comic_checker.gui.run", return_value=3) as mock_run:
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     # Issue #32: skip_filled を明示的に渡すようになった（GUIから再判定を選べるようにするため）。
@@ -54,7 +54,7 @@ def test_run_worker_streams_progress_to_log(app):
         return 2
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     text = log_text(app)
@@ -66,7 +66,7 @@ def test_run_worker_logs_completion_with_count_and_path(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
     with patch("comic_checker.gui.run", return_value=5):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     text = log_text(app)
@@ -80,7 +80,7 @@ def test_run_worker_reenables_button_after_success(app):
     app.run_button.config(state="disabled")
 
     with patch("comic_checker.gui.run", return_value=1):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     assert str(app.run_button["state"]) == "normal"
@@ -91,7 +91,7 @@ def test_run_worker_logs_error_and_reenables_button_on_exception(app):
     app.run_button.config(state="disabled")
 
     with patch("comic_checker.gui.run", side_effect=ValueError("列「タイトル」が見つかりません")):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     text = log_text(app)
@@ -116,10 +116,40 @@ def test_on_run_disables_button_and_starts_worker_thread(app):
     assert app._cancel_event is not None
     mock_thread_cls.assert_called_once_with(
         target=app._run_worker,
-        kwargs={"skip_filled": True, "cancel_event": app._cancel_event},
+        kwargs={
+            "excel_path": "/tmp/対象.xlsx",
+            "skip_filled": True,
+            "cancel_event": app._cancel_event,
+        },
         daemon=True,
     )
     mock_thread_cls.return_value.start.assert_called_once()
+
+
+def test_run_worker_uses_excel_path_captured_at_launch_even_if_changed_later(app):
+    # Issue #33: _run_worker はワーカースレッドから self.excel_path を直接読んで
+    # はいけない。_on_run が起動時に捕捉した値だけを使うことを、実スレッドを使わずに
+    # 確認する（Threadをモックし、捕捉したkwargsを後から同期的に渡すだけなので
+    # タイミング依存がなく再現性がある）。
+    app.excel_path.set("/tmp/最初のファイル.xlsx")
+
+    with patch("comic_checker.gui.count_rows", return_value=RowCounts(pending=1, filled=0)):
+        with patch("comic_checker.gui.threading.Thread") as mock_thread_cls:
+            app._on_run()
+    captured_kwargs = mock_thread_cls.call_args.kwargs["kwargs"]
+
+    # 実行開始後にユーザーがファイルを変更した状況を模擬する。
+    app.excel_path.set("/tmp/別のファイル.xlsx")
+
+    with patch("comic_checker.gui.run", return_value=0) as mock_run:
+        app._run_worker(**captured_kwargs)
+        app.master.update()
+
+    mock_run.assert_called_once()
+    assert mock_run.call_args.args[0] == "/tmp/最初のファイル.xlsx"
+    text = log_text(app)
+    assert "最初のファイル.xlsx" in text
+    assert "別のファイル.xlsx" not in text
 
 
 # ------------------------------------------------------------ 中断（Issue #61）
@@ -181,7 +211,7 @@ def test_run_worker_reports_interruption_instead_of_completion(app):
         return 2
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=cancel_event)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=cancel_event)
         app.master.update()
 
     assert app.status_text.get() == "中断しました（2件処理・保存済み）"
@@ -197,7 +227,7 @@ def test_run_worker_reports_completion_when_cancel_event_is_never_set(app):
     cancel_event = threading.Event()
 
     with patch("comic_checker.gui.run", return_value=3):
-        app._run_worker(cancel_event=cancel_event)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=cancel_event)
         app.master.update()
 
     assert app.status_text.get() == "完了しました（3件処理）"
@@ -209,7 +239,7 @@ def test_buttons_are_restored_after_a_cancelled_run(app):
     app._on_cancel()
 
     with patch("comic_checker.gui.run", return_value=1):
-        app._run_worker(cancel_event=cancel_event)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=cancel_event)
         app.master.update()
 
     assert str(app.run_button["state"]) == "normal"
@@ -230,7 +260,7 @@ def test_progress_bar_tracks_index_and_total(app):
         return 4
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     assert int(app.progress["maximum"]) == 4
@@ -243,13 +273,13 @@ def test_progress_bar_resets_at_the_start_of_each_run(app):
     with patch("comic_checker.gui.run", side_effect=lambda p, on_progress=None, skip_filled=True, cancel_event=None: (
         on_progress(1, 1, "A", "完結", "A", error=None), 1
     )[1]):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert int(app.progress["value"]) == 1
 
     # 2回目の実行では、進捗が持ち越されずに0から始まる。
     with patch("comic_checker.gui.run", return_value=0):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert int(app.progress["value"]) == 0
 
@@ -269,7 +299,7 @@ def test_summary_counts_each_status(app):
         return 5
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     summary = app.summary_text.get()
@@ -291,7 +321,7 @@ def test_summary_groups_unlisted_statuses_into_other(app):
         return 2
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     assert "その他 2" in app.summary_text.get()
@@ -305,12 +335,12 @@ def test_summary_is_reset_between_runs(app):
         return 1
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert "完結 1" in app.summary_text.get()
 
     with patch("comic_checker.gui.run", return_value=0):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert app.summary_text.get() == "—"
 
@@ -331,7 +361,7 @@ def test_status_shows_progress_while_running_and_completion_at_the_end(app):
         return 2
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     assert seen == ["処理中… 1/2 件（ONE PIECE）"]
@@ -342,7 +372,7 @@ def test_status_shows_failure_on_exception(app):
     app.excel_path.set("/tmp/対象.xlsx")
 
     with patch("comic_checker.gui.run", side_effect=ValueError("boom")):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     assert app.status_text.get() == "エラーで中断しました"
@@ -520,7 +550,7 @@ def test_summary_chips_are_colour_coded_per_status(app):
         return 2
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
 
     from comic_checker.gui import STATUS_COLORS
@@ -547,12 +577,12 @@ def test_summary_chips_are_cleared_between_runs(app):
         return 1
 
     with patch("comic_checker.gui.run", side_effect=fake_run):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert app._summary_chips
 
     with patch("comic_checker.gui.run", return_value=0):
-        app._run_worker(cancel_event=None)
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=None)
         app.master.update()
     assert app._summary_chips == []
     assert app.summary_text.get() == "—"
