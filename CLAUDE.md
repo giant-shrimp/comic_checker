@@ -117,4 +117,7 @@ AI Loop（`scripts/work_loop.sh`）の検証で分かったことなど、過去
 - 自律ループ（`scripts/work_loop.sh` 等）はfeature branchへのcommit・push・PR作成まで
   行ってよい（対話セッションでの上記ルールとは別。`main`への直pushとPRのmergeは
   引き続き人間が行う。ADR-001、GUI merge運用）
+- Issueに対応するPRを作成するときは、本文に `Fixes #N` / `Closes #N` を含め、
+  マージ時に自動クローズされるようにする（#33・#38・#75でPRマージ後もIssueが
+  残った事例が続いたため）
 - 秘密情報を読まない・出力しない
