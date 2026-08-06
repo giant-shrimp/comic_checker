@@ -46,35 +46,114 @@ prompt)`の通り"agent"モードにフォールバックしていた。`src/mod
 
 **検証結果（一次情報、本日時点の`anthropics/claude-code-action` `main`ブランチ）**:
 
-- `src/modes/detector.ts`を確認した。`pull_request`イベントは
-  `isEntityContext()`が認識するentity contextに含まれる
-  （`if (isEntityContext(context) && isPullRequestEvent(context))`という
-  分岐が存在する）。
+- `src/modes/detector.ts`の`detectMode()`全文を確認した。`pull_request`イベントは
+  `isEntityContext()`が認識するentity contextに含まれる。ソース該当行:
+
+  ```typescript
+  // PR events (opened, synchronize, etc.)
+  if (isEntityContext(context) && isPullRequestEvent(context)) {
+    const supportedActions = [
+      "opened",
+      "synchronize",
+      "ready_for_review",
+      "reopened",
+    ];
+    if (context.eventAction && supportedActions.includes(context.eventAction)) {
+      // If prompt is provided, use agent mode (default for automation)
+      if (context.inputs.prompt) {
+        return "agent";
+      }
+    }
+  }
+
+  // Default to agent mode (which won't trigger without a prompt)
+  return "agent";
+  ```
+
   https://github.com/anthropics/claude-code-action/blob/main/src/modes/detector.ts
 - ただし**`pull_request`イベントであれば自動的にtag modeになるわけではない**。
-  `track_progress`が有効な場合のみ即座に`"tag"`モードを返す
-  （`if (context.inputs.trackProgress && isEntityContext(context)) { if
-  (isPullRequestEvent(context)...`）。`track_progress`が無効なら、
-  `opened` / `synchronize` / `ready_for_review` / `reopened`のいずれの
-  アクションであっても、promptが与えられていれば結局`"agent"`モードに
-  フォールバックする（コメント`"If prompt is provided, use agent mode
-  (default for automation)"`、最終フォールバックも`return "agent"`）。
+  上記の通り`track_progress`が無効なら、`opened` / `synchronize` /
+  `ready_for_review` / `reopened`のいずれのアクションであっても、promptが
+  与えられていれば結局`"agent"`モードにフォールバックする（`workflow_dispatch`
+  と同じ結末）。`track_progress`が有効な場合のみ、関数冒頭の別分岐が
+  無条件で`"tag"`を返す:
+
+  ```typescript
+  // If track_progress is set for PR/issue events, force tag mode
+  if (context.inputs.trackProgress && isEntityContext(context)) {
+    if (
+      isPullRequestEvent(context) ||
+      isIssuesEvent(context) ||
+      isIssueCommentEvent(context) ||
+      isPullRequestReviewCommentEvent(context) ||
+      isPullRequestReviewEvent(context)
+    ) {
+      return "tag";
+    }
+  }
+  ```
+
   **したがって、単に`workflow_dispatch`を`pull_request`に変えるだけでは
   今回と同じagentモードの問題が再発する。`track_progress: true`の併用が
   必須になる。**
 - `track_progress: true`を併用しtag modeになった場合の挙動は
-  `src/modes/tag/index.ts`で確認した。**tag modeは`fetchGitHubData()`で
-  PRのdiff/メタデータを自動取得してプロンプトに注入し、
-  `createInitialComment()`で実行開始前にトラッキング用コメントを作成して
-  `CLAUDE_COMMENT_ID`を設定する。** これはagentモードが欠いていた
-  (a)(b)の両方を満たす。
+  `src/modes/tag/index.ts`で確認した。ソース該当行:
+
+  ```typescript
+  // Create initial tracking comment
+  const commentData = await createInitialComment(octokit.rest, context);
+  const commentId = commentData.id;
+  ...
+  const githubData = await fetchGitHubData({
+    octokits: octokit,
+    repository: `${context.repository.owner}/${context.repository.repo}`,
+    prNumber: context.entityNumber.toString(),
+    isPR: context.isPR,
+    ...
+  });
+  ```
+
+  **tag modeは`createInitialComment()`で実行開始前にトラッキング用コメントを
+  作成して`commentId`（=`CLAUDE_COMMENT_ID`）を得たうえで、`fetchGitHubData()`
+  によりPRのdiff/メタデータを自動取得してプロンプトに注入する。** これは
+  agentモードが欠いていた(a)(b)の両方を満たす。
   https://github.com/anthropics/claude-code-action/blob/main/src/modes/tag/index.ts
-- ただし、tag modeで生成される自動コメントの形式（issue commentかreview
-  commentか）や、そのコメントが`Bashサンドボックス問題`（`ERRORS.md`記載、
-  未確定）を経由するかどうかまでは、今回のソース確認だけでは確定できて
-  いない。tag modeは`update_claude_comment`ツール（Bashを経由しないMCP専用
-  ツール）を使う設計に見えるため、Bashサンドボックス問題を回避できる
-  可能性があるが、**実測していない。**
+- **投稿されるコメントはissue commentである（review commentではない）。
+  確定した。** `src/mcp/github-comment-server.ts`は
+  `const isPullRequestReviewComment = eventName === "pull_request_review_comment";`
+  で判定しており、`pull_request`イベントの`GITHUB_EVENT_NAME`は
+  `"pull_request"`（`"pull_request_review_comment"`とは別値）のため
+  `isPullRequestReviewComment`は`false`になる。この値を使う
+  `src/github/operations/comments/update-claude-comment.ts`は
+
+  ```typescript
+  if (isPullRequestReviewComment) {
+    response = await octokit.rest.pulls.updateReviewComment({...});
+  } else {
+    response = await octokit.rest.issues.updateComment({...});
+  }
+  ```
+
+  という分岐であり、`false`側の`octokit.rest.issues.updateComment`
+  （issue comment API）が呼ばれる。初回作成（`create-initial.ts`）も同様に
+  `pull_request_review_comment`専用の`octokit.rest.pulls.createReplyForReviewComment`
+  分岐には該当せず、`octokit.rest.issues.createComment`側になる。
+  https://github.com/anthropics/claude-code-action/blob/main/src/mcp/github-comment-server.ts ,
+  https://github.com/anthropics/claude-code-action/blob/main/src/github/operations/comments/update-claude-comment.ts ,
+  https://github.com/anthropics/claude-code-action/blob/main/src/github/operations/comments/create-initial.ts
+
+  → 現行`claude-review.yml`の`Count comments before review`/
+  `Verify a review comment was posted`stepが使っている
+  `gh pr view --json comments`（issue commentのみ取得）は、案Aを実装した
+  場合も引き続き正しい検出対象になる。
+- tag modeがコメント投稿に`update_claude_comment`ツール（Bashを経由しない
+  MCP専用ツール）を使う設計であること自体は`src/mcp/github-comment-server.ts`
+  から読み取れるが、そのツール呼び出し自体が`ERRORS.md`記載のBash
+  サンドボックス問題（`decision_reason_type: "other"`、根本原因未確定）と
+  同じ種類の承認要求を経由するかどうかは、**実測していないため確認できず。**
+  `update_claude_comment`はBashではないため、少なくとも今回観測した
+  「`gh`バイナリの呼び出しが一律拒否される」パターンとは異なる経路である
+  可能性はあるが、断定はしない。
 
 **欠点（必ず記載）**:
 
@@ -117,6 +196,9 @@ runner側の通常step（Claudeのサンドボックスを経由しない、Acti
   今回まだ実測していない。** 同じ実測ログで、ネットワークを伴わない
   `git remote -v`（Bash）は拒否されずに成功しているため、ローカル完結の
   `Write`も同様に通る可能性は高いが、**未検証の推測であり、断定はしない。**
+  `docs/faq.md`を「sandbox」「Write」「file writes」で検索したが、
+  ワークスペース内へのファイル書き込みがサンドボックス承認の対象になるか
+  どうかを明示する記述は**見つからなかった（確認できず）**。
 
 **利点**:
 
