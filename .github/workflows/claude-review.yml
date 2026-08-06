@@ -75,7 +75,17 @@ jobs:
 
       - name: Claude PR Review
         uses: anthropics/claude-code-action@v1
+        env:
+          # --allowedTools の Bash(gh pr diff:*) / Bash(gh pr view:*) を
+          # 認証させるため。checkout の persist-credentials は git 用であり、
+          # Claudeが呼ぶ gh コマンドには別途GH_TOKENが要る（fork判定stepと同じ理由）。
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # show_full_output: true は診断用の一時設定（初回実測でerror_max_turns・
+          # permission_denials_count 8を観測したが、既定のshow_full_output: false
+          # では拒否された内容がログに出ず原因を特定できなかったため）。
+          # 権限拒否の内訳を観測したら、原因特定後に外すか維持するかを判断する。
+          show_full_output: true
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
@@ -86,11 +96,16 @@ jobs:
             - 新しいブランチを作成しないでください。
             - この PR をクローズ・マージ・承認しないでください。
             - Issue のクローズも行わないでください。
+            - `./scripts/verify.sh` を実行しないでください（ツール権限でも
+              許可していません）。判定はすべて `gh pr diff` で取得した差分を
+              **読んで**行ってください。
 
-            ## 事前に読むもの
-            - `CLAUDE.md`（このプロジェクトの作業ルール）
+            ## 事前に取得・確認するもの
+            - `gh pr diff ${{ inputs.pr_number }}` でこのPRの差分を取得する
+            - `gh pr view ${{ inputs.pr_number }}` でPR本文・コミット情報を確認する
+            - `CLAUDE.md`（このプロジェクトの作業ルール。Readツールで読む）
             - `ERRORS.md`（過去に詰まった失敗。同種の問題が今回の差分に
-              含まれていないか確認するため）
+              含まれていないか確認するため。Readツールで読む）
 
             ## レビュー観点
             - 既存の挙動を壊していないか
@@ -99,13 +114,17 @@ jobs:
             - エラー処理と境界値
             - 秘密情報のハードコード
             - **`./scripts/verify.sh` のゲートが空洞化していないか**
-              （チェックの削除、`continue-on-error` の追加、対象からの除外等）
+              （`verify.sh`は実行せず、差分の中に次が無いかを**読んで**判定する:
+              チェックの削除、`continue-on-error` の追加、対象からの除外、
+              `@pytest.mark.skip`/`xfail`の追加、アサーションの緩和等）
             - **fail-closed の原則が崩れていないか**
               （判定不能に倒すべき場面で断定に倒していないか。特に
-              `comic_checker/wikipedia_client.py` 周辺の変更で確認すること）
+              `comic_checker/wikipedia_client.py` 周辺の変更で確認すること。
+              こちらも実行はせず、差分のロジック変更を読んで判定する）
             - **`ERRORS.md` への追記が必要な失敗が、この差分の作業過程に
-              含まれていないか**（PR本文やコミットメッセージから、2回以上の
-              試行を要した問題が読み取れる場合は、追記漏れとして指摘する）
+              含まれていないか**（`gh pr view`で取得できるPR本文やコミット
+              メッセージから、2回以上の試行を要した問題が読み取れる場合は、
+              追記漏れとして指摘する）
 
             指摘は重要度順に最大5件までにしてください。
             些細なスタイルの指摘はしないでください。
@@ -121,4 +140,19 @@ jobs:
           # サブスク枠を消費する経路であり、ドル建ての従量課金ではないため
           # このフラグに対応する予算上限が存在しない。--max-turns を代わりの
           # 歯止めとして使う。
-          claude_args: "--model sonnet --max-turns 15"
+          #
+          # --allowedTools は読み取り系のみ（Edit/Writeは含めない。Step 1は
+          # コメントのみのため、ADR-004決定2とも整合する）。claude-code-action は
+          # Bashを既定で許可しないため（公式ドキュメントで確認済み）、明示的に
+          # 許可しないと差分取得・PR情報取得ができずBash呼び出しが拒否され続ける
+          # （初回実測 run 31094393958 のerror_max_turns・permission_denials_count 8
+          # の主因と推定）。
+          #   - Read, Glob, Grep: CLAUDE.md/ERRORS.md等の読み取り
+          #   - Bash(gh pr diff:*): このPRの差分取得
+          #   - Bash(gh pr view:*): PR本文・コミット情報の取得
+          # git diff / git log は意図的に含めていない。actions/checkout は
+          # 指定した ref（refs/pull/<n>/head）のみをチェックアウトするため、
+          # origin/main が名前解決できる保証がない（verify.yml で同じ問題に
+          # 対処済み。「Ensure origin/main exists」step参照）。gh pr diff / gh pr view
+          # はGitHub側のAPIから直接取得するためこの問題を回避できる。
+          claude_args: "--model sonnet --max-turns 15 --allowedTools Read,Glob,Grep,Bash(gh pr diff:*),Bash(gh pr view:*)"
