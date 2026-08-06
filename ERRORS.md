@@ -509,7 +509,14 @@ Phase 5 Step 1（PR自動レビュー、コメント投稿のみ・コード変�
 - 1回目（run 31094393958、`--allowedTools`未設定）: `subtype: "error_max_turns"`、
   `is_error: true`、`num_turns: 16`（`--max-turns 15`超過）、
   `permission_denials_count: 8`。`show_full_output: false`（既定値）だったため
-  拒否の内訳は当時観測できていない。
+  拒否の内訳は当時観測できていない。原因は一次情報で確認済み:
+  `anthropics/claude-code-action`のドキュメント
+  （`docs/capabilities-and-limitations.md`）に
+  `"Claude cannot execute Bash commands unless explicitly allowed using the
+  `allowed_tools` configuration"`と明記されており、`--allowedTools`未設定の
+  ままではBashが既定で許可されないことが、この回の`permission_denials_count:
+  8`の直接の原因と考えられる。
+  https://github.com/anthropics/claude-code-action/blob/main/docs/capabilities-and-limitations.md
 - 2回目（run 31111080310、`--allowedTools`設定後）: `is_error: false`、
   `num_turns: 9`、`subtype: "success"`だが、コメントは0件のままだった。
   `permission_denied`が1件発生し、`decision_reason_type: "subcommandResults"`、
@@ -519,7 +526,9 @@ Phase 5 Step 1（PR自動レビュー、コメント投稿のみ・コード変�
   wc -l /tmp/pr82.diff, cat /tmp/pr82.json"`。拒否されたコマンドは
   `gh pr diff 82 > /tmp/pr82.diff; gh pr view 82 --json ... > /tmp/pr82.json;
   wc -l /tmp/pr82.diff; echo "---"; cat /tmp/pr82.json`という`;`連結の複合コマンド
-  だった。
+  だった。この回、ログ全体を確認したが`./scripts/verify.sh`を実行しようとした
+  痕跡は無かった。また、副作用（コード変更・PRのクローズ・マージ・新規ブランチ
+  作成のいずれも）が発生していないことも確認済み。
 - 3回目（run 31113307119、プロンプトに複合コマンド禁止を追記した後）:
   複合コマンドは一度も試行されなかったが、単一コマンド9件
   （`gh pr diff 82`・`gh pr view 82`・`gh --version`・
