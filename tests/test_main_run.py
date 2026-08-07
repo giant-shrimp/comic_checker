@@ -357,6 +357,118 @@ def test_cancelled_rejudge_leaves_stale_rows_that_skip_filled_will_not_revisit(t
     assert [read_row(ws, row)["連載状況"] for row in (2, 3, 4)] == ["完結"] * 3
 
 
+# -------------------------------------------------------- 採用経路トレース（Issue #39）
+
+
+def test_run_does_not_create_trace_file_by_default(tmp_path):
+    """adoption_trace_fileを渡さない（既定None）場合、ログファイルは一切作られない。
+
+    Excel出力列がこのフラグの有無に関わらず変わらないことも併せて確認する。
+    """
+    excel_path = make_workbook(tmp_path, ["ONE PIECE"])
+    wiki_result = WikipediaJudgment(
+        query="ONE PIECE",
+        status="連載中",
+        matched_title="ONE PIECE",
+        url="https://ja.wikipedia.org/wiki/ONE_PIECE",
+        evidence="1997年34号から連載中。",
+        adoption_path="direct_plain",
+        adoption_trusted=False,
+        adoption_probe="ONE PIECE",
+    )
+
+    with patch("comic_checker.main.wikipedia_client.judge", return_value=wiki_result):
+        run(excel_path)
+
+    assert list(tmp_path.iterdir()) == [excel_path]
+
+    wb = _reload(excel_path)
+    row1 = read_row(wb.active, 2)
+    assert set(row1.keys()) == {"タイトル", "連載状況", "判定方法", "判定根拠", "参照タイトル", "参照URL"}
+
+
+def test_run_writes_adoption_trace_log_when_enabled(tmp_path):
+    """adoption_trace_fileを渡すと、Wikipedia記事の採用経路がタブ区切りログへ
+    書き出される。Excel出力列はこのフラグの有無に関わらず変わらない（Issue #39）。
+    """
+    excel_path = make_workbook(tmp_path, ["ONE PIECE", "進撃の巨人"])
+    wiki_results = [
+        WikipediaJudgment(
+            query="ONE PIECE",
+            status="連載中",
+            matched_title="ONE PIECE",
+            adoption_path="direct_plain",
+            adoption_trusted=False,
+            adoption_probe="ONE PIECE",
+        ),
+        WikipediaJudgment(
+            query="進撃の巨人",
+            status="完結",
+            matched_title="進撃の巨人 (漫画)",
+            adoption_path="direct_disambiguation",
+            adoption_trusted=True,
+            adoption_probe="進撃の巨人 (漫画)",
+        ),
+    ]
+    trace_path = tmp_path / "trace.log"
+
+    with patch("comic_checker.main.wikipedia_client.judge", side_effect=wiki_results):
+        run(excel_path, adoption_trace_file=str(trace_path))
+
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "入力タイトル\t採用経路\ttrusted\tprobe\t参照タイトル"
+    assert lines[1] == "ONE PIECE\tdirect_plain\tFalse\tONE PIECE\tONE PIECE"
+    assert lines[2] == "進撃の巨人\tdirect_disambiguation\tTrue\t進撃の巨人 (漫画)\t進撃の巨人 (漫画)"
+
+    # Excel側の列は増えていない（既存の6列のまま）。
+    wb = _reload(excel_path)
+    row1 = read_row(wb.active, 2)
+    assert set(row1.keys()) == {"タイトル", "連載状況", "判定方法", "判定根拠", "参照タイトル", "参照URL"}
+
+
+def test_run_writes_not_found_rows_with_empty_trace_fields(tmp_path):
+    """記事が見つからない行は、経路情報の3フィールドが空文字でログへ書かれる
+    （Noneをそのまま書式化しない、Issue #39）。
+    """
+    excel_path = make_workbook(tmp_path, ["存在しない作品"])
+    wiki_result = WikipediaJudgment(query="存在しない作品", status="記事なし")
+    trace_path = tmp_path / "trace.log"
+
+    with patch("comic_checker.main.wikipedia_client.judge", return_value=wiki_result):
+        run(excel_path, adoption_trace_file=str(trace_path))
+
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    assert lines[1] == "存在しない作品\t\t\t\t"
+
+
+def test_run_appends_to_existing_trace_file_without_duplicating_header(tmp_path):
+    """既存のログファイルに追記する場合、ヘッダー行は1回だけにする（Issue #39）。"""
+    excel_path = make_workbook(tmp_path, ["ONE PIECE"])
+    wiki_result = WikipediaJudgment(
+        query="ONE PIECE",
+        status="連載中",
+        matched_title="ONE PIECE",
+        adoption_path="direct_plain",
+        adoption_trusted=False,
+        adoption_probe="ONE PIECE",
+    )
+    trace_path = tmp_path / "trace.log"
+
+    with patch("comic_checker.main.wikipedia_client.judge", return_value=wiki_result):
+        run(excel_path, adoption_trace_file=str(trace_path))
+        run(excel_path, skip_filled=False, adoption_trace_file=str(trace_path))
+
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    assert lines.count("入力タイトル\t採用経路\ttrusted\tprobe\t参照タイトル") == 1
+    assert len(lines) == 3  # ヘッダー1行 + 2回分のデータ行
+
+
+def test_default_adoption_trace_path_derives_from_excel_path():
+    from comic_checker.main import _default_adoption_trace_path
+
+    assert _default_adoption_trace_path("/tmp/対象.xlsx") == "/tmp/対象.adoption_trace.log"
+
+
 def _reload(excel_path):
     from openpyxl import load_workbook
 
