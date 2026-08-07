@@ -5,6 +5,10 @@
 - **[ADR-004](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-004-phase5-preconditions.md)
   （[SHA固定](https://github.com/giant-shrimp/comic_checker/blob/509ed68880b0a5644dae3a4f875beeb530db8ca9/docs/decisions/ADR-004-phase5-preconditions.md)）
   決定1をsupersedeする。決定2・決定3は有効なまま**
+- **[ADR-006](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-006-phase5-step1-redesign.md)
+  により、本ADRの「代替の制御手段」1項目目（`workflow_dispatch`限定、
+  `pull_request`トリガーは使わない）が2026-08-07にsupersedeされた。
+  認証方式の決定（本ADR本体）と残り2項目は有効なまま**
 
 ## 背景
 
