@@ -1,3 +1,11 @@
+# ============================================================
+# 探り実測用の暫定値（作業20、2026-08-07）。
+# --max-turns を 15 から 40 へ一時的に引き上げている。目的は
+# 完走時に実際に消費される num_turns を観測することであり、これが
+# 本番値ではない。観測後、本番用の値（実測値にマージンを加えた値）へ
+# 戻すこと。詳細は ERRORS.md「claude-review.yml（Phase 5 Step 1）」の
+# 作業19・作業20該当節を参照。
+# ============================================================
 # Claude PR Review（Phase 5 Step 1: PRへのコメント投稿のみ、コード変更なし）。
 #
 # 設計の背景・案の比較は ADR-006
@@ -175,7 +183,7 @@ jobs:
           # ブロックする（ADR-004決定2の多重防御）。ただし --allowedTools
           # との優先順位、MCPツールのフルクオリファイ名が実際に効くかは
           # 未検証（ADR-006に明記）。
-          claude_args: "--model sonnet --max-turns 15 --allowedTools Read,Glob,Grep --disallowedTools mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files"
+          claude_args: "--model sonnet --max-turns 40 --allowedTools Read,Glob,Grep --disallowedTools mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files"
 
       - name: Verify a substantive review was posted
         # 実行前後のコメント数比較ではなく、最終コメント本文の中身を検証する
