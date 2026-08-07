@@ -441,6 +441,52 @@ def test_run_writes_not_found_rows_with_empty_trace_fields(tmp_path):
     assert lines[1] == "存在しない作品\t\t\t\t"
 
 
+def test_run_escapes_tabs_and_newlines_in_trace_log_fields(tmp_path):
+    """タイトル・参照タイトルにタブ・改行（Excelのセル内改行）が含まれていても、
+    トレースログの列・行がずれない（Issue #39、claude-review.ymlのレビュー
+    指摘への対応、run 31196492212）。判定ロジック（status等）には触れない、
+    ログ出力側だけのエスケープを確認する。
+    """
+    title_with_newline = "作品名\n（続き）"
+    title_with_tab = "作品名\t別名"
+    excel_path = make_workbook(tmp_path, [title_with_newline, title_with_tab])
+    wiki_results = [
+        WikipediaJudgment(
+            query=title_with_newline,
+            status="連載中",
+            matched_title="作品名\r\n(正式表記)",
+            adoption_path="direct_plain",
+            adoption_trusted=False,
+            adoption_probe=title_with_newline,
+        ),
+        WikipediaJudgment(
+            query=title_with_tab,
+            status="連載中",
+            matched_title="作品名（別名）",
+            adoption_path="direct_plain",
+            adoption_trusted=False,
+            adoption_probe=title_with_tab,
+        ),
+    ]
+    trace_path = tmp_path / "trace.log"
+
+    with patch("comic_checker.main.wikipedia_client.judge", side_effect=wiki_results):
+        run(excel_path, adoption_trace_file=str(trace_path))
+
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    # ヘッダー1行 + データ2行の、計3行にきちんと収まっている
+    # （タブ・改行がエスケープされず紛れ込んでいれば行数がずれる）。
+    assert len(lines) == 3
+    assert lines[1] == "作品名 （続き）\tdirect_plain\tFalse\t作品名 （続き）\t作品名 (正式表記)"
+    assert lines[2] == "作品名 別名\tdirect_plain\tFalse\t作品名 別名\t作品名（別名）"
+
+    # Excel側のセルは元のタイトルのまま（エスケープはログ出力側だけの対処）。
+    wb = _reload(excel_path)
+    ws = wb.active
+    assert ws.cell(row=2, column=1).value == title_with_newline
+    assert ws.cell(row=3, column=1).value == title_with_tab
+
+
 def test_run_appends_to_existing_trace_file_without_duplicating_header(tmp_path):
     """既存のログファイルに追記する場合、ヘッダー行は1回だけにする（Issue #39）。"""
     excel_path = make_workbook(tmp_path, ["ONE PIECE"])

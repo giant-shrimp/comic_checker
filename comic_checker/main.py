@@ -125,6 +125,21 @@ def _default_adoption_trace_path(excel_path):
     return str(Path(excel_path).with_suffix(".adoption_trace.log"))
 
 
+def _escape_trace_field(value):
+    """タブ区切りログの1フィールド分を、区切り文字を含まない形にする（Issue #39）。
+
+    `_collect_rows()`はタイトルの前後の空白を`.strip()`で除くだけで、セル内の
+    改行・タブは除去しない（Excelのセル内改行はAlt+Enterで入力できる）。
+    そのままタブ区切りログへ書くと、タイトルに含まれるタブ・改行がログ自身の
+    列区切り・行区切りに紛れ込み、以降の行がずれる（claude-review.ymlの
+    レビュー指摘、run 31196492212）。判定ロジック（status等）には一切
+    影響しない、ログ出力側だけの対処。
+    """
+    if value is None:
+        return ""
+    return str(value).replace("\t", " ").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
 class RowCounts(NamedTuple):
     """判定を行わずに数えた、処理対象行の内訳（Issue #32）。
 
@@ -363,9 +378,11 @@ def run(
             if trace_fp is not None:
                 adoption_path, adoption_trusted, adoption_probe = trace
                 trace_fp.write(
-                    f"{title}\t{adoption_path or ''}\t"
+                    f"{_escape_trace_field(title)}\t"
+                    f"{_escape_trace_field(adoption_path)}\t"
                     f"{'' if adoption_trusted is None else adoption_trusted}\t"
-                    f"{adoption_probe or ''}\t{matched_title}\n"
+                    f"{_escape_trace_field(adoption_probe)}\t"
+                    f"{_escape_trace_field(matched_title)}\n"
                 )
 
             if i % save_every == 0:
