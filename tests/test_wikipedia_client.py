@@ -1066,6 +1066,28 @@ def test_judge_prefers_direct_manga_disambiguation_page():
     assert mock_get.call_count == 2
 
 
+def test_adoption_path_constants_have_the_expected_literal_values():
+    """4つのADOPTION_PATH_*定数を、本番側と同じシンボルではなくリテラル文字列と
+    比較して固定する（作業44、claude-review.ymlのレビュー指摘への対応）。
+
+    この下の判定系テスト（例: test_judge_records_disambiguation_adoption_path_
+    for_yojo_senki）は`result.adoption_path == ADOPTION_PATH_DIRECT_DISAMBIGUATION`
+    のように**本番側と同じインポート済みシンボル同士**を比較していたため、
+    定数の値そのものを変異させても両側が追従し、1件も落ちなかった
+    （CLAUDE.mdの「新しい定数を導入したら変異させて落ちることを確認する」、
+    ERRORS.md「定数を期待値と入力の両方に使うテストは、定数を変えても
+    落ちない」Issue #40と同型の穴。claude-review.yml run 31196492212の
+    レビューが指摘し、`ADOPTION_PATH_DIRECT_DISAMBIGUATION`の値を
+    `"MUTATED_VALUE"`に変えても`verify.sh`が`225 passed`のまま通ることを
+    実測で再現・確認済み）。このテストはリテラル文字列と比較するため、
+    定数の値そのものが変われば必ず落ちる。
+    """
+    assert ADOPTION_PATH_DIRECT_DISAMBIGUATION == "direct_disambiguation"
+    assert ADOPTION_PATH_DIRECT_PLAIN == "direct_plain"
+    assert ADOPTION_PATH_SEARCH_EXACT == "search_exact"
+    assert ADOPTION_PATH_SEARCH_SUBTITLE == "search_subtitle"
+
+
 def test_judge_records_disambiguation_adoption_path_for_yojo_senki():
     """Issue #39完了条件: 幼女戦記の入力で、「(漫画)」経由のtrusted採用が
     起きているかを出力（adoption_path/adoption_trusted/adoption_probe）から
