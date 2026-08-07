@@ -374,6 +374,39 @@ Issue #40 で本番の定数8個を実際に変異させて `pytest tests/` を�
 **実行しても、見ていなければ同じことになる。** 出力を切り詰めるのは読みやすさのためだが、
 切った範囲の外にある値を報告に使ってはいけない。
 
+## 別のコマンドの副産物の出力を、目的のコマンドを実行した証拠と取り違えた（claude-review.yml Phase 5対応）
+
+**#47・#62 とは別の失敗である。** #47は「実行**前**に書いた」、#62は「実行**した**が
+見ていなかった」。今回は、**実際に実行したコマンド（`git push`）の出力は正しく見ていた**
+が、それが**別のコマンド（`gh pr create`）を実行した証拠だと取り違えた**。「実行結果を
+見ずに書く」でも「見た範囲を間違える」でもなく、**見た出力の意味そのものを誤読した**、
+という3つ目の型なので項を分ける。
+
+**事象**: `git push -u origin docs/errors-claude-review-sandbox` を実行したところ、
+GitHub側が標準で返す誘導リンク
+（`https://github.com/.../pull/new/docs/errors-claude-review-sandbox`）が出力された。
+これは「ここからPRを作成できます」という**未実行のPR作成を促す定型メッセージ**であり、
+`gh pr create` は一度も実行していなかった。にもかかわらず、この出力を見て
+「push・PR作成済み」と報告した。**`gh pr list` で確認すると実際には0件だった。**
+
+**影響**: 利用者から「このURLはPR作成ページへの誘導であり、PRが実在する証拠ではない
+（実在するなら`/pull/<番号>`になる）」と指摘され、`gh pr list --state all --head
+docs/errors-claude-review-sandbox` / `gh pr list --state open` / `git log --oneline
+origin/...` による確認作業が発生した。commit・pushそのものは正しく行われていたため、
+作業自体のやり直しは不要だったが、**「PRを作成した」という事実誤認のまま次の作業が
+進みかねなかった。**
+
+**対策**: **「作成した」と主張するリソースには、そのリソース自身を問い合わせるコマンドで
+確認する。** `git push`の出力から`gh pr create`の実行結果を推測しない。PRの実在確認は
+`gh pr list`（対象は`/pull/<番号>`のURLを持つ）で行う。この対策は#47の「コマンドの戻り値・
+出力を得てから引用する」を一歩進めたもので、**「何らかの出力を得た」だけでは足りず、
+「その出力が、報告したい事実の直接の証拠になっているか」まで確認する必要がある。**
+
+**教訓**: GitHub CLI・GitHubのWeb UIは、ユーザーが次に取りうる操作（PR作成・Issue作成等）
+への誘導リンクを、関連コマンドの実行結果として気軽に表示する。**その誘導が実行されたか
+どうかは、誘導元のコマンドの出力からは判断できない。** 「〜へのリンクが出力された」と
+「〜が実行された」は別の事実であり、後者を主張するなら後者を直接確認するコマンドを打つ。
+
 ## 設計として提示していない判断は、実装前に提案する（Issue #61）
 
 **事象**: `#61`（GUI の中断機構）で、承認された設計（案B: `cancel_event` を `run()` に
@@ -497,3 +530,125 @@ Code側の実装、またはプラットフォーム側のポリシー）が、d
 追従しているとは限らない。**「〜のはず」という記述を信じず、実際にコマンドを
 1つ実行して確認する**という、このプロジェクトで繰り返されてきた原則
 （Issue #14・#40・ADR-001など）が今回も有効だった。
+
+## `claude-review.yml`（Phase 5 Step 1）: `workflow_dispatch`実行がコメント投稿まで到達しない
+
+Phase 5 Step 1（PR自動レビュー、コメント投稿のみ・コード変更なし）を
+`gh workflow run claude-review.yml -f pr_number=82`で3回実測した
+（PR #82対象。run 31094393958 / 31111080310 / 31113307119）。
+
+**観測**: 3回とも拒否の種類が異なった。
+
+- 1回目（run 31094393958、`--allowedTools`未設定）: `subtype: "error_max_turns"`、
+  `is_error: true`、`num_turns: 16`（`--max-turns 15`超過）、
+  `permission_denials_count: 8`。`show_full_output: false`（既定値）だったため
+  拒否の内訳は当時観測できていない。原因は一次情報で確認済み:
+  `anthropics/claude-code-action`のドキュメント
+  （`docs/capabilities-and-limitations.md`）に
+  `"Claude cannot execute Bash commands unless explicitly allowed using the
+  `allowed_tools` configuration"`と明記されており、`--allowedTools`未設定の
+  ままではBashが既定で許可されないことが、この回の`permission_denials_count:
+  8`の直接の原因と考えられる。
+  https://github.com/anthropics/claude-code-action/blob/main/docs/capabilities-and-limitations.md
+- 2回目（run 31111080310、`--allowedTools`設定後）: `is_error: false`、
+  `num_turns: 9`、`subtype: "success"`だが、コメントは0件のままだった。
+  `permission_denied`が1件発生し、`decision_reason_type: "subcommandResults"`、
+  メッセージ原文は
+  `"This Bash command contains multiple operations. The following parts require
+  approval: gh pr diff 82, gh pr view 82 --json title,body,commits,number,url,files,
+  wc -l /tmp/pr82.diff, cat /tmp/pr82.json"`。拒否されたコマンドは
+  `gh pr diff 82 > /tmp/pr82.diff; gh pr view 82 --json ... > /tmp/pr82.json;
+  wc -l /tmp/pr82.diff; echo "---"; cat /tmp/pr82.json`という`;`連結の複合コマンド
+  だった。この回、ログ全体を確認したが`./scripts/verify.sh`を実行しようとした
+  痕跡は無かった。また、副作用（コード変更・PRのクローズ・マージ・新規ブランチ
+  作成のいずれも）が発生していないことも確認済み。
+- 3回目（run 31113307119、プロンプトに複合コマンド禁止を追記した後）:
+  複合コマンドは一度も試行されなかったが、単一コマンド9件
+  （`gh pr diff 82`・`gh pr view 82`・`gh --version`・
+  `git fetch origin pull/82/head`・WebFetch）がすべて拒否された。Bashに対する
+  8件は全件`decision_reason_type: "other"`、メッセージ原文はすべて
+  `"This command requires approval"`だった（2回目の`"subcommandResults"`とは
+  別の拒否理由）。`--allowedTools`の`Bash(gh pr diff:*)`/`Bash(gh pr view:*)`に
+  文字列として一致する`gh pr diff 82`/`gh pr view 82`自体も拒否され、
+  `"dangerouslyDisableSandbox": true`を付けた再試行（2件）も同じ理由で拒否された。
+
+**観測**: 3回目で`git remote -v`（`--allowedTools`のいずれのパターンにも一致しない
+コマンド）を実測したところ、`permission_denied`は発生せず`is_error: false`で
+成功した。**したがって「Bashツールが一律で承認待ちになっている」という説明は
+この実測データで直接反証される。**
+
+**観測**: 3回目時点では`claude-review.yml`に「成果物ゼロ検出」step
+（`Verify a review comment was posted`、実行前後のPRコメント数を比較し増えて
+いなければ`exit 1`）が追加済みだった（PR #86）。この回、`Claude PR Review`step
+自体は`is_error: false`・`subtype: "success"`で「成功」と報告していたにも
+かかわらず、`Verify a review comment was posted`stepは
+`実行前 0 件 → 実行後 0 件`を正しく検出し、ワークフロー全体をfail-closedで
+落とした。
+
+**訂正**: 2回目の結果（`decision_reason_type: "subcommandResults"`、`;`連結の
+複合コマンドが一括拒否）を見て、「複合コマンドが拒否の主因である」という推定を
+事実であるかのように扱い、その推定に基づいて対応（プロンプトへの複合コマンド
+禁止の追記。PR #86）を作った。3回目の結果、複合コマンドの再発は防げたが
+（この点でPR #86の変更自体は効いた）、単一コマンドでも別の理由
+（`decision_reason_type: "other"`）で拒否が続き、コメントは3回とも0件のままだった。
+**複合コマンドは拒否の主因ではなかった**。推定を検証済みの事実として次の対応の
+前提に使ってしまった、という経緯自体をここに記録する。
+
+**未確定**: 根本原因は判定不能。反証されたのは「Bashツールが一律で承認待ち」
+という説明（上記`git remote -v`の観測）のみで、「ネットワークアクセスの有無が
+拒否を分けている」という説明も、ネットワークを伴わないはずの`gh --version`が
+ネットワークを伴う`gh pr diff 82`等と全く同一の理由（`decision_reason_type:
+"other"` / `"This command requires approval"`）で拒否されている事実と、ログ上
+だけでは矛盾なく整合させられない（`gh`バイナリが`--version`実行時にも内部的に
+ネットワークへアクセスしている可能性はあるが、これはログに記録されておらず
+外部知識による推測になるため採用しない）。この1点が未説明のまま残っている。
+
+**教訓**: 公式Actionのモード分岐は、トリガーを変えると変わる。
+`anthropics/claude-code-action`の`src/modes/detector.ts`を実測後に確認したところ、
+`workflow_dispatch`に対応する`case`は無く、コメント`// Default to agent mode
+(which won't trigger without a prompt)`の通り"agent"モードにフォールバックする。
+`src/modes/agent/index.ts`によれば、agentモードはPRのdiff/メタデータを自動取得
+せず、コメント追跡用の`CLAUDE_COMMENT_ID`も`undefined`のまま
+（コード内コメント`"// No tracking comment in agent mode"`）になる。
+**`on: pull_request`等の別トリガーを前提に設計されたプロンプト・期待（自動で
+PRコンテキストが渡る、コメントが投稿できる）は、トリガーを`workflow_dispatch`に
+変えた時点で、ドキュメントを読まない限り気づけない形で成立しなくなっていた。**
+3回の実測を経て初めて、この一次情報（Actionのソースコード）を確認する必要が
+あると気づいた。トリガーの選定は「動くかどうか」だけでなく「Action内部の
+どのコード経路を選ぶか」まで一次情報で確認すべきだった。
+
+## scratchpadの「存在しない」は探索範囲を限定した上での断定であり、誤りだった
+
+前セッションのハンドオフ（2026-08-06付）は、`scratchpad/errors_md_draft_claude_review.md`
+と`scratchpad/claude-review.yml.draft`が前セッションのスクラッチパッドに存在すると
+記載していた。新セッションでこれを確認しようとした際、次の誤りが起きた。
+
+**観測**: 確認に使ったのは、今セッションのスクラッチパッド
+（`/tmp/claude-1000/-home-nishidalab07-maehata-ws-comic-checker/<今セッションのUUID>/scratchpad/`）
+と、リポジトリ内（`find`・`.gitignore`・git履歴）の2箇所だけだった。
+`/tmp/claude-1000/-home-nishidalab07-maehata-ws-comic-checker/`配下に存在する
+前セッション（他UUID）のディレクトリ群は、一つも検索していなかった。
+
+**観測**: この限定された探索範囲のまま「（前セッションで作成されたという）
+`errors_md_draft_claude_review.md`は今セッション開始時点で既に存在しません
+でした」と断定し、その断定に基づいて「更新ではなく、今回分を含めて新規に
+書き起こします」という判断を下し、実際に新規ファイルを作成した。
+
+**観測**: 実際には、`/tmp/claude-1000/-home-nishidalab07-maehata-ws-comic-checker/
+a4dc05b4-8ad4-4fe5-b8c7-e487c021cb7a/scratchpad/`に、両ファイルとも
+更新日時2026-08-06 23:33/23:38のまま実在していた
+（`stat`で確認。ハンドオフ作成時刻と一致）。`find /tmp/claude-1000/
+-home-nishidalab07-maehata-ws-comic-checker -iname "errors_md_draft_claude_review.md"`
+のように、プロジェクト単位で安定した親ディレクトリ配下を横断検索していれば
+発見できていた。
+
+**教訓**: 「無い」という報告は「探した範囲では見つからなかった」であり、
+探索範囲を明示しない限り断定してはならない。これはERRORS.mdの既存の
+「観測 vs 推定」区別ルールの、**否定形における適用**にあたる。「Xが存在する」
+という主張に根拠（実際に見た）が要るのと同様に、「Xが存在しない」という主張にも
+「どこを探して見つからなかったか」という根拠が要る。探索範囲を書かずに
+「存在しない」と述べることは、実行結果を確認せずに断定するのと同型の失敗であり
+（本ファイル「実行結果でしか確定しない値を、実行前に報告に書いてはいけない
+（Issue #47）」「実行したが観測していない値も、報告に書いてはいけない
+（Issue #62）」と同系統）、**「探索した」という事実だけでは「網羅的に探索した」
+ことの証明にならない**という点が新しい教訓である。

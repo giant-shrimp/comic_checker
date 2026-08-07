@@ -2,6 +2,9 @@
 
 - 日付：2026-08-06
 - 状態：採用
+- **[ADR-005](https://github.com/giant-shrimp/comic_checker/blob/main/docs/decisions/ADR-005-auth-oauth-token.md)
+  により、決定1（認証方式は`ANTHROPIC_API_KEY`を使う）がsupersedeされた。
+  決定2・決定3は有効なまま**
 
 ## 背景
 
