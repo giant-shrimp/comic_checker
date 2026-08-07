@@ -101,9 +101,11 @@ Modules under `comic_checker/`, each with one job:
       `アニメ監督` / `漫画家ユニット`; they are not what manga titles redirect onto, and
       leaving them undetected is the fail-open policy working as intended, not a gap to
       close by broadening the suffix list.
-    If neither bar is cleared, `_pick_article()` returns `None` (→ `記事なし`) rather than
-    risk a confident wrong answer — same "fail closed" philosophy as the
-    `COMPLETED_WEAK_RE` veto in Issue #8.
+    If neither bar is cleared, `_pick_article()` returns `(None, None)` (→ `記事なし`)
+    rather than risk a confident wrong answer — same "fail closed" philosophy as the
+    `COMPLETED_WEAK_RE` veto in Issue #8. (Issue #39: the second element is an
+    `AdoptionTrace` recording which tier/probe won, for optional `--adoption-trace`
+    logging only — it plays no role in the status judgment itself.)
     **A query-string redirect proves the editors connected the two names; it does not prove
     they are the same *work*.** The same mechanism that maps `ワンピース`→`ONE PIECE` also
     maps a spin-off onto its parent (`彼女、人見知ります`→`彼女、お借りします`) — M6-D-2's
