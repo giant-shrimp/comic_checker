@@ -99,7 +99,30 @@ def parse_args(argv=None):
         "--max-delay", type=float, default=6.0, help="（--fallback-to-manba有効時のみ使用）リクエスト間の最大待機秒数"
     )
     parser.add_argument("--save-every", type=int, default=5, help="何件ごとにExcelを保存するか")
+    parser.add_argument(
+        "--adoption-trace",
+        action="store_true",
+        default=False,
+        help=(
+            "Wikipedia記事の採用経路（(漫画)直参照/素タイトル直参照/検索フォールバック等）を"
+            "デバッグ用ログファイルへ書き出す（デフォルト:無効、Issue #39）。"
+            "Excel出力の列は増えない。既定の出力先は <excel_path>.adoption_trace.log"
+        ),
+    )
+    parser.add_argument(
+        "--adoption-trace-file",
+        default=None,
+        help="--adoption-trace有効時のログ出力先を明示的に指定する（省略時は既定の派生パス）",
+    )
     return parser.parse_args(argv)
+
+
+def _default_adoption_trace_path(excel_path):
+    """--adoption-traceのログ出力先の既定パス（Issue #39）。
+
+    Excel本体とは別ファイルにする（Excel出力列を増やさない、という設計方針のため）。
+    """
+    return str(Path(excel_path).with_suffix(".adoption_trace.log"))
 
 
 class RowCounts(NamedTuple):
@@ -172,11 +195,14 @@ def _collect_rows(ws, title_col, status_col, header_row, skip_filled):
 
 
 def _judge_row(title, fallback_to_manba, get_manba_client):
-    """1件分の判定を行い、(status, source, matched_title, url, evidence) を返す。
+    """1件分の判定を行い、((status, source, matched_title, url, evidence), trace) を返す。
 
     Wikipediaで完結/連載中が判定できればそれを採用する。判定不能/記事なしの場合、
     fallback_to_manba が真であれば get_manba_client() 経由でmanba.co.jpにフォールバック
     する。get_manba_client() はManbaClientを遅延生成し、以降の呼び出しでは使い回す。
+
+    trace は (adoption_path, adoption_trusted, adoption_probe) の3要素タプル
+    （Issue #39、観測用）。manba.co.jp経路はwikipedia_client外なのですべてNone。
     """
     wiki_result = wikipedia_client.judge(title)
     wiki_row = (
@@ -186,18 +212,26 @@ def _judge_row(title, fallback_to_manba, get_manba_client):
         wiki_result.url or "",
         wiki_result.evidence or "",
     )
+    wiki_trace = (
+        wiki_result.adoption_path,
+        wiki_result.adoption_trusted,
+        wiki_result.adoption_probe,
+    )
 
     if wiki_result.status in ("完結", "連載中") or not fallback_to_manba:
-        return wiki_row
+        return wiki_row, wiki_trace
 
     manba_client = get_manba_client()
     manba_result = manba_client.lookup(title)
     return (
-        manba_result.status,
-        MANBA_SOURCE,
-        manba_result.matched_title or "",
-        manba_result.url or "",
-        "",
+        (
+            manba_result.status,
+            MANBA_SOURCE,
+            manba_result.matched_title or "",
+            manba_result.url or "",
+            "",
+        ),
+        (None, None, None),
     )
 
 
@@ -220,6 +254,7 @@ def run(
     save_every=5,
     on_progress=None,
     cancel_event=None,
+    adoption_trace_file=None,
 ):
     """Excelを読み込み、Wikipedia（必要に応じてmanba.co.jp）を検索して連載状況を書き戻す。
 
@@ -227,6 +262,12 @@ def run(
     を呼び出す。成功時は error=None、行単位で例外が起きた場合は捕捉した例外を渡す。
     on_progress が None の場合は何もしない。戻り値は実際に処理した行数で、中断しなければ
     処理対象の行数と一致する。
+
+    adoption_trace_file にパスを渡すと、行ごとにWikipedia記事の採用経路
+    （direct_disambiguation/direct_plain/search_exact/search_subtitle）・
+    trustedフラグ・probe文字列をタブ区切りで追記する（Issue #39）。既定はNoneで、
+    その場合ログファイルは一切作成・書き込みされない。Excel側の出力列は
+    このフラグの有無に関わらず変わらない。
 
     cancel_event に `is_set()` を持つオブジェクトを渡すと、**行の切れ目ごと**に中断要求を
     見て処理を打ち切る（Issue #61）。`threading.Event` を想定しているが、型は要求しない
@@ -282,6 +323,16 @@ def run(
             manba_client_holder["client"] = client
         return manba_client_holder["client"]
 
+    # Issue #39: 採用経路トレース。adoption_trace_fileがNoneの間はファイルに
+    # 一切触れない（既定オフ、判定・Excel出力パイプラインとは独立）。
+    trace_fp = None
+    if adoption_trace_file is not None:
+        trace_path = Path(adoption_trace_file)
+        is_new_file = not trace_path.exists()
+        trace_fp = open(trace_path, "a", encoding="utf-8")
+        if is_new_file:
+            trace_fp.write("入力タイトル\t採用経路\ttrusted\tprobe\t参照タイトル\n")
+
     processed = 0
     try:
         for i, (row, title) in enumerate(rows, start=1):
@@ -292,8 +343,9 @@ def run(
                 break
 
             error = None
+            trace = (None, None, None)
             try:
-                status, source, matched_title, url, evidence = _judge_row(
+                (status, source, matched_title, url, evidence), trace = _judge_row(
                     title, fallback_to_manba, get_manba_client
                 )
             except Exception as exc:
@@ -308,11 +360,21 @@ def run(
             processed = i
             on_progress(i, total, title, status, matched_title, error=error)
 
+            if trace_fp is not None:
+                adoption_path, adoption_trusted, adoption_probe = trace
+                trace_fp.write(
+                    f"{title}\t{adoption_path or ''}\t"
+                    f"{'' if adoption_trusted is None else adoption_trusted}\t"
+                    f"{adoption_probe or ''}\t{matched_title}\n"
+                )
+
             if i % save_every == 0:
                 wb.save(excel_path)
     finally:
         if manba_client_holder["client"] is not None:
             manba_client_holder["client"].__exit__(None, None, None)
+        if trace_fp is not None:
+            trace_fp.close()
 
     # 中断した場合もここへ落として保存する（そこまでの結果を捨てない・Issue #61）。
     wb.save(excel_path)
@@ -336,6 +398,13 @@ def main(argv=None):
         print(f"ファイルが見つかりません: {excel_path}", file=sys.stderr)
         return 1
 
+    adoption_trace_file = None
+    if args.adoption_trace:
+        adoption_trace_file = args.adoption_trace_file or _default_adoption_trace_path(
+            excel_path
+        )
+        print(f"採用経路トレースを書き出します: {adoption_trace_file}")
+
     run(
         excel_path,
         sheet=args.sheet,
@@ -354,6 +423,7 @@ def main(argv=None):
         max_delay=args.max_delay,
         save_every=args.save_every,
         on_progress=_print_progress,
+        adoption_trace_file=adoption_trace_file,
     )
     return 0
 
