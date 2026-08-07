@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, font as tkfont, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from comic_checker.main import count_rows, run
+from comic_checker.main import _default_adoption_trace_path, count_rows, run
 
 # サマリに表示する判定結果。main.py の run() が on_progress へ渡す status 値のうち、
 # 利用者が件数を知りたいものを並べている。ここに無い値（manba経路の「ヒットなし」
@@ -500,6 +500,10 @@ class App(ttk.Frame):
         self.file_hint = tk.StringVar(value="")
         self.status_text = tk.StringVar(value="待機中")
         self.summary_text = tk.StringVar(value="—")
+        # Issue #39: 採用経路トレース。既定オフ。ExcelファイルとはWikipedia記事の
+        # 採用経路をデバッグ用ログへ書き出すかどうかだけを切り替え、Excel出力列は
+        # 増やさない。
+        self.adoption_trace = tk.BooleanVar(value=False)
         self._counts = {}
         self._summary_chips = []
         # 実行中の中断要求（Issue #61）。実行していない間は None。生成も差し替えも
@@ -573,6 +577,13 @@ class App(ttk.Frame):
             state="disabled",
         )
         self.cancel_button.pack(side="left", padx=(8, 0))
+
+        # Issue #39: 採用経路トレース（デバッグ用、既定オフ）。
+        ttk.Checkbutton(
+            frame,
+            text="採用経路のログを出力する",
+            variable=self.adoption_trace,
+        ).pack(side="left", padx=(12, 0))
 
         ttk.Label(
             frame,
@@ -782,6 +793,14 @@ class App(ttk.Frame):
         if skip_filled is None:
             return
 
+        # Issue #33と同じ理由で、Tk変数の読み取りはメインスレッド（ここ）だけで行い、
+        # ワーカースレッドへは解決済みのプレーンな値（パスまたはNone）で渡す。
+        adoption_trace_file = (
+            _default_adoption_trace_path(excel_path)
+            if self.adoption_trace.get()
+            else None
+        )
+
         self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
         self.cancel_button.config(state="normal")
@@ -791,6 +810,7 @@ class App(ttk.Frame):
                 "excel_path": excel_path,
                 "skip_filled": skip_filled,
                 "cancel_event": self._cancel_event,
+                "adoption_trace_file": adoption_trace_file,
             },
             daemon=True,
         ).start()
@@ -806,15 +826,18 @@ class App(ttk.Frame):
         self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
         self._cancel_event.set()
 
-    def _run_worker(self, excel_path, skip_filled=True, cancel_event=None):
+    def _run_worker(self, excel_path, skip_filled=True, cancel_event=None, adoption_trace_file=None):
         self._reset_run_state()
         self._log_threadsafe(f"実行開始: {excel_path}")
+        if adoption_trace_file is not None:
+            self._log_threadsafe(f"採用経路トレースを書き出します: {adoption_trace_file}")
         try:
             total = run(
                 excel_path,
                 on_progress=self._on_progress,
                 skip_filled=skip_filled,
                 cancel_event=cancel_event,
+                adoption_trace_file=adoption_trace_file,
             )
             # 中断で抜けた場合、total は「処理対象の行数」ではなく「実際に処理した行数」。
             # 完了と中断で表示を分けないと、途中で止めたのに完了したように見える。
