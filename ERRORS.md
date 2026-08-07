@@ -787,6 +787,69 @@ PR #92（`docs/claude-review-4th-measurement`、ERRORS.md/ADR-005/ADR-006へ
    - `Bash(git fetch:*)`未追加（`--disallowedTools`の実効性未検証、
      Issue #91）を含め、いずれも未実装・未採用のまま記録する
 
+## `claude-review.yml`（Phase 5 Step 1）: `num_turns`探り実測（作業19〜21）で分かったこと・分からなかったこと
+
+`--max-turns 15`の下でPR #90（`num_turns: 20`）が成功しPR #92
+（`num_turns: 16`で`error_max_turns`）が失敗する矛盾（前節）を、一次情報と
+追加実測で詰めた記録。`~/comic_checker-agent-notes/run_31155912534.log`・
+`run_31160930257.log`・`run_31164462563.log`（各run_denials.json含む）から
+引用する。
+
+1. **探り実測の設計変更の経緯**: 当初「`--max-turns`を上げて完走時の
+   `num_turns`を観測するには使い捨てブランチで新規PRを1つ開く必要がある」
+   という前提で設計したが、これは撤回した。GitHub公式ドキュメント
+   （`docs.github.com`「Events that trigger workflows」、
+   `pull_request_target`セクション）の逐語引用:
+   > "This event runs in the context of the default branch of the base
+   > repository, **rather than in the context of the merge commit, as the
+   > `pull_request` event does.**"
+
+   これは`pull_request_target`を`pull_request`と対比する文で、逆読みすると
+   「`pull_request`イベントはmerge commitのコンテキストで実行される」と
+   公式に明記されている。4回目実測（PR #90）の`claude_args`ログが新版
+   固有の値（`--disallowedTools mcp__github_file_ops__commit_files,...`、
+   旧版には存在しない）だったことも実測で裏付けている。**したがって
+   `--max-turns`を変更するPR自体がそのPR自身のrunで新しい値を使って
+   起動する。使い捨てブランチは不要だった。**
+2. **`num_turns`と実際のツール呼び出し数の対応関係に、3点目のデータで
+   見えたパターンがある（ただし一次情報での裏付けは無い）。**
+
+   | run | 結果 | 実ツール呼び出し数 | `num_turns` | 差 |
+   |---|---|---|---|---|
+   | PR #90 (31155912534) | success | 19 | 20 | +1 |
+   | PR #92 (31160930257) | error_max_turns | 17 | 16 | −1 |
+   | PR #95 (31164462563) | success | 15 | 16 | +1 |
+
+   **成功した2run（PR #90・PR #95）はいずれも`num_turns = 実ツール呼び出し
+   数 + 1`で一致した。** 強制終了した（`error_max_turns`）PR #92だけが
+   逆方向（−1）だった。「成功時は最後にツール呼び出しを伴わない締めの
+   応答（最終テキスト）が1ターンとして加算され、強制終了時はその締めの
+   応答が発生しないため加算されない」という説明と整合しうる。**ただし、
+   これは3点のデータから見えたパターンにすぎず、`anthropics/
+   claude-code-action`・Claude Agent SDKのいずれの一次情報にもこの「+1は
+   最終テキスト応答」という解釈を裏付ける記述は無い。3点中2点が同じ式に
+   一致した、という観測として記録する（断定しない）。**
+3. **依然として未確定な核心: PR #90が`--max-turns 15`の下で`num_turns: 20`
+   まで走って成功した理由は解けていない。** 19-2のログ再分析（assistant
+   メッセージ数・tool_use数・tool_result数のいずれとの対応も試したが
+   一貫した説明式は無かった）でも、compaction・セッション再開を示す
+   イベント（`subtype`に`compact`/`resum`系の値）は見つからなかった。
+   **`--max-turns`が15に設定されていながら、それを上回るツール呼び出しを
+   ともなうrunが「成功」として扱われる条件は、一次情報・ログ分析の両方を
+   尽くしても未確定のままである。**
+4. **`git fetch`拒否は3/3で再発したが、試行回数は3・3・2と揺れる。**
+   根本原因（`git fetch`を伴うBashコマンドが拒否される）は3回とも同じ
+   だったが、拒否されてから`git fetch`無しの代替コマンドに切り替わる
+   までの試行回数は毎回同じではなかった（PR #90: 3件、PR #92: 3件、
+   PR #95: 2件）。固定パターンではなく、都度の判断で試行回数が変わる。
+5. **各runの`num_turns`／`total_cost_usd`／`subtype`一覧（丸めない）**:
+
+   | run | PR | subtype | num_turns | total_cost_usd |
+   |---|---|---|---|---|
+   | 31155912534 | #90 | success | 20 | 1.0537520999999999 |
+   | 31160930257 | #92 | error_max_turns | 16 | 0.5830226 |
+   | 31164462563 | #95 | success | 16 | 0.8667735 |
+
 ## scratchpadの「存在しない」は探索範囲を限定した上での断定であり、誤りだった
 
 前セッションのハンドオフ（2026-08-06付）は、`scratchpad/errors_md_draft_claude_review.md`
