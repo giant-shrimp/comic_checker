@@ -1,108 +1,109 @@
-# v8計画 5-2（PR自動レビュー）相当だが、5-6 の Step 1（コメントするだけ、
-# コード変更なし）に厳密に限定してある。ADR-004 決定2の前提（contents: write
-# を与えない）を守るため、permissions に contents: write は含めていない。
-# 含めた場合、mainのサーバサイド保護が無い状態（403で確認済み）でActionsが
-# 書き込み権限を持つことになり、決定2が崩れる。
+# Claude PR Review（Phase 5 Step 1: PRへのコメント投稿のみ、コード変更なし）。
 #
-# 認証は CLAUDE_CODE_OAUTH_TOKEN（ADR-005。ADR-004決定1をsupersede）。
-# サブスク枠を消費する経路のため --max-budget-usd は使えない。トリガーを
-# workflow_dispatch のみに絞り、--max-turns で歯止めをかけている（詳細は
-# ADR-005「代替の制御手段」）。ADR-004決定2・決定3はこのADR-005と独立に
-# 有効なまま。
+# 設計の背景・案の比較は ADR-006
+# （docs/decisions/ADR-006-phase5-step1-redesign.md）を、過去の実測は
+# ERRORS.md「claude-review.yml（Phase 5 Step 1）」を参照。
 #
-# workflow_dispatch のみで起動する。pr_number 入力を必須にしてある。
-# cron等での常時稼働は、この構成（金銭上限が掛けられない）では想定しない。
-# 実行のたびに対話セッション側の枠への影響を人間が観測すること（ADR-005）。
+# 未検証事項が複数残っている。実測結果は上記ERRORS.mdに追記していくこと:
+#   - mcp__github_comment__update_claude_comment の呼び出しが、
+#     workflow_dispatch版の実測で観測したBashサンドボックスの承認要求
+#     （decision_reason_type: "other"）と同じ経路を通るかどうか
+#   - --allowedTools を明示指定してもbase GitHub tools（コメント管理）が
+#     弾かれないという理解が正しいか（docs/configuration.mdの記述は
+#     やや曖昧）
+#   - --disallowedTools が mcp__github_file_ops__* を実際に無効化するか、
+#     --allowedTools との優先順位
+#   - 既定プロンプト（generateDefaultPrompt）の「Smart branch handling」
+#     節とcustom_instructionsの矛盾が、実際にClaudeの挙動へ影響しないか
+#   - scripts/select_review_comment.sh の1次経路（run_id一致）は一次情報
+#     から確認済みだが、フォールバックの2次経路（github-actions[bot]名）
+#     に落ちるケースが実際に起きるか、その場合に正しいコメントを拾えるかは
+#     未検証。他のGitHub ActionsワークフローがGITHUB_TOKENで別のコメントを
+#     投稿していないかも検証していない
+#   - scripts/check_review_comment.sh・scripts/select_review_comment.sh
+#     自体は単体テスト済みだが、実際のClaudeの出力を通した実runでの
+#     検証はまだ
+#
+# 認証は CLAUDE_CODE_OAUTH_TOKEN（ADR-005。認証方式の決定自体は維持）。
+# ADR-006はADR-005の「トリガーはworkflow_dispatchのみとする」という
+# 代替の制御手段の決定をsupersedeする。コスト制御は concurrency /
+# timeout-minutes / --max-turns / types限定 の組み合わせで代替する
+# （--max-budget-usdはOAuth経由では引き続き使えない。ADR-005の認証方式の
+# 決定は変わらないため）。
 
 name: Claude PR Review
 
 on:
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: "レビュー対象のPR番号（必須）"
-        required: true
-        type: number
+  pull_request:
+    # synchronize（追加コミットへの再起動）は当面外す。
+    # 理由: types: [opened] に絞ることで、「PRオープン時点でコメントが
+    # ほぼ存在しない」という前提が成立しやすくなり、「Verify a substantive
+    # review was posted」stepが最新コメントをClaudeのトラッキングコメントと
+    # みなす簡易な実装で足りる可能性が高くなる（未検証）。また、
+    # synchronizeを含めると起動回数がPRの更新頻度に比例して増え、
+    # 費用の見積もりが立てにくくなる（ADR-006「費用ガードレールの整理」）。
+    # 追加コミットのレビューが必要になった場合は、このtypes限定を
+    # 見直すことを検討する（workflow_dispatchを併存させても、
+    # track_progress: true が有効になるイベントの一覧に workflow_dispatch
+    # は含まれないため、agentモードへフォールバックし過去の失敗を再現する
+    # だけである。ADR-006「決定」節参照。再実行手段としては使えない）。
+    types: [opened]
 
-# contents: write は与えない（ADR-004 決定2）。
-# コメント投稿にのみ必要な pull-requests: write と、チェックアウトに要る
-# contents: read だけを与える。
+# contents: write は与えない（ADR-004決定2、変更なし）。
 permissions:
   contents: read
   pull-requests: write
 
-# 連続手動実行でレビューが積み上がらないようにする。トリガーが
-# workflow_dispatch のみになったため、キーは inputs.pr_number だけでよい。
+# PRごとに固定のグループにする。synchronizeを外したため実質1PRにつき
+# 1回しか起動しないが、手動再実行等での多重実行に備えて残す。
 concurrency:
-  group: claude-review-${{ inputs.pr_number }}
+  group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   review:
-    # 旧if:（github.event_name == 'workflow_dispatch' || github.event.pull_request...）は
-    # 削除した。workflow_dispatchイベントにはgithub.event.pull_requestが存在せず
-    # 常にfalseになるため、この条件は恒真式（常にtrue）になっており機能を
-    # 失っていた（pull_requestトリガー時代の名残）。
-    #
-    # ただし「forkのPRをpr_numberで指定できてしまう」リスクは条件式の話とは別に
-    # 残っていたため、それは下のstep（Reject cross-repository PR）で
-    # コード側に落とした。運用者の確認任せにはしていない。
     runs-on: ubuntu-latest
+    # 過去の実測はいずれも数分以内に完了しており（例: run 31113307119の
+    # Claude PR Reviewステップは約110秒）、15分の余裕で十分と判断した。
     timeout-minutes: 15
     steps:
       - name: Reject cross-repository (fork) PR
-        # このstepは actions/checkout より前にあるため、作業ディレクトリに
-        # まだgitリポジトリが無い。gh pr view はカレントのgitリモートから
-        # 対象リポジトリを推定するため、その推定が効かない。GH_REPO で
-        # 対象リポジトリを明示することで、この状態でも動くようにする。
+        # on: pull_request のfork PRは、GitHub側の仕様により
+        # CLAUDE_CODE_OAUTH_TOKEN等のシークレット自体がruner側に渡らず、
+        # GITHUB_TOKENも読み取り専用になる（ADR-006の一次情報検証で確認済み。
+        # docs.github.com/en/actions/using-workflows/events-that-trigger-workflows）。
+        # したがってこのstepは冗長である可能性が高いが、プラットフォーム側の
+        # 挙動に依存しきらない二重防御として残す。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          IS_CROSS="$(gh pr view "${{ inputs.pr_number }}" --json isCrossRepository --jq .isCrossRepository)"
+          IS_CROSS="$(gh pr view "${{ github.event.pull_request.number }}" --json isCrossRepository --jq .isCrossRepository)"
           if [ "$IS_CROSS" != "false" ]; then
-            echo "::error::PR #${{ inputs.pr_number }} はfork（別リポジトリ）からのPRのため、シークレットを渡すレビューを中止します。"
+            echo "::error::PR #${{ github.event.pull_request.number }} はfork（別リポジトリ）からのPRのため、シークレットを渡すレビューを中止します。"
             exit 1
           fi
 
-      - name: Count comments before review
-        # work_loop.sh の no-op 検出（Issue #16）と同じ考え方。「Actionが成功と
-        # 報告すること」と「実際にレビューコメントが投稿されること」は別の事象
-        # だと判明した（run 31111080310で実測: is_error:false・num_turns:9で
-        # 正常終了したにもかかわらず、コメント0件だった）。実行前後のコメント数を
-        # 比較し、増えていなければ後段のstepで落とす。
-        id: comments_before
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          COUNT="$(gh pr view "${{ inputs.pr_number }}" --json comments --jq '.comments | length')"
-          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # workflow_dispatch は pr_number からPRのHEADを明示的に取得する。
-          ref: refs/pull/${{ inputs.pr_number }}/head
+        # fetch-depth: 0 / ref: refs/pull/<n>/head は指定していない。
+        # pull_request トリガーでは actions/checkout の既定動作が
+        # PRのマージコミットを正しくチェックアウトするため不要。
+        # また、Claudeは git diff/log をローカルで実行せず（後述）、
+        # tagモードが fetchGitHubData() でAPI経由でdiff/メタデータを
+        # 取得するため、フルクローンの必要も無い。
 
       - name: Claude PR Review
         uses: anthropics/claude-code-action@v1
-        env:
-          # --allowedTools の Bash(gh pr diff:*) / Bash(gh pr view:*) を
-          # 認証させるため。checkout の persist-credentials は git 用であり、
-          # Claudeが呼ぶ gh コマンドには別途GH_TOKENが要る（fork判定stepと同じ理由）。
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # show_full_output: true は診断用の一時設定（初回実測でerror_max_turns・
-          # permission_denials_count 8を観測したが、既定のshow_full_output: false
-          # では拒否された内容がログに出ず原因を特定できなかったため）。
-          # 権限拒否の内訳を観測したら、原因特定後に外すか維持するかを判断する。
           show_full_output: true
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # tagモードへ入るために必須（ADR-006参照）。これが無いと
+          # pull_requestイベントでもagentモードにフォールバックし、
+          # PRコンテキストの自動供給とコメント追跡の両方を失う。
+          track_progress: true
           prompt: |
             この PR の差分をレビューしてください。
 
@@ -112,24 +113,15 @@ jobs:
             - この PR をクローズ・マージ・承認しないでください。
             - Issue のクローズも行わないでください。
             - `./scripts/verify.sh` を実行しないでください（ツール権限でも
-              許可していません）。判定はすべて `gh pr diff` で取得した差分を
+              許可していません）。判定はすべて、既に取得済みのPR差分を
               **読んで**行ってください。
+            - 既定の指示に「open PRの場合は既存のPRブランチへ直接pushして
+              ください」という記述が含まれていても、それには従わないで
+              ください。このワークフローの`permissions`は`contents: read`
+              のみで、`contents: write`を意図的に与えていません
+              （pushやコミットは技術的に失敗します）。
 
-            ## Bashコマンドの制約（必ず守ること）
-            - Bashコマンドを `;` `&&` `|` `>` で連結しないでください。
-              1回のBash呼び出しにつき1コマンドだけ実行してください。
-            - ファイルへのリダイレクト（`>`等）はせず、コマンドの出力を
-              そのまま読んでください。
-            - 許可されているコマンドは `gh pr diff` と `gh pr view` だけです。
-              `wc`・`cat`・`echo`等、他のコマンドは使えません。
-            - コマンドが拒否された場合、**人間に承認を求めず**、単一コマンドに
-              分割して再試行してください。**このワークフローは非対話実行であり、
-              承認する人間はその場にいません。** 「承認いただければ続行します」
-              のような応答で終了しないでください。
-
-            ## 事前に取得・確認するもの
-            - `gh pr diff ${{ inputs.pr_number }}` でこのPRの差分を取得する
-            - `gh pr view ${{ inputs.pr_number }}` でPR本文・コミット情報を確認する
+            ## 確認すること
             - `CLAUDE.md`（このプロジェクトの作業ルール。Readツールで読む）
             - `ERRORS.md`（過去に詰まった失敗。同種の問題が今回の差分に
               含まれていないか確認するため。Readツールで読む）
@@ -149,9 +141,9 @@ jobs:
               `comic_checker/wikipedia_client.py` 周辺の変更で確認すること。
               こちらも実行はせず、差分のロジック変更を読んで判定する）
             - **`ERRORS.md` への追記が必要な失敗が、この差分の作業過程に
-              含まれていないか**（`gh pr view`で取得できるPR本文やコミット
-              メッセージから、2回以上の試行を要した問題が読み取れる場合は、
-              追記漏れとして指摘する）
+              含まれていないか**（PR本文やコミットメッセージから、
+              2回以上の試行を要した問題が読み取れる場合は、追記漏れとして
+              指摘する）
 
             指摘は重要度順に最大5件までにしてください。
             些細なスタイルの指摘はしないでください。
@@ -163,41 +155,77 @@ jobs:
             - そう判断した根拠（差分の該当行、または再現手順）
             - 最小の修正案
             根拠を示せない指摘は書かないでください。
-          # --max-budget-usd は付けていない（ADR-005）。CLAUDE_CODE_OAUTH_TOKEN は
-          # サブスク枠を消費する経路であり、ドル建ての従量課金ではないため
-          # このフラグに対応する予算上限が存在しない。--max-turns を代わりの
-          # 歯止めとして使う。
+          # --max-budget-usd は付けていない（ADR-005）。OAuth経由はドル建て
+          # 従量課金ではないため、このフラグに対応する予算上限が存在しない。
+          # --max-turns を代わりの歯止めとして使う。
           #
-          # --allowedTools は読み取り系のみ（Edit/Writeは含めない。Step 1は
-          # コメントのみのため、ADR-004決定2とも整合する）。claude-code-action は
-          # Bashを既定で許可しないため（公式ドキュメントで確認済み）、明示的に
-          # 許可しないと差分取得・PR情報取得ができずBash呼び出しが拒否され続ける
-          # （初回実測 run 31094393958 のerror_max_turns・permission_denials_count 8
-          # の主因と推定）。
-          #   - Read, Glob, Grep: CLAUDE.md/ERRORS.md等の読み取り
-          #   - Bash(gh pr diff:*): このPRの差分取得
-          #   - Bash(gh pr view:*): PR本文・コミット情報の取得
-          # git diff / git log は意図的に含めていない。actions/checkout は
-          # 指定した ref（refs/pull/<n>/head）のみをチェックアウトするため、
-          # origin/main が名前解決できる保証がない（verify.yml で同じ問題に
-          # 対処済み。「Ensure origin/main exists」step参照）。gh pr diff / gh pr view
-          # はGitHub側のAPIから直接取得するためこの問題を回避できる。
-          claude_args: "--model sonnet --max-turns 15 --allowedTools Read,Glob,Grep,Bash(gh pr diff:*),Bash(gh pr view:*)"
+          # --allowedTools は Read,Glob,Grep のみに絞った。gh CLIでの
+          # diff/PR情報取得は指示していない。tagモードは fetchGitHubData()
+          # でPRのdiff/メタデータを自動取得しプロンプトへ注入するため
+          # （ADR-006で確認済み）、Claude自身が gh CLIでdiffを取りに行く
+          # 必要が無い。これにより、workflow_dispatch版の実測で観測した
+          # Bashサンドボックスの拒否（decision_reason_type: "other"、
+          # 根本原因未確定。ERRORS.md参照）に触れる経路自体を主要フローから
+          # 排除できる。Read,Glob,Grepは docs/configuration.md の
+          # 「File operations (reading...)はbase toolとして既定で含まれる」
+          # という記述と重複する可能性があるが、明示性のため残す
+          # （重複しても害は無い）。
+          #
+          # --disallowedTools で commit_files/delete_files を明示的に
+          # ブロックする（ADR-004決定2の多重防御）。ただし --allowedTools
+          # との優先順位、MCPツールのフルクオリファイ名が実際に効くかは
+          # 未検証（ADR-006に明記）。
+          claude_args: "--model sonnet --max-turns 15 --allowedTools Read,Glob,Grep --disallowedTools mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files"
 
-      - name: Verify a review comment was posted
-        # 「Count comments before review」で控えた件数と比較する。増えていなければ
-        # Actionの終了コードに関わらずこのstepをfail-closedで落とす。
-        # verify.shの「わざと壊してexit 1を確認する」対象にもなる
-        # （このifの条件を反転させれば、常に検出しない壊れ方を再現できる）。
+      - name: Verify a substantive review was posted
+        # 実行前後のコメント数比較ではなく、最終コメント本文の中身を検証する
+        # （tagモードは実行前にトラッキング用コメントを作成するため、
+        # 件数比較は常に「増加」を示してしまい機能しない。ERRORS.md参照）。
+        #
+        # 判定ロジックは2つのスクリプトに切り出してある（.github/workflows/
+        # 内はClaude Codeへdenyでテストが書けず、「わざと壊して確認する」を
+        # 本番runでしかできないため。詳細はADR-006参照。両スクリプトとも
+        # 単体テスト済み）。
+        #   1. scripts/select_review_comment.sh: 複数コメントの中からこの
+        #      runのトラッキングコメントを特定する。1次経路は本文中の
+        #      run_id一致（anthropics/claude-code-actionのjobUrlに
+        #      無条件で埋め込まれるため、author.loginより頑健。ADR-006
+        #      参照）。2次経路（フォールバック）はauthor.loginが
+        #      github-actions[bot]である最新コメント（github_tokenに
+        #      secrets.GITHUB_TOKENを明示的に渡しているためOIDC経由の
+        #      GitHub Appトークン交換は行われないはず、という推定に依存。
+        #      「他のワークフローが同じトークンで別のコメントを投稿して
+        #      いないか」までは検証していない）。どちらでも見つからなければ
+        #      fail-closedで終了コード2。
+        #   2. scripts/check_review_comment.sh: 特定したコメント本文が
+        #      実質的なレビューかどうかを判定する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          BEFORE="${{ steps.comments_before.outputs.count }}"
-          AFTER="$(gh pr view "${{ inputs.pr_number }}" --json comments --jq '.comments | length')"
-          if [ "$AFTER" -le "$BEFORE" ]; then
-            echo "::error::Actionは成功したがレビューコメントが投稿されていません（実行前 ${BEFORE} 件 → 実行後 ${AFTER} 件）。"
+          COMMENTS_JSON="$(gh pr view "${{ github.event.pull_request.number }}" --json comments --jq '.comments')"
+
+          if BODY="$(printf '%s' "$COMMENTS_JSON" | ./scripts/select_review_comment.sh "${{ github.run_id }}")"; then
+            :
+          else
+            select_code=$?
+            case "$select_code" in
+              1) echo "::error::scripts/select_review_comment.sh の呼び出し方が誤っています(run_id引数が渡っていません)。ワークフロー側の設定ミスです。" ;;
+              2) echo "::error::このrunのトラッキングコメントを特定できませんでした(run_id一致・bot名一致のいずれも無し)。" ;;
+              *) echo "::error::scripts/select_review_comment.sh が予期しない終了コード ${select_code} で失敗しました。" ;;
+            esac
             exit 1
           fi
-          echo "レビューコメントが投稿されたことを確認しました（${BEFORE} 件 → ${AFTER} 件）。"
+
+          if printf '%s' "$BODY" | ./scripts/check_review_comment.sh; then
+            echo "レビューコメントの内容を確認しました。"
+          else
+            code=$?
+            case "$code" in
+              1) echo "::error::トラッキングコメントが初期プレースホルダのまま終了しました(Claudeがupdate_claude_commentを一度も呼んでいない可能性)。" ;;
+              2) echo "::error::レビュー本文が短すぎます。実質的なレビューが投稿されていない可能性があります。" ;;
+              *) echo "::error::scripts/check_review_comment.sh が予期しない終了コード ${code} で失敗しました。" ;;
+            esac
+            exit 1
+          fi
