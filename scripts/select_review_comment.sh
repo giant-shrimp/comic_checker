@@ -19,6 +19,11 @@
 #        最新コメント。github_token に secrets.GITHUB_TOKEN を明示的に
 #        渡している前提に依存する推定であり、1次より弱い。
 #
+# 依存: jq。GitHub Actions ubuntu-latestランナーには公式に jq 1.7 が
+# プリインストールされている（actions/runner-images
+# images/ubuntu/Ubuntu2404-Readme.mdのソフトウェア一覧で確認済み）ため、
+# ワークフロー側で追加インストールする必要は無い。
+#
 # 使い方:
 #   gh pr view <n> --json comments --jq '.comments' | \
 #     scripts/select_review_comment.sh <run_id>
