@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from comic_checker import wikipedia_client
 from comic_checker.wikipedia_client import (
+    ADOPTION_PATH_DIRECT_DISAMBIGUATION,
+    ADOPTION_PATH_DIRECT_PLAIN,
+    ADOPTION_PATH_SEARCH_EXACT,
+    ADOPTION_PATH_SEARCH_SUBTITLE,
     API_MAX_ATTEMPTS,
     API_REQUEST_INTERVAL,
     API_RETRY_BACKOFF_SECONDS,
@@ -25,6 +30,7 @@ from comic_checker.wikipedia_client import (
     _judge_extract,
     _judge_via_infobox,
     _mentions_as_derivative_work,
+    _pick_via_search,
     _search_queries,
     _strip_annotations,
     _strip_disambiguation_suffix,
@@ -1060,6 +1066,50 @@ def test_judge_prefers_direct_manga_disambiguation_page():
     assert mock_get.call_count == 2
 
 
+def test_adoption_path_constants_have_the_expected_literal_values():
+    """4つのADOPTION_PATH_*定数を、本番側と同じシンボルではなくリテラル文字列と
+    比較して固定する（作業44、claude-review.ymlのレビュー指摘への対応）。
+
+    この下の判定系テスト（例: test_judge_records_disambiguation_adoption_path_
+    for_yojo_senki）は`result.adoption_path == ADOPTION_PATH_DIRECT_DISAMBIGUATION`
+    のように**本番側と同じインポート済みシンボル同士**を比較していたため、
+    定数の値そのものを変異させても両側が追従し、1件も落ちなかった
+    （CLAUDE.mdの「新しい定数を導入したら変異させて落ちることを確認する」、
+    ERRORS.md「定数を期待値と入力の両方に使うテストは、定数を変えても
+    落ちない」Issue #40と同型の穴。claude-review.yml run 31196492212の
+    レビューが指摘し、`ADOPTION_PATH_DIRECT_DISAMBIGUATION`の値を
+    `"MUTATED_VALUE"`に変えても`verify.sh`が`225 passed`のまま通ることを
+    実測で再現・確認済み）。このテストはリテラル文字列と比較するため、
+    定数の値そのものが変われば必ず落ちる。
+    """
+    assert ADOPTION_PATH_DIRECT_DISAMBIGUATION == "direct_disambiguation"
+    assert ADOPTION_PATH_DIRECT_PLAIN == "direct_plain"
+    assert ADOPTION_PATH_SEARCH_EXACT == "search_exact"
+    assert ADOPTION_PATH_SEARCH_SUBTITLE == "search_subtitle"
+
+
+def test_judge_records_disambiguation_adoption_path_for_yojo_senki():
+    """Issue #39完了条件: 幼女戦記の入力で、「(漫画)」経由のtrusted採用が
+    起きているかを出力（adoption_path/adoption_trusted/adoption_probe）から
+    判別できること。判定ロジック自体（status）は検査対象外。
+    """
+    resolve_response = _response(
+        _resolve_response(existing=["幼女戦記 (漫画)"], missing=["幼女戦記"])
+    )
+    extract_response = _response(_extract_response("幼女戦記 (漫画)", ONE_PIECE_EXTRACT))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response],
+    ):
+        result = judge("幼女戦記")
+
+    assert result.matched_title == "幼女戦記 (漫画)"
+    assert result.adoption_path == ADOPTION_PATH_DIRECT_DISAMBIGUATION
+    assert result.adoption_trusted is True
+    assert result.adoption_probe == "幼女戦記 (漫画)"
+
+
 def test_judge_follows_wikipedia_redirect_to_the_real_article():
     # 「彼女、人見知ります」→「彼女、お借りします」のように、編集者が意図的に張った
     # リダイレクトは直参照の段階（`_resolve_titles`のredirects解決）で辿られる。
@@ -1104,6 +1154,27 @@ def test_judge_finds_article_that_differs_only_in_character_width():
     assert result.matched_title == "グラぱらっ!"
     assert result.status == "連載中"
     assert mock_get.call_count == 2
+
+
+def test_judge_records_direct_plain_adoption_path():
+    """素タイトルの直参照（(漫画)表記ではない）で採用された場合の経路情報
+    （Issue #39）。trustedはFalseになる。
+    """
+    resolve_response = _response(
+        _resolve_response(existing=["グラぱらっ!"], missing=["グラぱらっ! (漫画)"])
+    )
+    extract_response = _response(_extract_response("グラぱらっ!", ONE_PIECE_EXTRACT))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response],
+    ):
+        result = judge("グラぱらっ!")
+
+    assert result.matched_title == "グラぱらっ!"
+    assert result.adoption_path == ADOPTION_PATH_DIRECT_PLAIN
+    assert result.adoption_trusted is False
+    assert result.adoption_probe == "グラぱらっ!"
 
 
 def test_judge_strips_purchase_note_from_title():
@@ -1270,6 +1341,28 @@ def test_judge_accepts_search_candidate_with_subtitle():
     assert result.matched_title == "謎の作品〜副題〜"
 
 
+def test_judge_records_search_subtitle_adoption_path_for_basilisk():
+    """Issue #39完了条件: バジリスクの入力で、検索フォールバック（副題前方一致）
+    経由の採用を経路情報（adoption_path）から判別できること。
+    """
+    resolve_response = _response(_resolve_response(missing=["バジリスク (漫画)", "バジリスク"]))
+    search_response = _response(_search_response(["バジリスク 〜甲賀忍法帖〜"]))
+    extract_response = _response(
+        _extract_response("バジリスク 〜甲賀忍法帖〜", ONE_PIECE_EXTRACT)
+    )
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, search_response, extract_response],
+    ):
+        result = judge("バジリスク")
+
+    assert result.matched_title == "バジリスク 〜甲賀忍法帖〜"
+    assert result.adoption_path == ADOPTION_PATH_SEARCH_SUBTITLE
+    assert result.adoption_trusted is False
+    assert result.adoption_probe == "バジリスク 〜甲賀忍法帖〜"
+
+
 def test_judge_does_not_accept_search_candidate_that_merely_shares_a_prefix():
     # 「ギャルせん」に対する「ギャルせんぱいの秘密」のように、区切り記号を挟まず
     # 語が続くだけの別作品は採用しない。
@@ -1299,6 +1392,41 @@ def test_judge_returns_not_found_when_no_article_exists():
 
     assert result.status == STATUS_NOT_FOUND
     assert result.matched_title is None
+    # Issue #39: 記事が見つからない場合、経路情報の3フィールドもすべてNoneのまま
+    # （trace自体が無いことをそのまま伝える。fail-closedと同じ考え方）。
+    assert result.adoption_path is None
+    assert result.adoption_trusted is None
+    assert result.adoption_probe is None
+
+
+def test_pick_via_search_records_search_exact_adoption_path(monkeypatch):
+    """search_exactの経路（検索候補が正規化後にexact集合と一致、副題ではない）。
+
+    judge()経由のHTTPモックでこの分岐だけを再現するのは、直参照側の変種
+    （_title_variantsが生成する正規化済み変種）と衝突しやすく難しいため、
+    _pick_via_searchを直接呼び、判定ロジック（_accept_article）はモックして
+    経路情報だけを検証する（Issue #39）。判定ロジック自体はテストしない
+    （_accept_articleは固定のダミー記事を返すだけ）。
+    """
+    monkeypatch.setattr(wikipedia_client, "_search_queries", lambda variants: ["謎の作品"])
+    monkeypatch.setattr(
+        wikipedia_client, "_search_titles", lambda query, limit=5: ["謎の作品 (漫画)"]
+    )
+    fake_article = ("謎の作品 (漫画)", "リード文", "https://ja.wikipedia.org/wiki/謎の作品")
+    monkeypatch.setattr(
+        wikipedia_client,
+        "_accept_article",
+        lambda page_title, trusted, input_title: fake_article,
+    )
+
+    article, trace = _pick_via_search(
+        variants=["謎の作品"], already_probed=set(), input_title="謎の作品"
+    )
+
+    assert article == fake_article
+    assert trace.path == ADOPTION_PATH_SEARCH_EXACT
+    assert trace.trusted is True
+    assert trace.probe == "謎の作品 (漫画)"
 
 
 def _wikitext_response(wikitext):

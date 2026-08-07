@@ -177,6 +177,27 @@ _TRAILING_NOTE_SEPARATOR_RE = re.compile(r"[　\t]|\s*[~〜～]")
 
 DISAMBIGUATION_SUFFIX = " (漫画)"
 
+# 記事採用に至った経路の識別子（Issue #39）。--adoption-trace有効時のみ
+# ログへ書かれる。判定ロジックには使わない（観測用途のみ）。
+ADOPTION_PATH_DIRECT_DISAMBIGUATION = "direct_disambiguation"  # 「〜(漫画)」の直参照
+ADOPTION_PATH_DIRECT_PLAIN = "direct_plain"  # 素タイトルの直参照
+ADOPTION_PATH_SEARCH_EXACT = "search_exact"  # 検索フォールバック、厳密一致
+ADOPTION_PATH_SEARCH_SUBTITLE = "search_subtitle"  # 検索フォールバック、副題前方一致
+
+
+class AdoptionTrace:
+    """記事採用に至った経路の記録（Issue #39）。
+
+    Excel出力には含めない。--adoption-trace有効時にのみログファイルへ
+    書き出す観測用のデータであり、判定ロジック（status/evidence）には
+    一切使わない。
+    """
+
+    def __init__(self, path, trusted, probe):
+        self.path = path
+        self.trusted = trusted
+        self.probe = probe
+
 # リダイレクト/正規化の連鎖をたどる上限。Wikipediaは二重リダイレクトを解決しないため
 # 実際には1〜2ホップで足りるが、循環リダイレクトで無限ループしないよう上限を設ける。
 _MAX_REDIRECT_HOPS = 5
@@ -508,12 +529,27 @@ VOLUME_FIELD_NAME = "巻数"
 
 
 class WikipediaJudgment:
-    def __init__(self, query, status, matched_title=None, url=None, evidence=None):
+    def __init__(
+        self,
+        query,
+        status,
+        matched_title=None,
+        url=None,
+        evidence=None,
+        adoption_path=None,
+        adoption_trusted=None,
+        adoption_probe=None,
+    ):
         self.query = query
         self.status = status
         self.matched_title = matched_title
         self.url = url
         self.evidence = evidence
+        # 以下3つはIssue #39（採用経路のログ出力）用。判定結果には影響しない
+        # 観測専用フィールドで、いずれも既定はNone（後方互換のため）。
+        self.adoption_path = adoption_path
+        self.adoption_trusted = adoption_trusted
+        self.adoption_probe = adoption_probe
 
 
 def _split_sentences(text):
@@ -928,6 +964,11 @@ def _pick_via_direct_lookup(probes, input_title):
     漫画版」を指すために作った表記なので最優先で信用する。その次に変種そのものを試す。
     どちらもWikipedia側のリダイレクト解決を経由するため、「彼女、人見知ります」→
     「彼女、お借りします」のような編集者による意図的な対応付けもここで拾える。
+
+    戻り値は`(article, trace)`。見つからなければ`(None, None)`（Issue #39）。
+    `trace`は観測用（`AdoptionTrace`）で、採用の可否・どのprobeが最初に
+    ヒットするかという制御フロー自体は変えない（既存のtried集合・ループ順序・
+    最初に見つかった記事を返すという挙動は無変更）。
     """
     resolved = _resolve_titles(probes)
 
@@ -937,13 +978,19 @@ def _pick_via_direct_lookup(probes, input_title):
         if page_title is None or page_title in tried:
             continue
         tried.add(page_title)
+        trusted = probe.endswith(DISAMBIGUATION_SUFFIX)
         article = _accept_article(
-            page_title, trusted=probe.endswith(DISAMBIGUATION_SUFFIX),
+            page_title, trusted=trusted,
             input_title=input_title,
         )
         if article is not None:
-            return article
-    return None
+            path = (
+                ADOPTION_PATH_DIRECT_DISAMBIGUATION
+                if trusted
+                else ADOPTION_PATH_DIRECT_PLAIN
+            )
+            return article, AdoptionTrace(path=path, trusted=trusted, probe=probe)
+    return None, None
 
 
 def _subtitle_prefix_match(candidate, variant):
@@ -1004,18 +1051,35 @@ def _pick_via_search(variants, already_probed, input_title):
             if candidate in already_probed:
                 continue
             normalized_candidate = _normalize(candidate)
-            if normalized_candidate not in exact and not any(
-                _subtitle_prefix_match(normalized_candidate, variant)
-                for variant in normalized_variants
-            ):
+            is_exact = normalized_candidate in exact
+            # is_exactがTrueならサブタイトル一致は見るまでもない（元のand短絡と同じ
+            # 順序を保つ。Issue #39: 経路情報としてどちらで一致したかを記録するために
+            # 分けて持つ）。
+            subtitle_variant = None
+            if not is_exact:
+                subtitle_variant = next(
+                    (
+                        variant
+                        for variant in normalized_variants
+                        if _subtitle_prefix_match(normalized_candidate, variant)
+                    ),
+                    None,
+                )
+            if not is_exact and subtitle_variant is None:
                 continue
+            trusted = candidate.endswith(DISAMBIGUATION_SUFFIX)
             article = _accept_article(
-                candidate, trusted=candidate.endswith(DISAMBIGUATION_SUFFIX),
+                candidate, trusted=trusted,
                 input_title=input_title,
             )
             if article is not None:
-                return article
-    return None
+                path = (
+                    ADOPTION_PATH_SEARCH_EXACT
+                    if is_exact
+                    else ADOPTION_PATH_SEARCH_SUBTITLE
+                )
+                return article, AdoptionTrace(path=path, trusted=trusted, probe=candidate)
+    return None, None
 
 
 def _pick_article(title):
@@ -1024,11 +1088,19 @@ def _pick_article(title):
     確信度の高い順に、タイトル直参照 → 全文検索の順で試す。どちらでも裏付けが取れない
     場合は、無関係な記事を確信を持って誤答するより記事なし（None）を優先する
     （Issue #8・#9で確立した設計指針）。
+
+    戻り値は`(article, trace)`。どちらも見つからなければ`(None, None)`（Issue #39）。
+    `article`が`None`かどうかで確信度の高い順に試すという制御フローは元のままで、
+    `or`演算子ではなく`article is not None`の明示チェックに置き換えている
+    （タプルは中身がNoneでも常にtruthyなため、`or`のままでは直参照側の失敗を
+    検知できなくなるための変更。制御フローの意味自体は変えていない）。
     """
     variants = _title_variants(title)
     probes = [f"{variant}{DISAMBIGUATION_SUFFIX}" for variant in variants] + list(variants)
-    return (_pick_via_direct_lookup(probes, title)
-            or _pick_via_search(variants, set(probes), title))
+    result = _pick_via_direct_lookup(probes, title)
+    if result[0] is not None:
+        return result
+    return _pick_via_search(variants, set(probes), title)
 
 
 def judge(title, use_infobox=True, today=None):
@@ -1041,7 +1113,7 @@ def judge(title, use_infobox=True, today=None):
     todayはIssue #56の継続の証拠判定に使う基準日。回帰テストが実行日に依存しないよう
     注入できるようにしてある。本番はNone（＝実行日）で呼ぶ。
     """
-    article = _pick_article(title)
+    article, trace = _pick_article(title)
     if article is None:
         return WikipediaJudgment(query=title, status=STATUS_NOT_FOUND)
 
@@ -1072,4 +1144,7 @@ def judge(title, use_infobox=True, today=None):
         matched_title=matched_title,
         url=url,
         evidence=evidence,
+        adoption_path=trace.path if trace is not None else None,
+        adoption_trusted=trace.trusted if trace is not None else None,
+        adoption_probe=trace.probe if trace is not None else None,
     )
