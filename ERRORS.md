@@ -692,6 +692,101 @@ run_31155912534.log`・`pr90_comments.json`・`run_31155912534_denials.json`
    check実行後に更新された形跡（タイムスタンプの不一致等）は確認していない
    （計測方法の違いで完全に説明がついたため、この確認は不要と判断した）。
 
+## `claude-review.yml`（Phase 5 Step 1）: 2回目のsteady-stateケース実測（PR #92 / run 31160930257）で`error_max_turns`により失敗した
+
+PR #92（`docs/claude-review-4th-measurement`、ERRORS.md/ADR-005/ADR-006へ
+4回目実測を記録するdocsのみのPR）自身の`opened`イベントで新版ワークフローが
+起動したが、`error_max_turns`で失敗した。以下、実測で確認した内容を記録する
+（`~/comic_checker-agent-notes/run_31160930257.log`・`pr92_comments.json`・
+`run_31160930257_denials.json`から引用）。
+
+1. **`git fetch origin main`拒否が再発した（2/2）。** 4回目実測（PR #90）と
+   同じパターンで、3件の`git fetch`を含むコマンドが拒否された
+   （`decision_reason_type`は1件目`"subcommandResults"`、残り2件`"other"`）:
+   - `git fetch origin main --quiet && git diff origin/main...HEAD --stat`
+   - `git fetch origin main --quiet`
+   - `git fetch origin main`
+
+   3回目の拒否の直後、Claudeは`git fetch`を含まない`git log --oneline -5
+   origin/main; git branch -a`・`git diff origin/main...HEAD --stat`を
+   実行し、いずれも成功した。今回はClaude自身がテキストでその理由を
+   述べていた（assistantのTEXTイベント）:
+   「origin/main already exists locally, so I can diff without fetching.」
+   これはClaudeの発言であり、`origin/main`がいつ・どうやってローカルに
+   用意されたのかというgit機構側の根拠を一次情報で裏付けるものではない
+   （4回目実測時点と同様、未確定のまま）。
+2. **`num_turns`と`--max-turns`の関係は、一次情報だけでは説明できず、
+   未確定のまま記録する。** 確認できたこと・未確定のことを分けて書く。
+
+   **確認できたこと**:
+   - 両runの`claude_args`はbyte-identical（`--model sonnet --max-turns 15
+     --allowedTools Read,Glob,Grep --disallowedTools
+     mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files`）。
+     引数の相違が原因である可能性は排除できた。
+   - `code.claude.com/docs/en/agent-sdk/typescript`のOptionsテーブルに
+     「`maxTurns`: Maximum agentic turns (**tool-use round trips**）」と
+     明記されている。turnの定義（1回のツール呼び出しとその結果の往復）は
+     一次情報で確認できた。
+   - `anthropics/claude-code-action`のソース
+     （`base-action/src/parse-sdk-options.ts:311`）は`--max-turns`の値を
+     そのままSDKの`maxTurns`オプションへ渡しているだけで、Action側に
+     独自のカウントロジックは無い。
+
+   **未確定のこと**:
+   - 実際のツール呼び出し数を全ツール種別で数え直すと、PR #90は19回・
+     PR #92は17回だった。報告された`num_turns`（PR #90: 20、PR #92: 16）と
+     いずれも近いが一致しない。
+   - `num_turns`フィールドが「turn = tool-use round trip」という定義と
+     どう対応するか（ToolSearchやMCPツール呼び出しの扱い、tagモードの
+     `createInitialComment()`のようなAction側の処理がカウントに含まれるか
+     等）は一次情報に記載が無かった。
+   - **PR #90が上限15を超える19〜20回のツール呼び出しを行いながら
+     `error_max_turns`にならず`success`で終わった理由は、一次情報からは
+     判断できない。** 推測で埋めず、未確定のまま記録する。
+3. **拒否・再試行に費やされたターン数を、ツール呼び出しの列挙から数えた
+   （推定ではない）。**
+
+   | | 総ツール呼び出し数 | 拒否（denied） | うちgit fetch系 | 拒否＋直後の代替再試行 |
+   |---|---|---|---|---|
+   | PR #90 | 19 | 5（26.3%） | 3 | 5（26.3%） |
+   | PR #92 | 17 | 3（17.6%） | 3 | 5（29.4%） |
+
+   PR #92は17回の呼び出しのうち3回（17.6%）が`git fetch`拒否そのものに、
+   代替再試行を含めると5回（29.4%）がこの問題に費やされていた。拒否分を
+   除いても14回で、報告された上限15に対して余裕は1回のみだった。単独の
+   決定的要因とは言えないが、寄与はしている。
+4. **`Verify a substantive review was posted`stepは`skipped`だった。**
+   `Claude PR Review`step自体が`##[error]Execution failed: Reached
+   maximum number of turns (15)`で失敗し（exit code 1、
+   `terminal_reason: "max_turns"`）、後続の`Verify`stepは`if:`無しの
+   デフォルト挙動により実行されなかった。**これはgate自体のバグではない**
+   （ジョブ全体は`Claude PR Review`step自身の失敗により正しく`failure`に
+   なっている）。この結果、`select_review_comment.sh`の2次経路（bot名
+   フォールバック、Issue #93）は今回も検証機会が無かった。
+
+   一方、PR #92のコメント本文（tagモードの初期進捗テンプレート
+   「レビュー進行中」、チェック項目すべて未完了、277文字）を
+   `check_review_comment.sh`へ手動で通すと`OK`（exit 0）を返すことが
+   別途判明した。今回は`Verify`step自体が`skipped`だったため実害は
+   出ていないが、fail-openの穴の可能性としてIssue #94へ切り出した。
+5. **コスト**: `total_cost_usd: 0.5830226`（`num_turns: 16`）。PR #90の
+   `1.0537520999999999`より低いが、これは`error_max_turns`で早期終了した
+   ためであり、「docsのみだから安い」という単純な比較はできない
+   （項目2・3参照）。
+6. **完走のための対応方針の選択肢を検討した（まだ採用は決めていない）。**
+   - a. `--max-turns`引き上げ: レビュー完走の可能性は上がるが、ADR-005が
+     明記した「月額の金銭的上限を見積もる手段が無い」制約下で最悪ケース
+     単価が上がる
+   - b. プロンプト側で`git fetch`を使わせない誘導: 2/2 runで再現した原因に
+     ピンポイントで効き実装コストが軽いが、`.github/workflows/**`の編集が
+     要り（ADR-004決定3）、対症療法である
+   - c. `--allowedTools`に`Bash(git fetch:*)`を追加: 拒否自体を起こさせ
+     ないが、ADR-006がBashでのgit操作経路を避けた設計方針に逆行する
+   - d. レビュー範囲の縮小: 読み込み量を減らせるが、レビューの質低下
+     リスクがある
+   - `Bash(git fetch:*)`未追加（`--disallowedTools`の実効性未検証、
+     Issue #91）を含め、いずれも未実装・未採用のまま記録する
+
 ## scratchpadの「存在しない」は探索範囲を限定した上での断定であり、誤りだった
 
 前セッションのハンドオフ（2026-08-06付）は、`scratchpad/errors_md_draft_claude_review.md`
