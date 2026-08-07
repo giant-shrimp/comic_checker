@@ -450,3 +450,43 @@ runner側の通常step（Claudeのサンドボックスを経由しない、Acti
 supersede表記を追記済み。同じ理由でADR-004（決定1がADR-005に
 supersedeされている）にも同様の追記が必要と判断し、追記案を提示した
 （2026-08-07、ADR-004・ADR-005いずれにも遡って追記した）。
+
+### 4回目実測（PR #90 / run 31155912534）による解消状況
+
+配置PR #90自身の`opened`イベントで新版ワークフローが起動し（詳細は
+`ERRORS.md`「`claude-review.yml`（Phase 5 Step 1）: 4回目実測（案A版、
+PR #90 / run 31155912534）でコメント投稿に到達した」を参照）、上記
+「採用にあたって残る未検証事項」を次の通り切り分ける。
+
+**解消**:
+
+- `mcp__github_comment__update_claude_comment`ツールの呼び出しが、Bash
+  サンドボックスの承認要求と同じ経路を通るかどうか → **通らなかった**。
+  5件の`permission_denied`はすべて`tool_name: "Bash"`で、コメント関連
+  ツールは1件も拒否されていない。
+- `--allowedTools`を明示指定してもbase GitHub tools（コメント管理）が
+  弾かれないという理解が正しいか → **正しかった**。`--allowedTools
+  Read,Glob,Grep`の明示指定下でもコメント投稿・更新は問題なく機能した。
+- 「PRの最新コメント＝Claudeのトラッキングコメント」という前提が実際に
+  成立するか、成果物ゼロ検出stepの新ロジックが実runで正しく機能するか →
+  **成立した**（1次経路・run_id一致で特定に成功）。ただし2次経路
+  （bot名フォールバック）は未検証のまま。
+
+**部分的に解消（留保付き）**:
+
+- `generateDefaultPrompt()`の「Smart branch handling」節が実際にClaudeの
+  挙動へ影響するか → 今回の1回の実測では、ブランチ作成・pushを試みる
+  形跡は観測されなかった。ただしこれは積極的な検証ではなく1回の観測に
+  留まるため、「十分抑えられている」と断定はしない。
+- `track_progress: true`がtagモードを強制しているか（agentモードへ
+  フォールバックしていないか） → トラッキングコメント（issue comment ID
+  `5213632357`）が実在し、実行中にジョブリンク付きで更新された
+  （agentモードなら`CLAUDE_COMMENT_ID`は`undefined`のままのはずで、この
+  動作と整合しない）。**ただし`"mode"`フィールドそのものをログ中に直接
+  確認できたわけではなく、間接証拠に基づく判断である点は留保する。**
+
+**未解消のまま**:
+
+- `--disallowedTools`が`mcp__github_file_ops__commit_files`/
+  `delete_files`を実際にブロックするか、`--allowedTools`との優先順位 →
+  今回も試行そのものが0件で、検証機会が発生しなかった。

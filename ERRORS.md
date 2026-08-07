@@ -617,6 +617,176 @@ PRコンテキストが渡る、コメントが投稿できる）は、トリガ
 あると気づいた。トリガーの選定は「動くかどうか」だけでなく「Action内部の
 どのコード経路を選ぶか」まで一次情報で確認すべきだった。
 
+## `claude-review.yml`（Phase 5 Step 1）: 4回目実測（案A版、PR #90 / run 31155912534）でコメント投稿に到達した
+
+ADR-006で採用した案A（`on: pull_request` + `track_progress: true`）を
+`claude-review.yml`へ配置するPR #90（`ci/claude-review-pull-request-trigger`）
+自身の`opened`イベントで、新版ワークフローが実際に起動した（run 31155912534）。
+以下、実測で確認した内容を記録する（すべて`~/comic_checker-agent-notes/
+run_31155912534.log`・`pr90_comments.json`・`run_31155912534_denials.json`
+（生ログ・生JSONとして保存済み）から引用）。
+
+1. **配置PR自身で起動した。** 「新規ワークフローファイルを追加するPR自身では
+   そのワークフローが起動しないかもしれない」という懸念（ADR-006作業11-3、
+   根拠は二次情報のみ）は、この構成では**成立しなかった**。
+2. **`Verify a substantive review was posted`stepまで含め全stepが成功し、
+   コメントが実際に投稿された。** `gh pr view 90 --json comments`で確認した
+   投稿コメント（author: `github-actions`、`createdAt:
+   2026-08-07T06:59:29Z`）は、`.github/workflows/claude-review.yml
+   +143/-115`という正確な差分行数、`scripts/select_review_comment.sh`/
+   `scripts/check_review_comment.sh`のL209-231という具体的な行範囲、実際に
+   diff中に存在する`${{ github.event.pull_request.number }}`等の`${{ }}`式の
+   列挙など、PRのdiffを踏まえた具体的な内容だった（3回のworkflow_dispatch
+   実測はいずれもここに到達しなかった）。
+3. **`mcp__github_comment__update_claude_comment`はBashサンドボックスと同じ
+   拒否経路を通らなかった。** `permission_denied`イベントは5件発生したが
+   （`run_31155912534_denials.json`）、すべて`tool_name: "Bash"`で、
+   コメント関連ツールは1件も拒否されていない。ADR-006「採用にあたって残る
+   未検証事項」の筆頭がこれで解消した。
+4. **`--allowedTools`に`Read,Glob,Grep`のみを明示指定しても、base GitHub
+   comment toolは弾かれなかった。** `docs/configuration.md`の「base GitHub
+   toolsは常に含まれる」という記述が実測で裏付けられた。
+5. **`select_review_comment.sh`は1次経路（run_id一致）で機能した。**
+   ログに`OK: run_id(31155912534)一致でコメントを特定しました(1次経路)。`。
+   2次経路（bot名フォールバック）は使われておらず、未検証のまま残る。
+6. **`git fetch origin main`系コマンドが3回拒否されたが、`git diff`単体
+   コマンドへの切り替えでdiff取得自体には成功し、投稿されたレビューはその
+   diffを反映した内容になっていた。** `permission_denied`イベント5件のうち
+   3件は次の`git fetch`を含むコマンドだった（`decision_reason_type`は
+   1件目`"subcommandResults"`、残り2件`"other"`、いずれも
+   `run_31155912534_denials.json`参照）:
+   - `git fetch origin main --quiet && git diff origin/main...HEAD --
+     .github/workflows/claude-review.yml`
+   - `git fetch origin main --quiet`
+   - `git fetch origin main`
+
+   3回目の拒否の直後、Claudeは`git fetch`を含まない`git diff
+   origin/main...HEAD -- .github/workflows/claude-review.yml`単体コマンドを
+   実行し、**これは成功し差分全文を取得できた**（`git log --oneline -1
+   origin/main; git status`も同様に成功）。
+
+   **この時点で`origin/main`がなぜ`git fetch`無しで既にローカルで解決可能
+   だったかは、ログからは特定できていない（未確定）。** `Checkout`stepの
+   ログには`pull/90/merge`refのfetchしか見えず、`origin/main`をいつ取得
+   したかを示す直接の証拠が無い。これは推定で埋めず、未確定のまま記録する。
+7. **`--disallowedTools`（`mcp__github_file_ops__commit_files`/
+   `delete_files`）への試行は0件だった。** そのため実効性そのものは今回も
+   検証できなかった。
+8. **コスト**: `total_cost_usd: 1.0537520999999999`（`num_turns: 20`）。
+   3回のworkflow_dispatch実測（`0.291408`〜`0.472` USD、いずれも途中拒否で
+   終了した実行の費用）より高いが、これは今回コメント投稿まで最後まで走った
+   実行の費用であり、ADR-006が「サンドボックス問題が解消してレビューが
+   最後まで走るようになった場合は費用が上がる方向に変わりうる」と記載して
+   いた通りの結果である。
+9. **`check_review_comment.sh`が報告した文字数（1756文字）と、実際の
+   コメント本文の全長（1898文字）に差があったため調査した。原因は計測方法の
+   設計通りの挙動であり、ゲートに穴は無かった。** `scripts/
+   check_review_comment.sh`は本文中の最初の`---`区切り線より後ろだけを
+   `wc -m`（`LC_ALL=C.UTF-8`）で数える設計（ヘッダー・ジョブリンク行を
+   除外するため）。保存済み`pr90_comments.json`の本文（Pythonの`len()`で
+   1898文字、`wc -m`でも同じく1898）から、同じ方法（`awk 'f{print}
+   /^---$/{f=1}'`でヘッダーを除去してから`wc -m`）で数え直すと**1756文字**
+   となり、ワークフロー実行時のログの値と完全に一致した。142文字の差は
+   ヘッダー部分（`**Claude finished @giant-shrimp's task in 4m 39s** ——
+   [View job](...)`＋空行＋区切り線自体）の長さそのものであり、コメントが
+   check実行後に更新された形跡（タイムスタンプの不一致等）は確認していない
+   （計測方法の違いで完全に説明がついたため、この確認は不要と判断した）。
+
+## `claude-review.yml`（Phase 5 Step 1）: 2回目のsteady-stateケース実測（PR #92 / run 31160930257）で`error_max_turns`により失敗した
+
+PR #92（`docs/claude-review-4th-measurement`、ERRORS.md/ADR-005/ADR-006へ
+4回目実測を記録するdocsのみのPR）自身の`opened`イベントで新版ワークフローが
+起動したが、`error_max_turns`で失敗した。以下、実測で確認した内容を記録する
+（`~/comic_checker-agent-notes/run_31160930257.log`・`pr92_comments.json`・
+`run_31160930257_denials.json`から引用）。
+
+1. **`git fetch origin main`拒否が再発した（2/2）。** 4回目実測（PR #90）と
+   同じパターンで、3件の`git fetch`を含むコマンドが拒否された
+   （`decision_reason_type`は1件目`"subcommandResults"`、残り2件`"other"`）:
+   - `git fetch origin main --quiet && git diff origin/main...HEAD --stat`
+   - `git fetch origin main --quiet`
+   - `git fetch origin main`
+
+   3回目の拒否の直後、Claudeは`git fetch`を含まない`git log --oneline -5
+   origin/main; git branch -a`・`git diff origin/main...HEAD --stat`を
+   実行し、いずれも成功した。今回はClaude自身がテキストでその理由を
+   述べていた（assistantのTEXTイベント）:
+   「origin/main already exists locally, so I can diff without fetching.」
+   これはClaudeの発言であり、`origin/main`がいつ・どうやってローカルに
+   用意されたのかというgit機構側の根拠を一次情報で裏付けるものではない
+   （4回目実測時点と同様、未確定のまま）。
+2. **`num_turns`と`--max-turns`の関係は、一次情報だけでは説明できず、
+   未確定のまま記録する。** 確認できたこと・未確定のことを分けて書く。
+
+   **確認できたこと**:
+   - 両runの`claude_args`はbyte-identical（`--model sonnet --max-turns 15
+     --allowedTools Read,Glob,Grep --disallowedTools
+     mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files`）。
+     引数の相違が原因である可能性は排除できた。
+   - `code.claude.com/docs/en/agent-sdk/typescript`のOptionsテーブルに
+     「`maxTurns`: Maximum agentic turns (**tool-use round trips**）」と
+     明記されている。turnの定義（1回のツール呼び出しとその結果の往復）は
+     一次情報で確認できた。
+   - `anthropics/claude-code-action`のソース
+     （`base-action/src/parse-sdk-options.ts:311`）は`--max-turns`の値を
+     そのままSDKの`maxTurns`オプションへ渡しているだけで、Action側に
+     独自のカウントロジックは無い。
+
+   **未確定のこと**:
+   - 実際のツール呼び出し数を全ツール種別で数え直すと、PR #90は19回・
+     PR #92は17回だった。報告された`num_turns`（PR #90: 20、PR #92: 16）と
+     いずれも近いが一致しない。
+   - `num_turns`フィールドが「turn = tool-use round trip」という定義と
+     どう対応するか（ToolSearchやMCPツール呼び出しの扱い、tagモードの
+     `createInitialComment()`のようなAction側の処理がカウントに含まれるか
+     等）は一次情報に記載が無かった。
+   - **PR #90が上限15を超える19〜20回のツール呼び出しを行いながら
+     `error_max_turns`にならず`success`で終わった理由は、一次情報からは
+     判断できない。** 推測で埋めず、未確定のまま記録する。
+3. **拒否・再試行に費やされたターン数を、ツール呼び出しの列挙から数えた
+   （推定ではない）。**
+
+   | | 総ツール呼び出し数 | 拒否（denied） | うちgit fetch系 | 拒否＋直後の代替再試行 |
+   |---|---|---|---|---|
+   | PR #90 | 19 | 5（26.3%） | 3 | 5（26.3%） |
+   | PR #92 | 17 | 3（17.6%） | 3 | 5（29.4%） |
+
+   PR #92は17回の呼び出しのうち3回（17.6%）が`git fetch`拒否そのものに、
+   代替再試行を含めると5回（29.4%）がこの問題に費やされていた。拒否分を
+   除いても14回で、報告された上限15に対して余裕は1回のみだった。単独の
+   決定的要因とは言えないが、寄与はしている。
+4. **`Verify a substantive review was posted`stepは`skipped`だった。**
+   `Claude PR Review`step自体が`##[error]Execution failed: Reached
+   maximum number of turns (15)`で失敗し（exit code 1、
+   `terminal_reason: "max_turns"`）、後続の`Verify`stepは`if:`無しの
+   デフォルト挙動により実行されなかった。**これはgate自体のバグではない**
+   （ジョブ全体は`Claude PR Review`step自身の失敗により正しく`failure`に
+   なっている）。この結果、`select_review_comment.sh`の2次経路（bot名
+   フォールバック、Issue #93）は今回も検証機会が無かった。
+
+   一方、PR #92のコメント本文（tagモードの初期進捗テンプレート
+   「レビュー進行中」、チェック項目すべて未完了、277文字）を
+   `check_review_comment.sh`へ手動で通すと`OK`（exit 0）を返すことが
+   別途判明した。今回は`Verify`step自体が`skipped`だったため実害は
+   出ていないが、fail-openの穴の可能性としてIssue #94へ切り出した。
+5. **コスト**: `total_cost_usd: 0.5830226`（`num_turns: 16`）。PR #90の
+   `1.0537520999999999`より低いが、これは`error_max_turns`で早期終了した
+   ためであり、「docsのみだから安い」という単純な比較はできない
+   （項目2・3参照）。
+6. **完走のための対応方針の選択肢を検討した（まだ採用は決めていない）。**
+   - a. `--max-turns`引き上げ: レビュー完走の可能性は上がるが、ADR-005が
+     明記した「月額の金銭的上限を見積もる手段が無い」制約下で最悪ケース
+     単価が上がる
+   - b. プロンプト側で`git fetch`を使わせない誘導: 2/2 runで再現した原因に
+     ピンポイントで効き実装コストが軽いが、`.github/workflows/**`の編集が
+     要り（ADR-004決定3）、対症療法である
+   - c. `--allowedTools`に`Bash(git fetch:*)`を追加: 拒否自体を起こさせ
+     ないが、ADR-006がBashでのgit操作経路を避けた設計方針に逆行する
+   - d. レビュー範囲の縮小: 読み込み量を減らせるが、レビューの質低下
+     リスクがある
+   - `Bash(git fetch:*)`未追加（`--disallowedTools`の実効性未検証、
+     Issue #91）を含め、いずれも未実装・未採用のまま記録する
+
 ## scratchpadの「存在しない」は探索範囲を限定した上での断定であり、誤りだった
 
 前セッションのハンドオフ（2026-08-06付）は、`scratchpad/errors_md_draft_claude_review.md`
