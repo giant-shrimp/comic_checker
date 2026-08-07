@@ -82,6 +82,16 @@ def test_plausible_review_is_accepted(tmp_path):
     assert "OK" in result.stdout
 
 
+def test_empty_body_is_rejected(tmp_path):
+    """完全に空の本文(ghのjqが該当コメントを見つけられず`// \"\"`で
+    フォールバックしたケースを想定) -> exit 2。fail-closedで、
+    誤ってexit 0(通過)にならないことを固定する(作業10-2)。
+    """
+    result = _run("", False, tmp_path)
+    assert result.returncode == 2
+    assert "短すぎます" in result.stderr
+
+
 def test_missing_separator_is_treated_as_empty_content(tmp_path):
     """(d) 区切り線(---)が無い本文の挙動を定義する。
 
