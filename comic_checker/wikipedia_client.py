@@ -746,12 +746,20 @@ def _has_continuation_evidence(volumes_field, today=None):
     return (reference.year - max(years)) < CONTINUATION_STALE_YEARS
 
 
+# M-5パターン対応（Issue #41調査、作業62〜63）: 終了系フィールドが非空欄でも、値自体が
+# 「休載」を示す注記であれば、実際には終了していない（`日常`: `終了号 = "2008年7月号
+# 〈一時休載〉"`なのに`完結`と誤判定していた）。実データ根拠は「日常」1件のみ
+# （Measured 2026-08-10）。語彙拡張（「中断」「休止」等）には実データ調査が必要——
+# 未検証のまま追加しないこと。
+HIATUS_MARKER = "休載"
+
+
 def _judge_via_infobox(wikitext, today=None):
     """wikitextから本編漫画のインフォボックスを特定し、連載中/完結を判定する。
 
     本編を確信を持って特定できない場合、終了系フィールドが1つも存在せず判定材料が無い場合、
-    および終了系が空欄でも継続の証拠が取れない場合（Issue #56）は、(None, None)を返す
-    （呼び出し側は判定不能のまま維持する）。
+    および終了系が空欄（または休載注記のみ）でも継続の証拠が取れない場合（Issue #56）は、
+    (None, None)を返す（呼び出し側は判定不能のまま維持する）。
     """
     blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
     main_block = _find_main_manga_block(blocks)
@@ -761,15 +769,30 @@ def _judge_via_infobox(wikitext, today=None):
     if not any(_infobox_has_field(main_block, field_name) for field_name in END_FIELD_NAMES):
         return None, None
 
+    hiatus_field = None
     for field_name in END_FIELD_NAMES:
         value = _infobox_field(main_block, field_name)
-        if value:
-            return "完結", f"インフォボックス: {field_name} = {value}"
+        if not value:
+            continue
+        if HIATUS_MARKER in value:
+            # 休載注記は「終了」の記録ではない。この値では完結と断定せず、
+            # 空欄だった場合と同じ経路（継続の積極的な証拠を要求、Issue #56）へ進む。
+            hiatus_field = hiatus_field or (field_name, value)
+            continue
+        return "完結", f"インフォボックス: {field_name} = {value}"
 
-    # 終了系は空欄。ここで`連載中`と断定するには継続の積極的な証拠が要る（Issue #56）。
+    # 終了系は空欄、または休載注記のみ。ここで`連載中`と断定するには継続の積極的な証拠が要る
+    # （Issue #56）。
     volumes = _infobox_field(main_block, VOLUME_FIELD_NAME)
     if not _has_continuation_evidence(volumes, today=today):
         return None, None
+    if hiatus_field is not None:
+        field_name, value = hiatus_field
+        return (
+            "連載中",
+            f"インフォボックス: {field_name} = {value}（休載注記のため終了とみなさず）、"
+            f"巻数 = {volumes}",
+        )
     return "連載中", f"インフォボックス: 終了号/終了日等が空欄、巻数 = {volumes}"
 
 
