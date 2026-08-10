@@ -2,6 +2,15 @@
 
 `CLAUDE.md` から移動（Issue #18）。挙動を「直す」前に読むこと。
 
+**Dating convention (added Issue #41 follow-up, 作業63):** entries that depend on a live
+Wikipedia article's current content or a live `judge()` call's actual output should carry
+a `**Measured YYYY-MM-DD**` stamp next to the claim. Wikipedia articles get edited, so an
+unstamped claim about "what the live article currently says" can silently go stale —
+`大奥`'s entry below is a confirmed instance of exactly this happening. **If a stamp is
+more than a few months old and the claim still matters, re-verify it before relying on
+it.** Entries below without a stamp were not re-verified when this convention was
+introduced — their measurement date is unknown, and their freshness is not guaranteed.
+
 ## Known limitations worth knowing before "fixing" something
 
 ### Wikipedia path (default)
@@ -88,16 +97,23 @@
   fixture in `tests/test_wikipedia_client.py` is a *snapshot* of an article taken on the
   day the test was written. Wikipedia articles get rewritten, so a fixture can keep
   passing long after the live article stopped producing that result — the test proves the
-  regex still handles *that text*, not that the row is still answered correctly.
-  Concrete instance, found while working Issue #37: **`大奥` — the headline case of Issue
-  #36 and the only "confident wrong answer" M6-D-2 turned up — currently returns
-  `判定不能` against the live article**, while `OOOKU_EXTRACT` still asserts `完結` and
-  passes. `連載中から多くの漫画賞を受賞し` no longer appears in the live scan range, so
-  the fix that test guards is no longer being exercised by the real page. Cause not
-  investigated (deliberately out of scope for #37). Two consequences worth internalizing:
-  a fixture-based regression test cannot tell you a fix is *still needed*, and any claim
-  about real-data accuracy has to be re-measured against live articles (see `ERRORS.md`
-  for a request-cheap way to do that).
+  regex still handles *that text*, not that the row is still answered correctly. This
+  entry itself is the concrete proof: it used to say `大奥` — the headline case of Issue
+  #36 and the only "confident wrong answer" M6-D-2 turned up — "currently returns
+  `判定不能` against the live article," undated, found while working Issue #37. **Measured
+  2026-08-10 (Issue #41 follow-up, 作業63): that claim is now wrong.**
+  `judge("大奥")` returns `status=完結`, `matched_title=大奥 (漫画)`,
+  `adoption_path=direct_disambiguation`, `evidence="隔月刊誌『MELODY』（白泉社）にて
+  2004年8月号から2021年2月号まで連載された。"` — a correct answer, from a serialization
+  sentence that is present in the live scan range today. **Likely explanation (inference,
+  not confirmed against the article's edit history): a further Wikipedia edit
+  re-introduced a decisive serialization sentence into the lead/first-section scan range**
+  after the `判定不能` state this entry originally described — but that is a guess, not a
+  verified cause. Two consequences worth internalizing, now doubly demonstrated: a
+  fixture-based regression test cannot tell you a fix is *still needed*, and any claim
+  about real-data accuracy — including this doc's own claims — has to be re-measured
+  against live articles before being trusted (see `ERRORS.md` for a request-cheap way to
+  do that, and for the entry recording how this exact staleness was caught).
 - **Rows that land on an author's article were fixed in Issue #45 — but only that shape.**
   Category 2 of M6-D-2 (a title with no article of its own whose redirect points at the
   漫画家 article) is now rejected at selection time by `_is_person_article()`, taking all
