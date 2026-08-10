@@ -211,6 +211,15 @@
   future regression here will not show up there. `scripts/survey_m6d4_infobox.py --verify`
   is what pins it, against the 96 labelled rows in `scripts/m6d4_labels.py`.
 
+- **The infobox path can call a hiatus "completed" when the end-field carries an
+  annotation instead of being genuinely blank (M-5 category).** `judge("日常")` returns
+  `完結` though the work is on a long hiatus, not ended: `判定根拠` reads `インフォボックス:
+  終了号 = 2008年7月号〈一時休載〉` — non-empty, so the M6-B-4 gate never engages and the
+  `〈一時休載〉` annotation is never parsed. Different from Issue #38 (closed, prose path).
+  **`日常` is outside the M6-D-4 census (`scripts/m6d4_labels.py`'s 96 rows)** — not one
+  of the gate's five known misses, just unevaluated territory (found via the Issue #41
+  survey, `scripts/survey_issue41_adoption.py`). No Issue filed: #41/#91/#93 are already
+  open with no active pickup; this note is the discoverable record instead.
 - **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
   about 7 seconds per input row (Issue #40).** `_api_get()` sleeps before each request and
   retries a 429 up to six times with a `5.0 × attempt` backoff. Before #40 there was no
