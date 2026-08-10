@@ -920,6 +920,56 @@ def test_judge_via_infobox_gives_up_when_no_end_field_exists_at_all():
     assert evidence is None
 
 
+# M-5パターン対応（Issue #41調査、作業62〜63）: 終了系フィールドが非空欄でも、値が
+# 「休載」を示す注記であれば終了とみなさない。`日常`の実データ（Measured 2026-08-10）を
+# そのままフィクスチャにする。
+#   終了号 = "2008年7月号〈一時休載〉"
+#   巻数   = "既刊12巻（2024年10月25日現在）"（2026年基準で継続の証拠あり）
+NICHIJOU_MAIN_BLOCK = _manga_infobox_block(
+    [
+        ("作者", "[[あらゐけいいち]]"),
+        ("出版社", "[[KADOKAWA]]"),
+        ("開始号", "2006年11月号"),
+        ("終了号", "2008年7月号〈一時休載〉"),
+        ("巻数", "既刊12巻（2024年10月25日現在）"),
+    ]
+)
+
+# 「新たに壊れうるケース」（作業63）: 終了号に休載注記が残るが、継続の証拠が無い
+# （実際に完結していておかしくない）形。合成フィクスチャ。fail-closed側
+# （判定不能）に倒れることを固定する——完結とも連載中とも断定してはならない。
+HIATUS_ANNOTATION_NO_EVIDENCE_BLOCK = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2001年1号"),
+        ("終了号", "2015年3号（2010〜2012年休載）"),
+        ("巻数", "全12巻"),
+    ]
+)
+
+
+def test_judge_via_infobox_treats_hiatus_annotation_as_not_ended_nichijou():
+    # 回帰テスト（実データ、Issue #41調査で発見）: 終了号が非空欄でも「休載」注記なら
+    # 完結と断定せず、巻数の継続証拠（Issue #56）へフォールスルーする。
+    wikitext = NICHIJOU_MAIN_BLOCK
+    status, evidence = _judge_via_infobox(wikitext, today=date(2026, 8, 10))
+    assert status == "連載中"
+    assert "終了号 = 2008年7月号〈一時休載〉" in evidence
+    assert "休載注記のため終了とみなさず" in evidence
+    assert "巻数 = 既刊12巻（2024年10月25日現在）" in evidence
+
+
+def test_judge_via_infobox_hiatus_annotation_without_continuation_evidence_stays_unknown():
+    # 「新たに壊れうるケース」: 休載注記はあるが継続の証拠が無い（本当に完結している
+    # かもしれない）合成フィクスチャ。完結とも連載中とも断定せず判定不能に倒れることを
+    # 固定する（fail-closed）。
+    wikitext = HIATUS_ANNOTATION_NO_EVIDENCE_BLOCK
+    status, evidence = _judge_via_infobox(wikitext, today=date(2026, 8, 10))
+    assert status is None
+    assert evidence is None
+
+
 def test_extract_braced_blocks_handles_nested_templates():
     wikitext = NESTED_MAIN_BLOCK + "\n\n== 概要 ==\n本文の説明。"
     blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
