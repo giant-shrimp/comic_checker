@@ -1210,10 +1210,10 @@ ERRORS.md内に存在しない数値（「作業40時点で成功10/10」）を�
 突き合わせる。「省略」「前版参照」で表を不完全にすると、不一致が検出
 されないまま持ち越される。
 
-## `git fetch`以外のBash拒否が累積している（PR 104番・107番）
+## `git fetch`以外のBash拒否が累積している（PR #104・#107）
 
-`python3 -c`（PR 104番、run 31353093228、1件）・`gh issue view`複数／
-`gh issue list`／grepと組み合わせたコマンド（PR 107番、run 31356527777、
+`python3 -c`（PR #104、run 31353093228、1件）・`gh issue view`複数／
+`gh issue list`／grepと組み合わせたコマンド（PR #107、run 31356527777、
 4件）で拒否が観測された。`.claude/settings.json`のdeny由来ではなく、
 `--allowedTools Read,Glob,Grep`にBashが無いことによる既定拒否と推定する。
 ただし同runで`git diff`・`ls`・`cat`は通っており、一部Bashを黙示的に
