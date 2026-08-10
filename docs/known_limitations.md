@@ -70,6 +70,20 @@
   `判定不能` on it. Only when the primary type itself is 小説/ライトノベル (as in
   転生したらスライムだった件's "…日本のなろう系ライトノベル。") does the mediamix
   subject-check kick in.
+- **The mediamix check above false-negatives on disambiguated ("〜 (漫画)") articles whose
+  lead names a prior novel.** `judge("陰陽師")` returns `判定不能` (actually `完結`): the
+  matched article opens with "夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画", missing
+  the `"日本の<種別>"` clause and falling back to a bare `小説` marker, which wrongly
+  treats the work as novel-primary. Relaxing the check for the trusted disambiguation
+  route was investigated with real data (Issue #41) but **not implemented**. Measured
+  2026-08-10: the `"〜 (漫画)"` population is ~966 (`intitle:漫画`, filtered locally by
+  suffix — `hastemplate:"Infobox animanga/Manga"` undercounts real manga articles by
+  design and should not be used to build this population; 10/10 random titles from its
+  373-title gap were confirmed genuine manga works lacking that template). A random
+  30-sample from the 966 had **zero** rows where the check actually engages
+  (`_is_novel_primary() == True`) — 陰陽師 is still the only real-data beneficiary found.
+  Staying pending: this is a fail-closed relaxation (Issue #8/#9's stance), and at this
+  scale the benefit doesn't clearly outweigh the added false-positive risk.
 - **A green test suite is not evidence that real data still behaves correctly.** Every
   fixture in `tests/test_wikipedia_client.py` is a *snapshot* of an article taken on the
   day the test was written. Wikipedia articles get rewritten, so a fixture can keep
