@@ -75,7 +75,7 @@
   matched article opens with "夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画", missing
   the `"日本の<種別>"` clause and falling back to a bare `小説` marker, which wrongly
   treats the work as novel-primary. Relaxing the check for the trusted disambiguation
-  route was investigated with real data (Issue 41番) but **not implemented**. Measured
+  route was investigated with real data (Issue #41) but **not implemented**. Measured
   2026-08-10: the `"〜 (漫画)"` population is ~966 (`intitle:漫画`, filtered locally by
   suffix — `hastemplate:"Infobox animanga/Manga"` undercounts real manga articles by
   design and should not be used to build this population; 10/10 random titles from its
