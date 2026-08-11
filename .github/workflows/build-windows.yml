@@ -58,6 +58,13 @@ jobs:
           BUILD_DATE = "$buildDate"
           "@ | Set-Content -Path comic_checker\_build_info.py -Encoding utf8
 
+          # Set-Contentは標準出力に何も出さないため、成功ログだけでは実際に
+          # 書き込まれた値を確認できない（作業74で判明。実機でのEXE起動でしか
+          # 埋め込みの正しさを確認できなかった）。書き込み直後の内容をログへ
+          # 出し、CIログだけで検証できるようにする。
+          Write-Host "Embedded build info:"
+          Get-Content -Path comic_checker\_build_info.py
+
       - name: Build with PyInstaller
         run: pyinstaller comic_checker.spec
 
