@@ -34,6 +34,26 @@ jobs:
           python-version: "3.13"
           cache: "pip"
 
+      # タグ経由のビルド（リリース）のときだけ、タグ名とcomic_checker.__version__が
+      # 一致することを検証する。workflow_dispatch（手動ビルド）ではタグが存在せず
+      # GITHUB_REF_NAMEがブランチ名になるため、github.ref_type == 'tag'の場合のみ
+      # 実行する（無条件に比較すると手動ビルドが必ず失敗する）。ADR-007決定1・
+      # 74-4(b)参照。__version__側の更新漏れ・タグ側の打ち忘れの片方だけが起きる
+      # 事故をここで検出する。
+      - name: Verify tag matches __version__
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          $pyVersion = python -c "from comic_checker import __version__; print(__version__)"
+          Write-Host "Tag version: $tagVersion"
+          Write-Host "comic_checker.__version__: $pyVersion"
+          if ($tagVersion -ne $pyVersion) {
+            Write-Host "::error::タグ($tagVersion)とcomic_checker.__version__($pyVersion)が一致しない"
+            exit 1
+          }
+          Write-Host "OK: タグとcomic_checker.__version__が一致"
+
       # requirements.txt は軽量ビルド用（openpyxl + requests のみ）。
       # requirements-fallback.txt（playwright）は意図的に入れない。
       - name: Install dependencies
