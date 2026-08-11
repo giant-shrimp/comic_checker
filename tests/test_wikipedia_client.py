@@ -1241,6 +1241,127 @@ def test_pick_article_falls_back_to_search_when_direct_lookup_finds_nothing(monk
     assert len(search_calls) == 1
 
 
+# --- 作業68: 作業67でスコープ外とした残る未カバー分岐 ------------------------------------
+
+
+def test_pick_via_search_skips_a_candidate_already_probed_by_direct_lookup(monkeypatch):
+    """契約: 候補が`already_probed`（直参照で既に試行済み）に含まれる場合、
+    その候補への`_accept_article`呼び出しをスキップし、次の候補へ進む。
+
+    このテストが単独で検知できる壊れ方: `if candidate in already_probed: continue`が
+    無くなり、直参照で既に不採用と分かっている記事へ検索経由で再度アクセスする
+    リグレッション（`_accept_article`が余分に呼ばれる）。
+    """
+    monkeypatch.setattr(wikipedia_client, "_search_queries", lambda variants: ["謎の作品"])
+    monkeypatch.setattr(
+        wikipedia_client, "_search_titles", lambda query, limit=5: ["謎の作品 (漫画)"]
+    )
+    accept_calls = []
+
+    def fake_accept(page_title, trusted, input_title):
+        accept_calls.append(page_title)
+        return None
+
+    monkeypatch.setattr(wikipedia_client, "_accept_article", fake_accept)
+
+    article, trace = _pick_via_search(
+        variants=["謎の作品"], already_probed={"謎の作品 (漫画)"}, input_title="謎の作品"
+    )
+
+    assert article is None
+    assert trace is None
+    assert accept_calls == []
+
+
+def test_pick_via_search_accepts_the_second_candidate_when_the_first_is_rejected(
+    monkeypatch,
+):
+    """契約: 検索結果は上位1件だけでなく全件を見る——最初の候補が`_accept_article`に
+    拒否されても、ループは継続して次の候補を試す。
+
+    このテストが単独で検知できる壊れ方: 最初の候補で`return`/ループ終了してしまい、
+    2件目以降を一切試さなくなるリグレッション（上位1件しか見ない実装への後退）。
+    """
+    monkeypatch.setattr(wikipedia_client, "_search_queries", lambda variants: ["謎の作品"])
+    monkeypatch.setattr(
+        wikipedia_client,
+        "_search_titles",
+        lambda query, limit=5: ["謎の作品 (漫画)", "謎の作品"],
+    )
+    fake_article = ("謎の作品", "リード文", "https://example/謎の作品")
+
+    def fake_accept(page_title, trusted, input_title):
+        return None if page_title == "謎の作品 (漫画)" else fake_article
+
+    monkeypatch.setattr(wikipedia_client, "_accept_article", fake_accept)
+
+    article, trace = _pick_via_search(
+        variants=["謎の作品"], already_probed=set(), input_title="謎の作品"
+    )
+
+    assert article == fake_article
+    assert trace.probe == "謎の作品"
+
+
+def test_accept_article_returns_none_when_fetch_extract_finds_nothing(monkeypatch):
+    """契約: `_fetch_extract`が記事を見つけられなかった場合（None）、
+    `_accept_article`はNoneを返す——後続の内容チェックへは進まない。
+
+    trusted=Falseで確認する（作業68で気づいた自分の設計ミスの修正）: 当初
+    trusted=Trueで書いたが、trusted=Trueの分岐は`article`をそのまま
+    `return`するだけなので、ガードを消してもarticle自体がNoneのままで
+    結果が変わらず、ミューテーションを検知できなかった（trusted=Trueが
+    たまたま同じ結果になるだけで、ガードの必要性を検証できていなかった）。
+    trusted=Falseなら、ガードが無いと後続の`_is_about_manga(article[1])`が
+    `None[1]`で例外になり、確実に区別できる。
+
+    このテストが単独で検知できる壊れ方: `if article is None: return None`が
+    無くなり、Noneを後続の内容チェックに渡して例外になるリグレッション。
+    """
+    monkeypatch.setattr(wikipedia_client, "_fetch_extract", lambda page_title: None)
+
+    result = _accept_article("存在しない記事", trusted=False, input_title="タイトル")
+
+    assert result is None
+
+
+def test_is_person_article_false_when_first_sentence_has_no_primary_type_pattern():
+    """契約: 冒頭1文が句点で区切れて存在する（＝空文字・句点無しではない）が、
+    `_PRIMARY_TYPE_RE`（「日本の<種別>」パターン）自体に一致しない場合も、
+    人物記事とはみなさない（fail-open）。
+
+    既存のfail-openテスト（`falls_open_on_malformed_extracts`）は「句点が無く
+    冒頭1文を切り出せない」形のみをカバーしており、「句点はあるが
+    `_PRIMARY_TYPE_RE`に一致しない」形は別の分岐（L341）である。「日本の」という
+    リテラルを含まない冒頭文（フランスの漫画家）で区別する。
+
+    このテストが単独で検知できる壊れ方: `match is None`のときの既定値がFalse
+    以外に変わり、fail-openの原則が崩れるリグレッション。
+    """
+    extract = "サンプル太郎はフランスの漫画家である。"
+    assert _is_person_article(extract) is False
+
+
+def test_judge_extract_skips_a_decisive_sentence_that_also_names_a_spinoff():
+    """契約: 非mediamix作品で、決着（ongoing/completed）文がSPINOFF_MARKERSも
+    含む場合、その文は本編の判定材料として採用せずスキップし、走査を続ける。
+
+    既存の`test_spinoff_completion_does_not_override_main_series_ongoing_status`は
+    弱シグナル（COMPLETED_WEAK_RE）＋M6-B-3のveto（has_ongoing_elsewhere）で
+    先に`continue`するため、実はこの分岐（SPINOFF_MARKERSチェック自体）を
+    通らない（作業68で実測確認）。ここでは強シグナル（COMPLETED_STRONG_RE、
+    veto対象外）を使い、SPINOFF_MARKERSチェックそのものを踏ませる。
+
+    このテストが単独で検知できる壊れ方: SPINOFF_MARKERSチェックが外れ、
+    外伝の完結文を本編の判定として誤採用するリグレッション（結果が
+    `完結`になってしまう）。
+    """
+    extract = "『本編』は、某作者による日本の漫画。外伝「本編外伝」は完結した。『週刊誌』にて連載中。"
+    status, evidence = _judge_extract(extract)
+    assert status == "連載中"
+    assert "完結した" not in evidence
+
+
 def test_judge_prefers_direct_manga_disambiguation_page():
     resolve_response = _response(
         _resolve_response(
