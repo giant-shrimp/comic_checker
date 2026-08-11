@@ -224,6 +224,30 @@ introduced — their measurement date is unknown, and their freshness is not gua
     (`もし高校野球の…`, `Ef - a fairy tale of the two.`, `ノブナガ・ザ・フール` carry `既刊`
     with no date while being complete; `空の境界` and `俺、つしま` carry recent dates while
     being complete).
+  - **Measured 2026-08-11: re-ran the threshold against 3/4/5/6/7/8, kept 5.** 3 detects one
+    more (55/59) but at 8.1% false-exclusion (3/37) instead of 2.7%; 6–8 match 5's
+    false-exclusion rate but detect strictly less (53, 53, 52 vs 54). 5 dominates 4, 6, 7, 8
+    and trades detection for safety against 3, consistent with the project's stated
+    preference (a false exclusion is the safe-side failure). The origin of `5` — the 2021|2022
+    year-gap in Issue #53's original 75-row study — lives in this file's own code comment
+    (`comic_checker/wikipedia_client.py:707-721`), and the independent re-calculation above
+    reproduces that comment's numbers exactly, confirming the record is accurate and
+    reproducible. **This measurement selects and evaluates on the same 96 rows the threshold
+    was already tuned against, so "5 is best" here is an overestimate (the holdout-sample
+    lesson in `ERRORS.md` applies directly) — an independent third sample is needed before
+    treating this as a real validation, not just a reproduction.** Building one at the scale
+    of the existing corpus (`hastemplate:"Infobox animanga/Manga"` census + holdout) is
+    estimated at ~1,800–2,300 requests. **Not scheduled.**
+- **Coverage tally, 作業67–69 (`comic_checker/wikipedia_client.py`).** Article-selection
+  (`_pick_article` and everything under it) and the `_judge_extract()`/`_is_person_article()`
+  branches this file already documents now have direct unit tests, each confirmed
+  mutation-sensitive. What's left uncovered clusters into two kinds: response-parsing
+  functions (`_fetch_extract`/`_fetch_wikitext`/`_lead_and_first_section`/
+  `_extract_braced_blocks`'s malformed-template handling — testable, not yet written) and
+  branches that are either genuinely unreachable given the current control flow
+  (`_api_get`'s post-loop `raise_for_status()` — every loop iteration already returns or
+  raises before falling through) or exercise a diagnostic-only parameter never invoked with
+  a non-default value anywhere in the repo (`_marker_modifies_mention`'s `require_before`).
 - **The `判定根拠` column's wording changed for infobox-decided rows (M6-B-4, Issue #56).**
   It used to read `インフォボックス: 終了号/終了日等が空欄`, which said only that a field was
   blank and never said why that meant the work was running. It now reads
