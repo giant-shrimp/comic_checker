@@ -24,11 +24,13 @@
 
 - **手動**: GitHubの Actions タブ → 「Build Windows EXE」 → 「Run workflow」
   （`workflow_dispatch`）
-- **タグ経由**: `v` で始まるタグをpushすると自動で走る
+- **タグ経由**: `v` で始まるタグをpushすると自動で走る（実際のリリース手順は
+  [docs/release_runbook.md](release_runbook.md) を参照。ここでは仕組みの
+  説明のみ）
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1   # v0.1.1 は例。実際のリリース番号に置き換える
+git push origin v0.1.1
 ```
 
 CLIから手動実行する場合:

@@ -5,12 +5,12 @@ from comic_checker.main import parse_args
 
 
 def test_version_is_pinned():
-    """契約: パッケージのバージョン番号は"0.1.0"に固定されている。
+    """契約: パッケージのバージョン番号は"0.1.1"に固定されている。
 
     このテストが単独で検知できる壊れ方: __version__の値が意図せず変わる
     リグレッション（他の全表示箇所がこの値に依存するため、単独でpinする）。
     """
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.1.1"
 
 
 def test_version_string_is_bare_when_build_info_is_placeholder(monkeypatch):
@@ -19,12 +19,12 @@ def test_version_string_is_bare_when_build_info_is_placeholder(monkeypatch):
     例外を投げず、「情報が少ないだけの安全側の劣化」になる。
 
     このテストが単独で検知できる壊れ方: プレースホルダ状態でNone同士を
-    文字列結合してしまい、"0.1.0 (None, None)"のような壊れた表示になる
+    文字列結合してしまい、"0.1.1 (None, None)"のような壊れた表示になる
     リグレッション。
     """
     monkeypatch.setattr(_build_info, "BUILD_COMMIT", None)
     monkeypatch.setattr(_build_info, "BUILD_DATE", None)
-    assert version_string() == "0.1.0"
+    assert version_string() == "0.1.1"
 
 
 def test_version_string_includes_commit_and_date_when_both_present(monkeypatch):
@@ -37,7 +37,7 @@ def test_version_string_includes_commit_and_date_when_both_present(monkeypatch):
     """
     monkeypatch.setattr(_build_info, "BUILD_COMMIT", "a1b2c3d")
     monkeypatch.setattr(_build_info, "BUILD_DATE", "2026-08-11T00:00:00Z")
-    assert version_string() == "0.1.0 (a1b2c3d, 2026-08-11T00:00:00Z)"
+    assert version_string() == "0.1.1 (a1b2c3d, 2026-08-11T00:00:00Z)"
 
 
 def test_version_string_is_bare_when_only_commit_is_present(monkeypatch):
@@ -46,12 +46,12 @@ def test_version_string_is_bare_when_only_commit_is_present(monkeypatch):
     （中途半端な併記をしない）。
 
     このテストが単独で検知できる壊れ方: `commit and build_date`の`and`が
-    `or`に壊れ、片方だけの状態で"0.1.0 (a1b2c3d, None)"のような不完全な
+    `or`に壊れ、片方だけの状態で"0.1.1 (a1b2c3d, None)"のような不完全な
     併記をしてしまうリグレッション。
     """
     monkeypatch.setattr(_build_info, "BUILD_COMMIT", "a1b2c3d")
     monkeypatch.setattr(_build_info, "BUILD_DATE", None)
-    assert version_string() == "0.1.0"
+    assert version_string() == "0.1.1"
 
 
 def test_version_string_is_bare_when_only_date_is_present(monkeypatch):
@@ -64,7 +64,7 @@ def test_version_string_is_bare_when_only_date_is_present(monkeypatch):
     """
     monkeypatch.setattr(_build_info, "BUILD_COMMIT", None)
     monkeypatch.setattr(_build_info, "BUILD_DATE", "2026-08-11T00:00:00Z")
-    assert version_string() == "0.1.0"
+    assert version_string() == "0.1.1"
 
 
 def test_main_version_flag_prints_version_and_exits(capsys):
@@ -79,4 +79,4 @@ def test_main_version_flag_prints_version_and_exits(capsys):
         parse_args(["--version"])
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert "comic_checker 0.1.0" in captured.out
+    assert "comic_checker 0.1.1" in captured.out
