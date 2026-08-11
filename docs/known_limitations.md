@@ -241,15 +241,36 @@ introduced — their measurement date is unknown, and their freshness is not gua
   future regression here will not show up there. `scripts/survey_m6d4_infobox.py --verify`
   is what pins it, against the 96 labelled rows in `scripts/m6d4_labels.py`.
 
-- **The infobox path can call a hiatus "completed" when the end-field carries an
-  annotation instead of being genuinely blank (M-5 category).** `judge("日常")` returns
-  `完結` though the work is on a long hiatus, not ended: `判定根拠` reads `インフォボックス:
-  終了号 = 2008年7月号〈一時休載〉` — non-empty, so the M6-B-4 gate never engages and the
-  `〈一時休載〉` annotation is never parsed. Different from Issue #38 (closed, prose path).
-  **`日常` is outside the M6-D-4 census (`scripts/m6d4_labels.py`'s 96 rows)** — not one
-  of the gate's five known misses, just unevaluated territory (found via the Issue #41
-  survey, `scripts/survey_issue41_adoption.py`). No Issue filed: #41/#91/#93 are already
-  open with no active pickup; this note is the discoverable record instead.
+- **Fixed (M-5 category, `HIATUS_MARKER`): the infobox path used to call a hiatus
+  "completed" when the end-field carried an annotation instead of being genuinely blank.**
+  `日常` was the concrete case: the live article says "2025年2月号から多忙による
+  スケジュール調整により長期休載となっている" — on hiatus, correct label `連載中`, not
+  `完結` — while `判定根拠` used to read `インフォボックス: 終了号 = 2008年7月号
+  〈一時休載〉`, a non-empty value the old code took as `完結` without looking at what it
+  said. Different from Issue #38 (closed, prose path) — this was purely infobox-driven.
+  **Measured 2026-08-10: fixed.** `_judge_via_infobox()` now skips an end-field value
+  containing `休載` rather than treating it as completion evidence, and falls through to
+  the existing M6-B-4 continuation-evidence check (`巻数` field) instead of asserting
+  anything on its own. For `日常` that check finds `既刊12巻（2024年10月25日現在）`, so
+  `judge("日常")` now returns the correct `連載中`.
+  **This is not a pure fail-closed strengthening.** Before this fix, a non-empty end-field
+  could only ever assert `完結` — never `連載中`. Now, when a `休載`-annotated end-field
+  *and* fresh continuation evidence both happen to be present, the function asserts
+  `連載中` on its own — a new confident-assertion path that did not exist before. If a
+  work's `巻数` field is stale or wrong for a genuinely completed work whose end-field also
+  happens to carry a `休載`-shaped annotation, this path could produce a false `連載中`.
+  **That false-positive rate is unmeasured — no real-data survey has been run for this
+  path.** The detection vocabulary is deliberately narrow: only `休載` is used, backed by
+  the one real case above. `中断`/`休止` were considered but **not added — they are
+  unverified guesses**, not measured against real infobox data. Widening the vocabulary,
+  or measuring the false-positive risk above, needs a real-data survey
+  (`hastemplate:"Infobox animanga/Manga" insource:"休載"`-shaped query, one wikitext fetch
+  per candidate since `prop=extracts` strips infobox templates — estimated tens to low
+  hundreds of requests). **Deferred, not scheduled.**
+  `日常` remains outside the M6-D-4 census (`scripts/m6d4_labels.py`'s 96 rows) — the
+  M6-B-4 gate's regression corpus does not exercise this branch at all (confirmed by
+  grep, zero rows in either labelled corpus carry a `休載` end-field value), so this fix
+  does not change the gate's `検出54/59・副作用1/37` figures.
 - **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
   about 7 seconds per input row (Issue #40).** `_api_get()` sleeps before each request and
   retries a 429 up to six times with a `5.0 × attempt` backoff. Before #40 there was no
