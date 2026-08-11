@@ -238,16 +238,34 @@ introduced — their measurement date is unknown, and their freshness is not gua
     treating this as a real validation, not just a reproduction.** Building one at the scale
     of the existing corpus (`hastemplate:"Infobox animanga/Manga"` census + holdout) is
     estimated at ~1,800–2,300 requests. **Not scheduled.**
-- **Coverage tally, 作業67–69 (`comic_checker/wikipedia_client.py`).** Article-selection
-  (`_pick_article` and everything under it) and the `_judge_extract()`/`_is_person_article()`
-  branches this file already documents now have direct unit tests, each confirmed
-  mutation-sensitive. What's left uncovered clusters into two kinds: response-parsing
-  functions (`_fetch_extract`/`_fetch_wikitext`/`_lead_and_first_section`/
-  `_extract_braced_blocks`'s malformed-template handling — testable, not yet written) and
-  branches that are either genuinely unreachable given the current control flow
-  (`_api_get`'s post-loop `raise_for_status()` — every loop iteration already returns or
-  raises before falling through) or exercise a diagnostic-only parameter never invoked with
-  a non-default value anywhere in the repo (`_marker_modifies_mention`'s `require_before`).
+- **Coverage tally, 作業67–71 (`comic_checker/wikipedia_client.py`).** Article-selection
+  (`_pick_article` and everything under it), the `_judge_extract()`/`_is_person_article()`
+  branches, and the response-parsing functions (`_fetch_extract`/`_fetch_wikitext`/
+  `_lead_and_first_section`/`_extract_braced_blocks`'s malformed-template handling) all now
+  have direct unit tests, each confirmed mutation-sensitive. **Measured 2026-08-11: branch
+  coverage 95%→98%; every 作業69-2 分類A item is closed.** All Category-A work is done —
+  no line/branch remains that is both testable and un-tested, **with one exception noted
+  below (L494), which is an explicit exclusion, not a resolution — the two are not the same
+  thing.** Remaining uncovered items, each classified:
+  - `L438`, `L455-458` — Category C (unreachable/pure-defensive; `_declares_merged_coverage`/
+    `_marker_modifies_mention`, a diagnostic-only parameter never invoked with a non-default
+    value anywhere in the repo).
+  - `L494` (`_mentions_as_derivative_work`) — leans Category B; 作業69-2 self-assessed its
+    real-data recurrence as thin. **Deliberately excluded from 作業70's scope, not fixed or
+    tested — this is an exclusion by instruction, not a closed item.**
+  - `L818` (`_api_get`'s post-loop `raise_for_status()`) — provably unreachable given the
+    current control flow (every loop iteration already returns or raises before falling
+    through). Filed as **Issue #121**, tracked there, not fixed.
+  - `L920→919` (`_resolve_titles`) — Category C (external-API-dependent defensive branch).
+  - `[572, -572]` (`_is_novel_primary`'s `any(...)` generator fully exhausting without a
+    NOVEL_MARKERS hit) — newly surfaced by the 作業70 coverage re-measurement, not present
+    in 作業69-2's original list. **Classified Category A in 作業71-2**: the outer branch it
+    lives in (`_PRIMARY_TYPE_RE` not matching) already has real-data grounding (35/200 work
+    articles per `tests/test_wikipedia_client.py`'s own comment), so this is not assessed as
+    thin the way L494 is. Not written this turn — reasoning recorded only.
+  - **None of the above are planned to be filled going forward** (L494/C-items by design,
+    L818 tracked separately via Issue #121, `[572,-572]` deferred as a live Category-A
+    candidate for a future round rather than urgent).
 - **The `判定根拠` column's wording changed for infobox-decided rows (M6-B-4, Issue #56).**
   It used to read `インフォボックス: 終了号/終了日等が空欄`, which said only that a field was
   blank and never said why that meant the work was running. It now reads
