@@ -24,13 +24,17 @@ from comic_checker.wikipedia_client import (
     WikipediaJudgment,
     _declares_merged_coverage,
     _extract_braced_blocks,
+    _fetch_extract,
+    _fetch_wikitext,
     _has_continuation_evidence,
     _has_ongoing_signal,
     _is_about_manga,
+    _is_novel_primary,
     _is_person_article,
     _judge_extract,
     _judge_via_infobox,
     _lands_on_a_different_work,
+    _lead_and_first_section,
     _mentions_as_derivative_work,
     _pick_article,
     _pick_via_direct_lookup,
@@ -1360,6 +1364,121 @@ def test_judge_extract_skips_a_decisive_sentence_that_also_names_a_spinoff():
     status, evidence = _judge_extract(extract)
     assert status == "連載中"
     assert "完結した" not in evidence
+
+
+# --- 作業70: 69-2(b)で分類Aとしたレスポンス解析系の残り未カバー箇所 ----------------------
+#
+# L494（_mentions_as_derivative_work の空白正規化タイトル分岐）は対象外とする。
+# 69-2で「実データでの再現性は薄い」と自己評価しており、分類B寄りのため今回は書かない。
+
+
+def test_is_novel_primary_falls_back_to_novel_markers_when_no_primary_type_match():
+    """契約: `_PRIMARY_TYPE_RE`（「日本の<種別>」パターン）が一致しない場合、
+    NOVEL_MARKERSがextract中に含まれるかどうかでフォールバック判定する
+    （fail-closed: 判定できないときは小説主体とみなす）。
+
+    既存フィクスチャONMYOJI_EXTRACT（陰陽師の実データ、Issue #41）をそのまま
+    使う——「日本の<種別>」パターンには一致しないが「小説」を含むため、この
+    分岐を正確に踏む。
+
+    このテストが単独で検知できる壊れ方: フォールバック時の既定値がFalse側に
+    変わり、mediamixチェックがfail-open（危険側）に倒れるリグレッション。
+    """
+    assert _is_novel_primary(ONMYOJI_EXTRACT) is True
+
+
+def test_extract_braced_blocks_skips_an_unterminated_occurrence():
+    """契約: markerの出現に対応する閉じ括弧が見つからない（不正なwikitext）場合、
+    その出現はスキップし、次のmarker出現を探す——読み飛ばして処理を続ける
+    （docstring: 「閉じ括弧が見つからない不正なwikitextの場合、その出現は
+    スキップして次を探す」）。
+
+    このテストが単独で検知できる壊れ方: スキップ処理が外れ、不正な1件目の
+    ブロックを（閉じ括弧が無いまま）誤って切り出す、または2件目の正常な
+    ブロックまで取りこぼすリグレッション。
+    """
+    block1_unterminated = "{{Infobox animanga/Manga\n|作者 = 不正\n"
+    block2_valid = "{{Infobox animanga/Manga\n|作者 = 正常\n}}"
+    wikitext = block1_unterminated + block2_valid
+
+    blocks = _extract_braced_blocks(wikitext, MANGA_INFOBOX_MARKER)
+
+    assert blocks == [block2_valid]
+
+
+def test_lead_and_first_section_cuts_before_the_second_level2_heading():
+    """契約: レベル2見出し（`== ... ==`）が2つ以上ある場合、2つ目の見出しの
+    開始位置までで切る（導入部+最初のセクションのみに限定する、Issue #12）。
+
+    このテストが単独で検知できる壊れ方: 切り出し位置がずれ、2番目以降の
+    セクション（スピンオフ等の判定材料を含みうる）まで走査範囲に混入する
+    リグレッション。
+    """
+    text = "導入部の文。\n\n== 概要 ==\n概要の本文。\n\n== 連載状況 ==\n連載状況の本文。\n"
+
+    result = _lead_and_first_section(text)
+
+    assert "連載状況の本文" not in result
+    assert "概要の本文" in result
+
+
+def test_fetch_extract_returns_none_when_pages_is_empty():
+    """契約: APIレスポンスの`pages`が空（記事情報が一切返らない）場合、Noneを返す。
+
+    このテストが単独で検知できる壊れ方: `pages`が空のときに`next(iter(...))`が
+    `StopIteration`を投げて未処理の例外になるリグレッション。
+    """
+    response = _response({"query": {"pages": {}}})
+    with patch("comic_checker.wikipedia_client.requests.get", return_value=response):
+        result = _fetch_extract("存在しないタイトル")
+    assert result is None
+
+
+def test_fetch_extract_returns_none_when_page_is_missing():
+    """契約: ページオブジェクトに`missing`キーがある（記事が存在しない）場合、
+    たとえ`extract`フィールドに値があってもNoneを返す（`missing`優先）。
+
+    `extract`に値を持たせるのは意図的——空extractの場合と混同すると、
+    「missingチェックが外れて空文字列フォールバックに紛れ込む」壊れ方を
+    このテストが検知できなくなる（L858の空extractガードと結果が縮退して
+    区別がつかなくなるため）。
+
+    このテストが単独で検知できる壊れ方: `missing`チェックが外れ、`missing`
+    キーを無視して`extract`の内容をそのまま採用してしまうリグレッション。
+    """
+    response = _response(
+        {"query": {"pages": {"1": {"title": "存在しないタイトル", "missing": "", "extract": "本来使われてはいけない内容"}}}}
+    )
+    with patch("comic_checker.wikipedia_client.requests.get", return_value=response):
+        result = _fetch_extract("存在しないタイトル")
+    assert result is None
+
+
+def test_fetch_extract_returns_none_when_extract_is_empty():
+    """契約: `extract`フィールドが空文字列（strip後も空）の場合、Noneを返す。
+
+    このテストが単独で検知できる壊れ方: 空文字列チェックが外れ、空のリード文を
+    持つ`(タイトル, "", url)`をそのまま採用してしまうリグレッション
+    （後続の`_is_about_manga("")`等が誤って判定不能ではなく確信を持った
+    誤答に倒れる経路を開く）。
+    """
+    response = _response(_extract_response("記事名", ""))
+    with patch("comic_checker.wikipedia_client.requests.get", return_value=response):
+        result = _fetch_extract("記事名")
+    assert result is None
+
+
+def test_fetch_wikitext_returns_none_when_wikitext_is_empty():
+    """契約: `parse.wikitext.*`が空文字列（またはキー自体が無い）場合、Noneを返す。
+
+    このテストが単独で検知できる壊れ方: 空文字列チェックが外れ、空のwikitextを
+    そのまま返してしまい、呼び出し側（`_judge_via_infobox`）が空文字列を本編
+    ブロック抽出にかけて誤った判定材料無し状態を隠すリグレッション。
+    """
+    response = _response({"parse": {"wikitext": {"*": ""}}})
+    with patch("comic_checker.wikipedia_client.requests.get", return_value=response):
+        result = _fetch_wikitext("記事名")
+    assert result is None
 
 
 def test_judge_prefers_direct_manga_disambiguation_page():
