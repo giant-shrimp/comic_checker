@@ -285,10 +285,16 @@ introduced — their measurement date is unknown, and their freshness is not gua
   (`hastemplate:"Infobox animanga/Manga" insource:"休載"`-shaped query, one wikitext fetch
   per candidate since `prop=extracts` strips infobox templates — estimated tens to low
   hundreds of requests). **Deferred, not scheduled.**
-  `日常` remains outside the M6-D-4 census (`scripts/m6d4_labels.py`'s 96 rows) — the
-  M6-B-4 gate's regression corpus does not exercise this branch at all (confirmed by
-  grep, zero rows in either labelled corpus carry a `休載` end-field value), so this fix
-  does not change the gate's `検出54/59・副作用1/37` figures.
+  **Measured 2026-08-11, corrected:** this fix does not change the gate's
+  `検出54/59・副作用1/37` figures, and the primary reason is structural, not a property
+  of the label data — the gate's `--verify` path never calls `_judge_via_infobox()` at
+  all (see "The M6-B-4 gate's actual reach…" above), so it could not exercise this branch
+  regardless of what the labels contain. The data-level fact is also true and worth
+  keeping — `日常` sits outside the M6-D-4 census (`scripts/m6d4_labels.py`'s 96 rows),
+  and grep confirms zero rows in either labelled corpus carry a `休載` end-field value —
+  but stating only that fact (as an earlier version of this entry did) reads as if
+  coverage were contingent on the data, when it is not: even a labelled row that did
+  carry `休載` would not exercise this branch through `--verify`.
 - **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
   about 7 seconds per input row (Issue #40).** `_api_get()` sleeps before each request and
   retries a 429 up to six times with a `5.0 × attempt` backoff. Before #40 there was no
