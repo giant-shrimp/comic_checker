@@ -26,16 +26,22 @@ from comic_checker.wikipedia_client import (
     _extract_braced_blocks,
     _has_continuation_evidence,
     _has_ongoing_signal,
+    _is_about_manga,
     _is_person_article,
     _judge_extract,
     _judge_via_infobox,
+    _lands_on_a_different_work,
     _mentions_as_derivative_work,
+    _pick_article,
+    _pick_via_direct_lookup,
     _pick_via_search,
+    _resolve_titles,
     _search_queries,
     _strip_annotations,
     _strip_disambiguation_suffix,
     _strip_trailing_note,
     _title_variants,
+    _MAX_REDIRECT_HOPS,
     judge,
 )
 
@@ -1091,6 +1097,148 @@ def _response(payload):
     response.json.return_value = payload
     response.raise_for_status.return_value = None
     return response
+
+
+# --- 記事選択系の直接呼び出しテスト（作業67、行・分岐カバレッジ100%だが直接テストが
+# 0件だった5関数への対応） -----------------------------------------------------------
+#
+# judge()レベルのテストは「最終的な判定結果」しか見ないため、これらの関数固有の
+# ロジック（リダイレクト解決の順序、tried集合の重複処理等）を壊しても、既存
+# フィクスチャの最終出力がたまたま変わらなければ検出できない（ERRORS.md参照）。
+# 各関数について、まず単独で保証すべき契約を明記してからテストを書く。
+
+
+def test_resolve_titles_returns_empty_dict_for_empty_input_without_api_call():
+    """契約: _resolve_titles([])は{}を返し、APIを一切叩かない。"""
+    with patch("comic_checker.wikipedia_client.requests.get") as mock_get:
+        result = _resolve_titles([])
+    assert result == {}
+    assert mock_get.call_count == 0
+
+
+def test_resolve_titles_gives_up_when_redirect_chain_exceeds_max_hops():
+    """契約: リダイレクト/正規化の連鎖が_MAX_REDIRECT_HOPSを超えて続く場合、
+    そのタイトルは解決されず結果から欠落する（無限ループ防止のfail-closed）。"""
+    nodes = [f"hop{i}" for i in range(_MAX_REDIRECT_HOPS + 1)]
+    chain = list(zip(nodes, nodes[1:]))
+    response = _response(_resolve_response(existing=[nodes[-1]], redirects=chain))
+    with patch("comic_checker.wikipedia_client.requests.get", return_value=response):
+        result = _resolve_titles([nodes[0]])
+    assert result == {}
+
+
+def test_pick_via_direct_lookup_does_not_retry_a_page_already_tried_by_an_earlier_probe():
+    """契約: 複数のprobeが同じ解決済みページに着地した場合、そのページへの
+    _accept_article呼び出し（延いては記事取得）は1回だけで、2件目以降のprobeは
+    tried集合でスキップされる——後続probeがtrusted=Trueになる形でも、である。
+
+    最初のprobe「○○」は素タイトルでtrusted=False、内容チェックで却下される。
+    2件目のprobe「○○ (漫画)」は同じページに解決しtrusted=Trueになるはずだが、
+    tried集合が効いていればそもそも再訪問されない。もしtried判定が壊れていれば、
+    2件目が信頼経路として内容チェック無しに採用され、結果がNoneでなくなる
+    （かつAPI呼び出しが1回増える）ため、この壊れ方を検出できる。
+    """
+    probes = ["○○", "○○ (漫画)"]
+    resolve_response = _response(
+        _resolve_response(
+            existing=["○○記事"],
+            redirects=[("○○", "○○記事"), ("○○ (漫画)", "○○記事")],
+        )
+    )
+    extract_response = _response(_extract_response("○○記事", "何の変哲もない説明文。"))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=[resolve_response, extract_response],
+    ) as mock_get:
+        article, trace = _pick_via_direct_lookup(probes, "○○")
+
+    assert article is None
+    assert trace is None
+    assert mock_get.call_count == 2  # resolve 1回 + 記事取得1回。2回目の取得は起きない。
+
+
+def test_lands_on_a_different_work_true_when_gate_open_and_extract_names_input_as_derivative():
+    """契約: 着地先タイトル（曖昧さ回避接尾辞除去後）が入力と異なり、かつ着地先の
+    リード文が入力を派生作品として紹介していればTrue。"""
+    assert (
+        _lands_on_a_different_work(
+            "彼女、お借りします", KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります"
+        )
+        is True
+    )
+
+
+def test_lands_on_a_different_work_gate_closes_on_title_match_regardless_of_extract():
+    """契約: 着地先タイトルが（曖昧さ回避接尾辞を除けば）入力と一致する場合、
+    リード文の内容に関わらず即座にFalse——ゲートはリード文を読む前に閉じる。
+
+    ここでは「派生作品として紹介している」と読めるはずのextract
+    （KANOJO_OKARISHIMASU_EXTRACT）をあえて渡し、それでもFalseになることで
+    ゲートの短絡が実際に効いていることを固定する。
+    """
+    assert (
+        _lands_on_a_different_work(
+            "彼女、人見知ります (漫画)", KANOJO_OKARISHIMASU_EXTRACT, "彼女、人見知ります"
+        )
+        is False
+    )
+
+
+def test_is_about_manga_true_when_relevance_marker_present():
+    """契約: ARTICLE_RELEVANCE_MARKERSのいずれかがリード文に含まれればTrue。"""
+    assert _is_about_manga(ONE_PIECE_EXTRACT) is True
+
+
+def test_is_about_manga_false_when_no_relevance_marker_present():
+    """契約: マーカーが1つも含まれなければFalse。"""
+    assert _is_about_manga("これは無関係な説明文です。") is False
+
+
+def test_pick_article_returns_direct_lookup_result_without_calling_search(monkeypatch):
+    """契約: 直参照（_pick_via_direct_lookup）が記事を見つけたら、それをそのまま返し、
+    検索（_pick_via_search）は一切呼ばない。"""
+    sentinel = (("記事", "リード文", "https://example/記事"), "trace-sentinel")
+    monkeypatch.setattr(
+        wikipedia_client, "_pick_via_direct_lookup", lambda probes, title: sentinel
+    )
+    search_calls = []
+    monkeypatch.setattr(
+        wikipedia_client,
+        "_pick_via_search",
+        lambda *args, **kwargs: search_calls.append((args, kwargs)),
+    )
+
+    result = _pick_article("タイトル")
+
+    assert result == sentinel
+    assert search_calls == []
+
+
+def test_pick_article_falls_back_to_search_when_direct_lookup_finds_nothing(monkeypatch):
+    """契約: 直参照が(None, None)を返した場合、検索へフォールバックしその結果を返す。
+
+    回帰テスト（Issue #39）: `(None, None)`はPythonでは真値なので、
+    `_pick_via_direct_lookup(...) or _pick_via_search(...)`のように`or`で書くと
+    このフォールバックが起きず、直参照側の(None, None)がそのまま返ってしまう。
+    明示的な`result[0] is not None`チェックが必要（現行実装）。
+    """
+    monkeypatch.setattr(
+        wikipedia_client, "_pick_via_direct_lookup", lambda probes, title: (None, None)
+    )
+    sentinel = (None, None)
+    search_calls = []
+
+    def fake_search(variants, already_probed, input_title):
+        search_calls.append((variants, already_probed, input_title))
+        return sentinel
+
+    monkeypatch.setattr(wikipedia_client, "_pick_via_search", fake_search)
+
+    result = _pick_article("タイトル")
+
+    assert result == sentinel
+    assert len(search_calls) == 1
 
 
 def test_judge_prefers_direct_manga_disambiguation_page():
