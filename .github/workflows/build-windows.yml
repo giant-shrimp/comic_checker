@@ -42,6 +42,22 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # comic_checker/_build_info.py（作業73でプレースホルダ(None, None)として
+      # 追加済み）を、ビルド直前だけコミットハッシュ・UTC日時で上書きする。
+      # PyInstallerでビルドされたEXE内ではgitコマンドが使えないため、この
+      # ステップで静的に埋め込む必要がある（comic_checker.version_string()参照）。
+      # この上書きはリポジトリへcommitし返すものではなく、CIランナーの
+      # ワークスペース上だけで完結する。
+      - name: Embed build info
+        shell: pwsh
+        run: |
+          $commit = (git rev-parse --short HEAD).Trim()
+          $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          @"
+          BUILD_COMMIT = "$commit"
+          BUILD_DATE = "$buildDate"
+          "@ | Set-Content -Path comic_checker\_build_info.py -Encoding utf8
+
       - name: Build with PyInstaller
         run: pyinstaller comic_checker.spec
 
