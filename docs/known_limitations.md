@@ -240,6 +240,24 @@ introduced — their measurement date is unknown, and their freshness is not gua
   remembering: **the regression corpus never exercises this gate's detecting side**, so a
   future regression here will not show up there. `scripts/survey_m6d4_infobox.py --verify`
   is what pins it, against the 96 labelled rows in `scripts/m6d4_labels.py`.
+- **The M6-B-4 gate's actual reach is much narrower than "protects the infobox path"
+  sounds — it exercises exactly one function.** **Measured 2026-08-11.** Tracing the real
+  call chain (`verify.sh` → `python scripts/survey_m6d4_infobox.py --verify` →
+  `verify_against_labels()`): that function calls `_has_continuation_evidence()` directly
+  on each label's stored `volumes` string. It never calls `_judge_via_infobox()` — the
+  function that owns the end-field loop, the `完結`-on-nonempty-value branch, and the
+  `HIATUS_MARKER` check above — nor `_judge_extract()` (prose analysis), nor any part of
+  article selection (`_pick_article()` and everything under it). Structurally, this
+  couldn't cover more even if the label data wanted it to:
+  `scripts/m6d4_labels.py`'s `Label` (`__slots__ = ("group", "no", "title", "volumes",
+  "label")`) has no field for a raw end-field string, only the already-parsed `volumes`
+  text `_has_continuation_evidence()` consumes. **Consequence: "the M6-B-4 gate is
+  unchanged, therefore no regression" is only a valid claim when the change under test
+  sits on this one function's path.** A change to `_judge_via_infobox()`'s branching (like
+  the `HIATUS_MARKER` fix above), to `_judge_extract()`, or to article selection can pass
+  this gate untested every time — see `ERRORS.md` for the instance that prompted this
+  entry, and the retrospective audit of prior claims phrased "gate unchanged ⇒ no
+  regression" done in that same investigation.
 
 - **Fixed (M-5 category, `HIATUS_MARKER`): the infobox path used to call a hiatus
   "completed" when the end-field carried an annotation instead of being genuinely blank.**
