@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, font as tkfont, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from comic_checker import version_string
 from comic_checker.main import _default_adoption_trace_path, count_rows, run
 
 # サマリに表示する判定結果。main.py の run() が on_progress へ渡す status 値のうち、
@@ -532,6 +533,7 @@ class App(ttk.Frame):
         self._build_run_section()
         self._build_progress_section()
         self._build_log_section()
+        self._build_footer_section()
 
     def _build_file_section(self):
         frame = ttk.LabelFrame(
@@ -662,6 +664,17 @@ class App(ttk.Frame):
                 self.log_area.configure(font=(mono, 10))
             except tk.TclError:
                 pass
+
+    def _build_footer_section(self):
+        """バージョン表示。ウィンドウタイトルは環境によって切り詰められることが
+        あるため、不具合報告時にコピーしやすい形でも別途表示しておく。
+        """
+        ttk.Label(
+            self,
+            text=f"バージョン: {version_string()}",
+            style="Hint.TLabel",
+            anchor="e",
+        ).grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 8))
 
     # ------------------------------------------------ ドラッグ＆ドロップ
 
@@ -968,7 +981,7 @@ def main():
     _enable_dpi_awareness()
 
     root = _create_root()
-    root.title("コミックチェッカー")
+    root.title(f"コミックチェッカー v{version_string()}")
     root.minsize(720, 560)
 
     app = App(master=root)

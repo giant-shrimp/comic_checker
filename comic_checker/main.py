@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 from typing import NamedTuple
 
-from comic_checker import wikipedia_client
+from comic_checker import version_string, wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
 
 DEFAULT_STATE_FILE = ".manba_state.json"
@@ -36,6 +36,9 @@ def _import_manba_client():
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Excelの漫画タイトル一覧をWikipediaで検索し、完結/連載中をExcelに書き戻す"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"comic_checker {version_string()}"
     )
     parser.add_argument("excel_path", help="対象のExcelファイルパス")
     parser.add_argument("--sheet", default=None, help="対象シート名（省略時はアクティブシート）")
