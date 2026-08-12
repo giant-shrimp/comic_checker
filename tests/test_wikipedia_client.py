@@ -14,6 +14,7 @@ from comic_checker.wikipedia_client import (
     API_REQUEST_INTERVAL,
     API_RETRY_BACKOFF_SECONDS,
     COMPLETED_STRONG_RE,
+    COMPLETED_WEAK_RE,
     MARKER_MAX_DISTANCE,
     MIGRATION_SAME_SENTENCE_RE,
     _accept_article,
@@ -333,6 +334,23 @@ NO_CONNECTOR_MIGRATION_EXTRACT = (
     "『週刊サンプルX』にて2017年から2023年まで連載され、『サンプルWebY』でも連載中。"
 )
 
+# Issue #135（テーマB、作業87-2の設計根拠そのもの、実データ）: 携帯コミック配信
+# サイトでの完結を「配信された」（過去形）で捕捉する。
+HAISHIN_SARETA_EXTRACT = (
+    "『17歳』（じゅうななさい、SEVENTEEN）は、清水洋三による日本の漫画作品。"
+    "『モバMAN』（小学館の携帯コミック配信サイト）において2009年1月2日より"
+    "2011年3月4日まで配信された。全15話。単行本全2巻。"
+)
+
+# 現在形「配信されている」は継続中の配信を意味しうるため、意図的に含めていない
+# （作業86-3で実測した誤検知リスク: サイファー「…で配信されている。」、エイケン
+# 「…ストリーミング配信のTubiサービスに追加され…」）。ミューテーション検証の陰性
+# 対照として、「配信された」と「配信されている」を区別できているかを確認する。
+HAISHIN_SARETEIRU_EXTRACT = (
+    "『例の配信作品』は、某作者による日本の漫画作品。"
+    "『例のサイト』にて2007年から配信されている。"
+)
+
 # Issue #37: 実際の『絶体絶命でんぢゃらすじーさん』の記事から、リード文と「概要」節の
 # 該当文を抜粋。Issueが「連載中の一話完結型作品を入力した場合、確実に完結と誤答する」と
 # 予測したとおりの誤答が、実在の作品で起きていた唯一の事例である（修正前は「基本的には
@@ -584,6 +602,24 @@ def test_migration_same_sentence_requires_connector():
     assert not MIGRATION_SAME_SENTENCE_RE.search(
         "『週刊サンプルX』にて2017年から2023年まで連載され、『サンプルWebY』でも連載中。"
     )
+
+
+def test_judge_extract_resolves_kepitai_distribution_completion_via_haishin_sareta():
+    # Issue #135（テーマB、作業87-2の設計根拠）: 「配信された」（過去形）を完結の
+    # 弱シグナルとして認識する。
+    status, evidence = _judge_extract(HAISHIN_SARETA_EXTRACT)
+    assert status == "完結"
+    assert "配信された" in evidence
+
+
+def test_haishin_sareteiru_present_tense_does_not_trigger_completion():
+    # 陰性対照（作業86-3で実測した誤検知リスクの回帰防止）: 「配信されている」
+    # （現在形、継続中の配信を意味しうる）は「配信された」とは異なる語尾のため
+    # 一致せず、判定不能のままであることを確認する。COMPLETED_WEAK_REへ「配信」を
+    # 語幹単独で追加する変異が入ると、このテストが拾う。
+    status, _ = _judge_extract(HAISHIN_SARETEIRU_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert not COMPLETED_WEAK_RE.search("『例のサイト』にて2007年から配信されている。")
 
 
 def test_strong_completion_is_not_vetoed_by_ongoing_elsewhere():
