@@ -15,6 +15,7 @@ from comic_checker.wikipedia_client import (
     API_RETRY_BACKOFF_SECONDS,
     COMPLETED_STRONG_RE,
     MARKER_MAX_DISTANCE,
+    MIGRATION_SAME_SENTENCE_RE,
     _accept_article,
     _api_get,
     MANGA_INFOBOX_MARKER,
@@ -297,12 +298,39 @@ MAGAZINE_TRANSFER_ONGOING_EXTRACT = (
 # 走査範囲全体の継続シグナルによる無効化でしか止められない。
 # なお、このケースで期待するのは「連載中」ではなく「判定不能」である。本編の文が
 # 曖昧である事実は変わらず、fail-closedに倒すのが正しい（Issue #8以来の方針）。
+# 本編の文は、Issue #134のMIGRATION_SAME_SENTENCE_RE（「のち／その後／後」を挟む
+# 移籍構文）には一致しない形にしてある（「のち」「その後」「後」のいずれも使わない）。
+# これらの接続語を使うと本編の文自体がIssue #134により連載中と決着してしまい、
+# このテストが検証したい「別作品の文を代用してはならない」という論点を検査できなく
+# なるため。
 OTHER_WORK_COMPLETION_EXTRACT = (
     "『例の曖昧作品』は、某作者による日本の漫画作品。"
     "『週刊サンプルA』（サンプル社）にて、2017年15号から2023年34号まで連載され、"
-    "その後『サンプルWeb』に移籍し、同年9月6日より連載中。"
+    "『サンプルWeb』でも同年9月6日より連載中。"
     "作者が『サンプルB』（サンプル社）で連載していた『別の過去作』の連載終了から"
     "4か月後に『週刊サンプルA』へ移籍し、連載が開始された。"
+)
+
+# Issue #134: MIGRATION_SAME_SENTENCE_REの設計根拠そのもの（作業84-3で事前登録した
+# 実データ2件）。デュエル・マスターズ（作業83-4で見つけたホールドアウト）はこの設計に
+# 一切使っていない。
+BURESU_MIGRATION_EXTRACT = (
+    "『ブレス』は、園山ゆきのによる日本の漫画作品。"
+    "講談社が刊行する『少年マガジンエッジ』にて2022年2月号から2023年11月号まで"
+    "連載されたのち、『月刊少年シリウス』に移籍し2024年2月号より連載中。"
+)
+
+BLONDIE_MIGRATION_EXTRACT = (
+    "『ブロンディ』は、アメリカ合衆国の新聞連載漫画。"
+    "新聞連載終了後は文藝春秋『漫画讀本』で連載されている。"
+)
+
+# 接続語（のち／その後／後）が無い場合は、従来どおり同一文内競合としてスキップされ
+# 判定不能のままであることの確認用（ミューテーション検証で、接続語の要求を外す変異を
+# 検出するための陰性対照）。
+NO_CONNECTOR_MIGRATION_EXTRACT = (
+    "『例の検証作品』は、某作者による日本の漫画作品。"
+    "『週刊サンプルX』にて2017年から2023年まで連載され、『サンプルWebY』でも連載中。"
 )
 
 # Issue #37: 実際の『絶体絶命でんぢゃらすじーさん』の記事から、リード文と「概要」節の
@@ -527,6 +555,35 @@ def test_other_works_serialization_end_does_not_make_main_work_completed():
     # 本編について断定できない以上、連載中ではなく判定不能に倒すのが正しい。
     status, _ = _judge_extract(OTHER_WORK_COMPLETION_EXTRACT)
     assert status == STATUS_UNKNOWN
+
+
+def test_judge_extract_resolves_same_sentence_migration_buresu():
+    # Issue #134（テーマA、作業84-3の設計根拠1件目）: 「まで…連載されたのち、
+    # …移籍し…連載中」という同一文内の移籍構文を連載中として決着させる。
+    status, evidence = _judge_extract(BURESU_MIGRATION_EXTRACT)
+    assert status == "連載中"
+    assert "連載中" in evidence
+
+
+def test_judge_extract_resolves_same_sentence_migration_blondie():
+    # Issue #134（テーマA、作業84-3の設計根拠2件目）: 「連載終了後は…で連載されている」
+    # という、ブレスとは異なる接続語（後）・異なる連載中表現（連載されている）の組でも
+    # 決着できることの確認。
+    status, evidence = _judge_extract(BLONDIE_MIGRATION_EXTRACT)
+    assert status == "連載中"
+    assert "連載されている" in evidence
+
+
+def test_migration_same_sentence_requires_connector():
+    # MIGRATION_SAME_SENTENCE_REは接続語（のち／その後／後）を必須とする。接続語が
+    # 無い場合は、Issue #134導入前と同じく同一文内競合としてスキップされ、判定不能の
+    # ままであることを確認する（陰性対照。接続語の要求を外す変異が入るとこのテストが
+    # 拾う）。
+    status, _ = _judge_extract(NO_CONNECTOR_MIGRATION_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert not MIGRATION_SAME_SENTENCE_RE.search(
+        "『週刊サンプルX』にて2017年から2023年まで連載され、『サンプルWebY』でも連載中。"
+    )
 
 
 def test_strong_completion_is_not_vetoed_by_ongoing_elsewhere():
@@ -1944,9 +2001,13 @@ def test_judge_does_not_let_infobox_declare_completed_against_prose_ongoing_sign
     # 本文解析が決着しなかった場合、インフォボックスの終了系フィールドを根拠に完結と
     # 断定してはならない。移籍作品では終了日フィールドが「旧誌の終了日＋新誌での開始日」を
     # 記録することがあり、「値が入っている＝完結」が成り立たないため。
+    # 本文の文はIssue #134のMIGRATION_SAME_SENTENCE_REには一致しない形にしてある
+    # （「のち」「その後」「後」を使わない）。一致すると本文解析だけで連載中に決着して
+    # しまい、このテストが検証したい「インフォボックスが本文の曖昧さを完結へ上書き
+    # しない」という論点（本文解析が判定不能のまま止まるケース）を検査できなくなるため。
     ambiguous_extract = (
         "『例の曖昧作品』は、某作者による日本の漫画作品。"
-        "『週刊サンプルA』にて2017年から2023年まで連載され、その後移籍し、同年より連載中。"
+        "『週刊サンプルA』にて2017年から2023年まで連載され、移籍先でも同年より連載中。"
     )
     responses = [
         _response(_resolve_response(existing=["例の曖昧作品 (漫画)"], missing=["例の曖昧作品"])),
