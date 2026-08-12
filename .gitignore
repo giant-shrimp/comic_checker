@@ -14,6 +14,11 @@ dist/
 # docs/release_runbook.md の `gh run download -D dist_release` で作られる
 # 一時ダウンロード先（リリースEXEそのもの、追跡しない）。
 dist_release/
+# docs/build_windows.md の `gh run download <run-id> -n comic_checker-exe`
+# （`-D` 省略時）は既定でカレントディレクトリへ直接展開する
+# （`gh run download --help` の `--dir` 既定値 "." より）。リポジトリ
+# ルートで実行するとここに置かれる、追跡しない。
+/comic_checker.exe
 logs/
 .claude/settings.local.json
 # セッション間の引継ぎ資料と実装計画（個人の作業メモ。追跡しない）。
