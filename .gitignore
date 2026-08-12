@@ -11,6 +11,9 @@ __pycache__/
 .m6d4_holdout.json
 build/
 dist/
+# docs/release_runbook.md の `gh run download -D dist_release` で作られる
+# 一時ダウンロード先（リリースEXEそのもの、追跡しない）。
+dist_release/
 logs/
 .claude/settings.local.json
 # セッション間の引継ぎ資料と実装計画（個人の作業メモ。追跡しない）。
