@@ -2,7 +2,7 @@
 
 決定の経緯は [ADR-007](decisions/ADR-007-release-automation-scope.md) を参照。
 GitHub Releasesへの公開は自動化していない。**タグ付け・Release作成はすべて
-人間（遥哉）がこの手順に沿って手で行う。** ビルド自体の詳細（自動検証項目
+ユーザがこの手順に沿って手で行う。** ビルド自体の詳細（自動検証項目
 (a)(b)(c)の中身、トラブルシューティング）は `docs/build_windows.md` を参照し、
 本書では重複させない。
 
@@ -109,14 +109,17 @@ gh run view <run-id> --log | grep -A 2 "Embedded build info"
 `BUILD_COMMIT`がタグを打ったコミットの短縮ハッシュ（`git rev-parse --short
 HEAD`と一致）であることを確認する。
 
-**このログ確認コマンド自体は、2026-08-11時点でまだ実際のビルドで検証
-できていない**（`Embed build info`のログ出力追加(PR #127)・タグ整合性
-チェック追加(PR #129)はいずれもこの日にマージされたばかりで、それ以降
-`build-windows.yml`が実際に走った実績が無いことを`gh run list`で確認
-済み）。ステップの実装（`Write-Host` 1行 + `Get-Content` 2行）を読んで
-`grep -A 2`の行数が正しいことは確認したが、**次回の実ビルドで初めて
-実地検証されることになる。** もしコマンドの出力が想定と違う場合は、
-まずこの手順書側の記述を疑うこと。
+**Measured 2026-08-12**: v0.1.1の実リリース（タグpush→ビルド→
+`gh release create`→実機起動確認まで）でこのログ確認コマンドを実地検証
+済み。`gh run view 31565753618 --log | grep -A 2 "Embedded build info"`は
+想定通りの3行（`Embedded build info:` / `BUILD_COMMIT = "2489adc"` /
+`BUILD_DATE = "2026-08-12T05:12:35Z"`）を返した。`BUILD_COMMIT`は
+`git rev-parse --short v0.1.1`の結果（`2489adc`）と完全一致。「Verify tag
+matches __version__」ステップのログも`Tag version: 0.1.1` /
+`comic_checker.__version__: 0.1.1` / `OK: タグとcomic_checker.__version__が
+一致`を出力し、想定通り動作した。実機起動でもウィンドウタイトル・
+フッタに`0.1.1 (2489adc, 2026-08-12T05:12:35Z)`と表示され、CIログの値と
+完全一致することを確認した。
 
 **`Embed build info`ステップにログ出力が無い場合**（`~/comic_checker-agent-
 notes/0002-embed-build-info-log-output.patch`が未適用の環境）: ログでの
