@@ -125,6 +125,28 @@ COMPLETED_WEAK_RE = re.compile(
 )
 CONTINUATION_VETO_RE = re.compile(r"継続|再開|引き続き|連載を?続け|掲載を?続け")
 
+# Issue #134（M6-B-3の同系統・単一文版）: 「Aまで連載されたのち、Bに移籍し連載中」の
+# ように、1文の中に完結の弱シグナルと連載中シグナルが両方現れる移籍構文がある。
+# _judge_extract()は本来この競合を「ongoing == completed」として無条件にスキップする
+# （同一文内の矛盾は判定材料にしない設計）。M6-B-3（Issue #30）のhas_ongoing_elsewhere
+# はこの矛盾を複数文にまたがる場合にvetoする仕組みだが、単一文内では対象の文自体が
+# スキップされてしまいvetoに到達できないため、M6-B-3の仕組みでは救えない。
+# 実データ2件（ブレス「…まで連載されたのち、『月刊少年シリウス』に移籍し…連載中。」、
+# ブロンディ「新聞連載終了後は文藝春秋『漫画讀本』で連載されている。」）から、両者に
+# 共通する「完結の弱シグナル→時間的推移を示す接続語（のち／その後／後）→連載中
+# シグナル」という構造だけを狭く認識する。汚染を避けるため、設計はこの2件のみを根拠に
+# 確定した（作業84-3の事前登録）。ホールドアウトとして扱った別の実例（デュエル・
+# マスターズ「…連載され、同年5月1日より…連載されている」）はこのパターンに一致しない
+# （「のち／その後／後」のいずれの接続語も使わず「同年…より」という別表現のため）。
+# これは意図的にこの実例へ調整しなかった結果であり、汎化の限界として既知（Issue #134）。
+MIGRATION_SAME_SENTENCE_RE = re.compile(
+    r"(?:連載(?:が|を)?終了(?:した)?|連載された|まで[^。、]{0,20}?連載(?:された)?)"
+    r"[^。]{0,30}?"
+    r"(?:のち|その後|後)"
+    r"[^。]{0,30}?"
+    r"(?:連載中(?!から|は|に|作品|の[0-9０-９]|だっ|であっ)|連載されている)"
+)
+
 MANGA_MARKERS = ("漫画", "コミカライズ", "コミック版", "漫画版")
 NOVEL_MARKERS = ("小説", "ライトノベル")
 
@@ -606,6 +628,12 @@ def _judge_extract(extract):
         if weak_completed and has_ongoing_elsewhere and not ongoing:
             weak_completed = False
         completed = bool(COMPLETED_STRONG_RE.search(sentence)) or weak_completed
+
+        # Issue #134: 同一文内で完結と連載中の両シグナルが競合しても、移籍構文
+        # （MIGRATION_SAME_SENTENCE_RE）に一致する場合だけは連載中を採用する。
+        if ongoing and completed and MIGRATION_SAME_SENTENCE_RE.search(sentence):
+            completed = False
+
         if ongoing == completed:
             continue
         status = "連載中" if ongoing else "完結"
