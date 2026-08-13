@@ -291,6 +291,35 @@ MAGAZINE_TRANSFER_ONGOING_EXTRACT = (
     "その後『週刊サンプルB』（同）に移籍し、2023年23号から連載されている。"
 )
 
+# Issue #144（作業92のjudge()実測で発見）、実際のWikipedia記事『セトギワ花ヨメ』の
+# リード文そのまま（is_multimedia=False経路）。「次世代編」がSPINOFF_MARKERSに無かった
+# ため、本編の子ども世代を主役とする次世代編『仕上げ男子のクロモジ』の連載開始文が
+# 本編の判定として誤採用され、「連載中」と誤答していた。
+SETOGIWA_HANAYOME_EXTRACT = (
+    "『セトギワ花ヨメ』（セトギワはなヨメ）は胡桃ちのによる日本の4コマ漫画作品。"
+    "4コマ漫画専門誌『まんがライフオリジナル』（竹書房）にて、2005年6月号より"
+    "2023年8月号まで連載。本作の主人公の夫婦の子ども・クロモジを主役として描いた"
+    "次世代編の『仕上げ男子のクロモジ』が同誌2024年3月号より3か月連続で掲載された後、"
+    "同年8月号から連載されている。"
+)
+
+# Issue #144（作業92のjudge()実測で発見）、実際のWikipedia記事『最弱テイマーはゴミ拾いの
+# 旅を始めました。』のリード文そのまま（原作ライトノベルのメディアミックス作品で
+# is_multimedia=True経路）。SPINOFF_MARKERSチェックがis_multimedia=True経路では
+# 実行されない構造だったため、コミカライズのスピンオフ漫画の連載文（「スピンオフ」を
+# 含み文字通りSPINOFF_MARKERSにヒットするはずの文）がそのまま本編の判定として
+# 誤採用され、「完結」と誤答していた（期待値は「連載中」——コミカライズ本編が
+# 新サイトへ移行し最新話はそちらで掲載されている、という記述のため）。
+SAIJAKU_TEIMAA_EXTRACT = (
+    "『最弱テイマーはゴミ拾いの旅を始めました。』（さいじゃくテイマーはゴミひろいの"
+    "たびをはじめました）は、ほのぼのる500による日本のライトノベル。"
+    "メディアミックスとして、蕗野冬によるコミカライズがウェブコミック配信サイト"
+    "『COMICコロナ』（TOブックス）にて、2020年2月から連載されていたが、"
+    "同社が新たにウェブコミック配信サイト『コロナEX』を開設し最新話はそちらで"
+    "掲載するようになった。2022年11月からはスピンオフ漫画『私立オードグズ学園中等部！"
+    "〜異の国（？）でもやっぱりゴミ拾いしてました〜』も同サイトにて連載された。"
+)
+
 # M6-B-3対応の合成フィクスチャ。本編の文が連載中と完結の両シグナルを含んで曖昧扱いで
 # スキップされたあと、*別作品*の連載終了に言及した文を掴んでしまうパターン。
 # 元になった実例は「サタノファニ」で、本編の「2017年15号から2023年34号まで連載され、
@@ -1491,6 +1520,38 @@ def test_judge_extract_skips_a_decisive_sentence_that_also_names_a_spinoff():
     assert "完結した" not in evidence
 
 
+def test_judge_extract_skips_next_generation_spinoff_setogiwa_hanayome():
+    """回帰テスト（実データ、Issue #144）: 「次世代編」を含む決着文は、本編
+    （セトギワ花ヨメ自身）ではなく子ども世代を主役とする派生作品の連載開始を
+    述べているに過ぎないため、本編の判定として採用してはならない。除外した結果
+    他に決着文が無いため判定不能に倒れる（fail-closed、Issue #8以来の方針）。
+
+    このテストが単独で検知できる壊れ方: SPINOFF_MARKERSから「次世代編」が
+    外れ（またはそもそも追加されず）、次世代編の連載開始文を本編の判定として
+    誤採用し「連載中」と誤答するリグレッション。
+    """
+    status, evidence = _judge_extract(SETOGIWA_HANAYOME_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
+
+
+def test_judge_extract_skips_spinoff_sentence_in_multimedia_path_saijaku_teimaa():
+    """回帰テスト（実データ、Issue #144）: is_multimedia=True経路（原作ライトノベル＋
+    コミカライズのメディアミックス作品）でも、SPINOFF_MARKERSチェックが両経路共通で
+    適用され、スピンオフ漫画の連載文が本編の判定として採用されないこと。除外した結果
+    他に決着文が無いため判定不能に倒れる。
+
+    このテストが単独で検知できる壊れ方: SPINOFF_MARKERSチェックがis_multimedia=True
+    分岐の外（is_multimedia=False専用）に戻り、is_multimedia=True経路では
+    スピンオフ漫画の連載文（「連載された」＝COMPLETED_WEAK_RE、かつMANGA_MARKERSの
+    「漫画」を含みNOVEL_MARKERSを含まないため無条件に採用される）がそのまま
+    本編の判定として誤採用され「完結」と誤答するリグレッション。
+    """
+    status, evidence = _judge_extract(SAIJAKU_TEIMAA_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
+
+
 # --- 作業70: 69-2(b)で分類Aとしたレスポンス解析系の残り未カバー箇所 ----------------------
 #
 # L494（_mentions_as_derivative_work の空白正規化タイトル分岐）は対象外とする。
@@ -2098,6 +2159,117 @@ def test_judge_still_upgrades_to_completed_via_infobox_without_prose_ongoing_sig
 
     with patch("comic_checker.wikipedia_client.requests.get", side_effect=responses):
         result = judge("インフォ実験作品")
+
+    assert result.status == "完結"
+    assert "インフォボックス" in result.evidence
+
+
+# Issue #143（作業92のjudge()実測で発見）、実際のWikipedia記事『宮廷神官物語』のリード文
+# そのまま。原作ライトノベルの刊行情報のみで、漫画化への言及が一切無い
+# （is_multimedia=True かつ 本文にMANGA_MARKERSが1つも出現しない）。
+KYUUTEI_SHINKAN_MONOGATARI_EXTRACT = (
+    "『宮廷神官物語』(きゅうていしんかんものがたり)は榎田ユウリによる日本の小説。"
+    "角川ビーンズ文庫（角川書店）より2007年10月から2011年12月まで刊行された。"
+)
+
+
+def _kyuutei_probe_responses(extract=KYUUTEI_SHINKAN_MONOGATARI_EXTRACT):
+    """『宮廷神官物語』の直参照が「宮廷神官物語」自身に当たるまでの2応答
+    （disambiguation suffix「宮廷神官物語 (漫画)」は存在しない）。"""
+    return [
+        _response(
+            _resolve_response(existing=["宮廷神官物語"], missing=["宮廷神官物語 (漫画)"])
+        ),
+        _response(_extract_response("宮廷神官物語", extract)),
+    ]
+
+
+def test_judge_does_not_let_infobox_declare_completed_for_novel_primary_work_without_manga_mention():
+    """回帰テスト（実データ、Issue #143）: 本文（extract）が原作小説主体
+    （is_multimedia=True）であり、かつ本文中に漫画化（コミカライズ）の言及が一切無い
+    場合、インフォボックスの終了系フィールドが非空欄でも完結と断定してはならない。
+    そのフィールドが本当に漫画の連載を指しているのか、本文からは確認できないため
+    （fail-closed、M6-B-3のvetoと同じ判断枠組み）。
+
+    このテストが単独で検知できる壊れ方: judge()内のこのvetoが外れ、原作小説の
+    みが説明された記事でも漫画の完結を断定してしまうリグレッション。
+    """
+    wikitext_response = _response(_wikitext_response(MAIN_BLOCK_COMPLETED))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=_kyuutei_probe_responses() + [wikitext_response],
+    ):
+        result = judge("宮廷神官物語")
+
+    assert result.status == STATUS_UNKNOWN
+
+
+def test_judge_still_upgrades_to_completed_via_infobox_when_manga_mentioned_in_multimedia_work():
+    """上の抑止が広すぎないことの担保（合成: KYUUTEI_SHINKAN_MONOGATARI_EXTRACTに
+    コミカライズ言及を1文追加）。原作小説のメディアミックス作品でも、本文中に漫画化
+    への言及があれば、従来どおりインフォボックス経由で完結へ引き上げてよい。
+
+    このテストが単独で検知できる壊れ方: Issue #143のvetoがMANGA_MARKERSの有無を見ず
+    is_multimedia=Trueだけで一律に抑止するよう壊れ、本文に漫画化の明記があっても
+    判定不能に落ちてしまうリグレッション。
+    """
+    extract_with_manga = KYUUTEI_SHINKAN_MONOGATARI_EXTRACT + "コミカライズもされている。"
+    wikitext_response = _response(_wikitext_response(MAIN_BLOCK_COMPLETED))
+
+    with patch(
+        "comic_checker.wikipedia_client.requests.get",
+        side_effect=_kyuutei_probe_responses(extract_with_manga) + [wikitext_response],
+    ):
+        result = judge("宮廷神官物語")
+
+    assert result.status == "完結"
+    assert "インフォボックス" in result.evidence
+
+
+# 合成フィクスチャ（実データでは未発見）。is_multimedia=False（一次分類がアニメ、
+# 「日本のテレビアニメ」で小説にも漫画にも一致しない）かつ本文にMANGA_MARKERSが
+# 一切出現しない例。Issue #143のvetoが`_is_novel_primary(extract)`を見ずに
+# 「本文にMANGA_MARKERSが無ければ抑止する」だけに単純化された場合、この
+# is_multimedia=Falseのケースまで誤って判定不能にしてしまう（ガードの黙って通る
+# ミューテーションを検知するために設計した）。
+ANIME_PRIMARY_NO_MANGA_MENTION_EXTRACT = (
+    "『例のアニメ作品』は、某制作による日本のテレビアニメ。"
+    "2020年から2021年まで放送された。"
+)
+
+
+def test_judge_still_upgrades_to_completed_via_infobox_when_not_multimedia_and_no_manga_mention():
+    """Issue #143のvetoが`is_novel_primary(extract)`条件を見ていることの担保
+    （合成フィクスチャ）。is_multimedia=False（原作小説のメディアミックスではない）
+    の記事では、本文中に漫画マーカーが無くても、従来どおりインフォボックス経由で
+    完結へ引き上げてよい——このケースはIssue #143が対象とする「原作小説の存在に
+    紛れて漫画化の事実を確認できない」状況ではないため。
+
+    このテストが単独で検知できる壊れ方: Issue #143のvetoが`is_novel_primary(extract)`
+    条件を見ずに「本文にMANGA_MARKERSが無ければ常に抑止する」よう壊れ、
+    is_multimedia=Falseのケースまで誤って判定不能に倒してしまうリグレッション
+    （このミューテーションは他のテストでは検知できない——上のKYUUTEI系テストは
+    いずれもis_multimedia=Trueのケースしか使っていないため）。
+    """
+    # 曖昧さ回避表記「(漫画)」経由（trusted=True）で解決させ、_is_about_manga等の
+    # 内容チェック（本テストの検証対象ではない）を素通りさせる。
+    responses = [
+        _response(
+            _resolve_response(
+                existing=["例のアニメ作品 (漫画)"], missing=["例のアニメ作品"]
+            )
+        ),
+        _response(
+            _extract_response(
+                "例のアニメ作品 (漫画)", ANIME_PRIMARY_NO_MANGA_MENTION_EXTRACT
+            )
+        ),
+        _response(_wikitext_response(MAIN_BLOCK_COMPLETED)),
+    ]
+
+    with patch("comic_checker.wikipedia_client.requests.get", side_effect=responses):
+        result = judge("例のアニメ作品")
 
     assert result.status == "完結"
     assert "インフォボックス" in result.evidence

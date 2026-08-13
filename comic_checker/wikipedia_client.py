@@ -175,16 +175,23 @@ MIGRATION_SAME_SENTENCE_RE = re.compile(
 MANGA_MARKERS = ("漫画", "コミカライズ", "コミック版", "漫画版")
 NOVEL_MARKERS = ("小説", "ライトノベル")
 
-# is_multimedia=False（一次分類が漫画そのもの）の経路では、_judge_extract()は
-# MANGA_MARKERS/NOVEL_MARKERSによる主語チェックを行わず、最初に見つかった判定文を
-# そのまま本編の判定として採用する。しかし「番外編」「スピンオフ」「外伝」等の語を
-# 含む文は、本編ではなく派生読み切り・短期集中連載の状況を述べているに過ぎない
-# ことがある（実際に確認した事例:「とんかつDJアゲ太郎」で、本編自身の完結文が
-# 「まで連載」系正規表現に一致せず取りこぼされた結果、代わりに番外編の連載終了文が
-# 本編の判定文として採用されてしまっていた）。そのため、この経路ではスピンオフを
-# 示す語を含む文を候補から除外する。除外した結果、本編の判定文が1件も見つからない
-# 場合は、無理に他の文を代用せず判定不能に倒す（Issue #8以来の fail-closed 方針）。
-SPINOFF_MARKERS = ("番外編", "スピンオフ", "外伝")
+# _judge_extract()が採用しようとしている判定（ongoing/completedを決着させる）文に
+# 「番外編」「スピンオフ」「外伝」「次世代編」等の語を含む場合、本編ではなく派生
+# 読み切り・短期集中連載・スピンオフ作品の状況を述べているに過ぎないことがある
+# （実際に確認した事例:「とんかつDJアゲ太郎」で、本編自身の完結文が「まで連載」系
+# 正規表現に一致せず取りこぼされた結果、代わりに番外編の連載終了文が本編の判定文
+# として採用されてしまっていた——Issue #13。「セトギワ花ヨメ」でも同様に、本編の
+# 子ども世代を主役とする「次世代編」の連載開始文が本編の判定文として誤採用されて
+# いた——Issue #144）。
+# このチェックはis_multimedia（メディアミックス）の真偽に関わらず共通で適用する
+# （Issue #144: 以前はis_multimedia=False経路にしか無く、is_multimedia=True経路
+# （「最弱テイマーはゴミ拾いの旅を始めました。」）ではスピンオフ漫画の連載文が
+# そのまま本編の判定として採用されていた。is_multimedia=True経路のMANGA_MARKERS/
+# NOVEL_MARKERSチェックは文の主語の種別（漫画か小説か）を見るのみで、その文が
+# 本編かスピンオフかは判定していないため、同種の取り違えが起こりうる構造だった）。
+# 除外した結果、本編の判定文が1件も見つからない場合は、無理に他の文を代用せず
+# 判定不能に倒す（Issue #8以来の fail-closed 方針）。
+SPINOFF_MARKERS = ("番外編", "スピンオフ", "外伝", "次世代編")
 
 # 記事冒頭文の「〜による日本の<種別>」の<種別>を、作品そのものの一次分類として見る。
 # 「進撃の巨人」のように漫画が原作でアニメ化・小説化もされている場合、冒頭文に「小説」
@@ -663,9 +670,11 @@ def _judge_extract(extract):
             continue
         status = "連載中" if ongoing else "完結"
 
+        # Issue #144: is_multimedia分岐の外に置くことで、両経路に共通で適用する。
+        if any(marker in sentence for marker in SPINOFF_MARKERS):
+            continue
+
         if not is_multimedia:
-            if any(marker in sentence for marker in SPINOFF_MARKERS):
-                continue
             return status, sentence.strip()
 
         has_manga = any(marker in sentence for marker in MANGA_MARKERS)
@@ -1226,6 +1235,21 @@ def judge(title, use_infobox=True, today=None):
             # 抑止しない。
             if infobox_status == "完結" and _has_ongoing_signal(extract):
                 infobox_status = None
+            # Issue #143: _judge_via_infobox()はwikitextのみを見ており、原作が
+            # 小説/ライトノベルのメディアミックス作品かどうか（is_multimedia、
+            # Issue #41）を一切考慮しない。本文（extract）がメディアミックス
+            # 作品を示しており、かつ本文中に漫画化の言及（MANGA_MARKERS）が
+            # 一切無い場合、インフォボックスで見つかった終了系フィールドが
+            # 本当に漫画の連載に関するものかを本文からは確認できない
+            # （実データ「宮廷神官物語」「三角の距離は限りないゼロ」――
+            # いずれも本文はライトノベルとしての刊行情報のみで漫画化に一言も
+            # 触れていないが、インフォボックスの終了系フィールドが非空欄のため
+            # 完結と誤って断定していた）。M6-B-3のvetoと同じ判断枠組み
+            # （本文と矛盾する／確認できない場合はインフォボックスの完結を
+            # 採用しない）で、判定不能のまま維持する。
+            if infobox_status == "完結" and _is_novel_primary(extract):
+                if not any(marker in extract for marker in MANGA_MARKERS):
+                    infobox_status = None
             if infobox_status is not None:
                 status, evidence = infobox_status, infobox_evidence
 
