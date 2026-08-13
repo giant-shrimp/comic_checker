@@ -17,6 +17,7 @@ from comic_checker.wikipedia_client import (
     COMPLETED_WEAK_RE,
     MARKER_MAX_DISTANCE,
     MIGRATION_SAME_SENTENCE_RE,
+    ONGOING_RE,
     _accept_article,
     _api_get,
     MANGA_INFOBOX_MARKER,
@@ -824,6 +825,13 @@ def test_ongoing_signal_ignores_non_predicative_usages():
         "連載中であった頃の逸話が知られている。",
         # Issue #37の作業中に見つかった同クラスの取りこぼし（実データ「ARIA (漫画)」）。
         "連載中にエニックスお家騒動が起こり、移籍にあたって改題した。",
+        # Issue #141（作業92・96、実データ「百合男子」）: 「連載中断」は連載継続の否定
+        # （中断そのもの）であり、正反対の意味。
+        "（2016年1月号掲載分を最後に連載中断）",
+        # Issue #141（作業92・96、実データ「ゆうれい小僧がやってきた!」）: 「連載中に」と
+        # 同型の副詞的用法だが、直後が読点で終わる形。
+        "また連載中、怪現象に見舞われてお祓いをしてもらったり、"
+        "「子供が怖がるから怖い妖怪を描かないで下さい」という苦情の手紙も来たという。",
     ):
         assert _has_ongoing_signal(sentence) is False, sentence
 
@@ -1071,6 +1079,30 @@ def test_judge_via_infobox_hiatus_annotation_without_continuation_evidence_stays
     status, evidence = _judge_via_infobox(wikitext, today=date(2026, 8, 10))
     assert status is None
     assert evidence is None
+
+
+# Issue #142（作業92のjudge()実測で発見）: 終了系フィールドの値自体が「連載中」という
+# 実データ（`猫mix幻奇譚とらじ`、Measured 2026-08-13）をそのままフィクスチャにする。
+#   終了号 = "連載中"
+#   巻数   = "既刊14巻（2025年3月現在）"
+NEKOMIX_MAIN_BLOCK = _manga_infobox_block(
+    [
+        ("作者", "[[田村由美]]"),
+        ("出版社", "[[小学館]]"),
+        ("開始号", "2007年"),
+        ("終了号", "連載中"),
+        ("巻数", "既刊14巻（2025年3月現在）"),
+    ]
+)
+
+
+def test_judge_via_infobox_treats_ongoing_field_value_as_not_ended_nekomix():
+    # 回帰テスト（実データ、Issue #142）: 終了号が非空欄でも値自体が「連載中」なら
+    # 完結と断定せず、継続の証拠（Issue #56）を経由せず直接連載中を返す。
+    wikitext = NEKOMIX_MAIN_BLOCK
+    status, evidence = _judge_via_infobox(wikitext, today=date(2026, 8, 13))
+    assert status == "連載中"
+    assert "終了号 = 連載中" in evidence
 
 
 def test_extract_braced_blocks_handles_nested_templates():
