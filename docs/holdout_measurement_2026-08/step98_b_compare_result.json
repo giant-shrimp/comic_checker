@@ -1,0 +1,1012 @@
+{
+  "purpose": "作業98-B 突き合わせ結果（機械分類のみ。カテゴリA/B/Cの最終判断は含まない）",
+  "limitations_reference": "docs/holdout_measurement_2026-08/step98_a3_preregistration_addendum.md 追補2「測定結果報告時に添える限界の明記」全5項を必ず参照して解釈すること。ラベルはコード知識を持つAIが付与したため、A_correctの比率は上振れ・D_errorの比率は下振れする方向に偏っている（数値は真の精度ではなく上界）。",
+  "inputs": {
+    "labels": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_labels.json",
+    "judge_raw": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_b_judge_raw.json",
+    "raw_material": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_raw_material.json"
+  },
+  "total_rows": 100,
+  "bucket_counts": {
+    "A_correct": 85,
+    "D_error": 2,
+    "E_missed": 8,
+    "F_unverifiable": 5
+  },
+  "mismatch_count": 15,
+  "d_error_count": 2,
+  "rows": [
+    {
+      "no": 1,
+      "input_title": "おやすみプンプン",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 2,
+      "input_title": "キャラ者",
+      "label": "判定不能",
+      "judge_status": "完結",
+      "bucket": "F_unverifiable",
+      "is_mismatch": true,
+      "judge_evidence": "『weekly漫画アクション』・『Weeklyぴあ』において連載された。",
+      "judge_matched_title": "キャラ者",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%82%AD%E3%83%A3%E3%83%A9%E8%80%85",
+      "label_evidence_summary": "本文は「途中で投げ出される事なく続いている」「最新話が公開されている」と継続を示唆する一方、インフォボックス終了フィールドは2008年終了を記録しており矛盾するため判定不能。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "b"
+      ],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "本文（extract）中に該当文が実在する"
+      },
+      "category_A_v3_hole_known_example": "#4（年入りinfobox終了系 vs 本文の曖昧な継続示唆）",
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 3,
+      "input_title": "666〜サタン〜",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 4,
+      "input_title": "ガッ活!",
+      "label": "判定不能",
+      "judge_status": "記事なし",
+      "bucket": "F_unverifiable",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": null,
+      "judge_url": null,
+      "label_evidence_summary": "Wikipedia記事自体が存在せず判断材料が皆無のため判定不能。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 5,
+      "input_title": "魔導師は平凡を望む",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 6,
+      "input_title": "寄生彼女サナ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 7,
+      "input_title": "まつりスペシャル",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 8,
+      "input_title": "しるバ.",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 9,
+      "input_title": "ドクムシ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 10,
+      "input_title": "くも漫。",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 11,
+      "input_title": "LOST+BRAIN",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 12,
+      "input_title": "テンカイチ 日本最強武芸者決定戦",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 13,
+      "input_title": "ダムマンガ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 14,
+      "input_title": "ささやくように恋を唄う",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 15,
+      "input_title": "マホロミ 時空建築幻視譚",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 16,
+      "input_title": "キレパパ。",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 17,
+      "input_title": "白亜紀恐竜奇譚 竜の国のユタ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 18,
+      "input_title": "みならい女神 プルプルんシャルム",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 19,
+      "input_title": "昭和天皇物語",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 20,
+      "input_title": "ペリリュー 楽園のゲルニカ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 21,
+      "input_title": "涙雨とセレナーデ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 22,
+      "input_title": "モノクロ少年少女",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 23,
+      "input_title": "春巡る",
+      "label": "判定不能",
+      "judge_status": "連載中",
+      "bucket": "F_unverifiable",
+      "is_mismatch": true,
+      "judge_evidence": "『Cookie』（集英社）2012年9月号にプロローグ「forget-me-not」（フォゲット・ミー・ノット）が掲載され、2013年1月号より連載されている。",
+      "judge_matched_title": "春巡る",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E6%98%A5%E5%B7%A1%E3%82%8B",
+      "label_evidence_summary": "本文の「連載されている」（現在形）は「2014年7月現在既刊2巻」という3年以上前の基準時点のみが根拠であり、R2に該当し判定不能。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "d"
+      ],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "本文（extract）中に該当文が実在する"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 24,
+      "input_title": "土星マンション",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 25,
+      "input_title": "うわこい",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 26,
+      "input_title": "トータルファイターK",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 27,
+      "input_title": "高杉さん家のおべんとう",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 28,
+      "input_title": "てるてる×少年",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 29,
+      "input_title": "王子様☆ゲーム",
+      "label": "判定不能",
+      "judge_status": "判定不能",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 30,
+      "input_title": "嗚呼!!毘沙門高校",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 31,
+      "input_title": "オレ×ヨメ クピドの悪戯",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 32,
+      "input_title": "オヤマ! 菊之助",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 33,
+      "input_title": "一番湯のカナタ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 34,
+      "input_title": "神呪のネクタール",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 35,
+      "input_title": "ミスマルカ興国物語",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 36,
+      "input_title": "最強職《竜騎士》から初級職《運び屋》になったのに、なぜか勇者達から頼られてます",
+      "label": "判定不能",
+      "judge_status": "判定不能",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 37,
+      "input_title": "コミックいわて",
+      "label": "連載中",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "コミックいわて",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%81%84%E3%82%8F%E3%81%A6",
+      "label_evidence_summary": "本文に「2013年度を除き年1巻のペースで発行されている」（現在形）と明記され、連載中と判断。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 38,
+      "input_title": "センセ。",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 39,
+      "input_title": "JKおやじ!",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 40,
+      "input_title": "ショートソング",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 41,
+      "input_title": "そばもん ニッポン蕎麦行脚",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 42,
+      "input_title": "帝乃三姉妹は案外、チョロい。",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 43,
+      "input_title": "フダンシズム-腐男子主義-",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 44,
+      "input_title": "天使の裁量",
+      "label": "判定不能",
+      "judge_status": "完結",
+      "bucket": "F_unverifiable",
+      "is_mismatch": true,
+      "judge_evidence": "インフォボックス: 終了号 = ？",
+      "judge_matched_title": "天使の裁量",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E5%A4%A9%E4%BD%BF%E3%81%AE%E8%A3%81%E9%87%8F",
+      "label_evidence_summary": "本文「連載していた」は完結を明言せず、インフォボックス終了号は「？」という不確定値、巻数フィールドも「既刊1巻（2012年6月現在）」という14年近く前の基準時点のみのため判定不能。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "d"
+      ],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "終了号フィールド一致を確認"
+      },
+      "category_A_v3_hole_known_example": "#5（R2の適用範囲が本文中に限定、巻数フィールドの古い基準時点が未カバー）",
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 45,
+      "input_title": "ZOMBIEPOWDER.",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 46,
+      "input_title": "問題提起シリーズ",
+      "label": "判定不能",
+      "judge_status": "完結",
+      "bucket": "F_unverifiable",
+      "is_mismatch": true,
+      "judge_evidence": "インフォボックス: 終了 = 2008年",
+      "judge_matched_title": "問題提起シリーズ",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E5%95%8F%E9%A1%8C%E6%8F%90%E8%B5%B7%E3%82%B7%E3%83%AA%E3%83%BC%E3%82%BA",
+      "label_evidence_summary": "インフォボックス終了(2008年)は2017-2019年の「大人の問題提起シリーズ」の存在と矛盾し、シリーズ全体としての完結・連載中いずれとも断定できないため判定不能。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "b"
+      ],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "終了フィールド一致を確認"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 47,
+      "input_title": "パチスロひとり旅",
+      "label": "連載中",
+      "judge_status": "完結",
+      "bucket": "D_error",
+      "is_mismatch": true,
+      "judge_evidence": "2015年10月からは『パチスロひとり旅NEXT→』と改題されて2018年7月まで連載された。",
+      "judge_matched_title": "パチスロひとり旅",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%83%91%E3%83%81%E3%82%B9%E3%83%AD%E3%81%B2%E3%81%A8%E3%82%8A%E6%97%85",
+      "label_evidence_summary": "2018年に本編連載終了と明記された後、モーションコミックやコラム等の散発的な掲載が列挙されており、直近12か月以内（2025年10月）の掲載実績があるためR5適用で連載中。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "f"
+      ],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "本文（extract）中に該当文が実在する"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 48,
+      "input_title": "猛き龍星",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 49,
+      "input_title": "ぱられる",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 50,
+      "input_title": "土曜ワイド殺人事件",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 51,
+      "input_title": "トランジスタ・ティーセット〜電気街路図〜",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 52,
+      "input_title": "あひるの王子さま",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 53,
+      "input_title": "赤灯えれじい",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 54,
+      "input_title": "石の花 (坂口尚の漫画)",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 55,
+      "input_title": "月華美刃",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 56,
+      "input_title": "ザ・ゴリラ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 57,
+      "input_title": "キス・キス",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 58,
+      "input_title": "流血鬼",
+      "label": "完結",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "流血鬼",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E6%B5%81%E8%A1%80%E9%AC%BC",
+      "label_evidence_summary": "冒頭で「短編漫画」と明記されており、単発作品として完結。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 59,
+      "input_title": "いちえふ 福島第一原子力発電所労働記",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 60,
+      "input_title": "ベルモンド Le VisiteuR",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 61,
+      "input_title": "BIOMEGA",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 62,
+      "input_title": "黒鉄",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 63,
+      "input_title": "シャーマンキングFLOWERS",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 64,
+      "input_title": "亡装遺体ネクロマン",
+      "label": "完結",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "亡装遺体ネクロマン",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E4%BA%A1%E8%A3%85%E9%81%BA%E4%BD%93%E3%83%8D%E3%82%AF%E3%83%AD%E3%83%9E%E3%83%B3",
+      "label_evidence_summary": "本文に「2008年8月6日第1シーズン配信終了」「配信サイト自体がリンク切れ」と明記され完結。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 65,
+      "input_title": "大日本サムライガール",
+      "label": "判定不能",
+      "judge_status": "判定不能",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 66,
+      "input_title": "海が走るエンドロール",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 67,
+      "input_title": "きらら☆プリンセス",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 68,
+      "input_title": "砲神エグザクソン",
+      "label": "完結",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "砲神エグザクソン",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E7%A0%B2%E7%A5%9E%E3%82%A8%E3%82%B0%E3%82%B6%E3%82%AF%E3%82%BD%E3%83%B3",
+      "label_evidence_summary": "本文に「連載され...全7巻の単行本が刊行された」（過去形+全巻）と明記され完結。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 69,
+      "input_title": "女子大生家庭教師濱中アイ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 70,
+      "input_title": "文豪の食彩",
+      "label": "完結",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "文豪の食彩",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E6%96%87%E8%B1%AA%E3%81%AE%E9%A3%9F%E5%BD%A9",
+      "label_evidence_summary": "本文「連載され」（過去形）とインフォボックス巻数「全1巻」が示す完結の総括が一致し完結。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": "#7（具体的終了時期を伴わない過去形のみ）",
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 71,
+      "input_title": "うちのトコでは",
+      "label": "連載中",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "うちのトコでは",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%81%86%E3%81%A1%E3%81%AE%E3%83%88%E3%82%B3%E3%81%A7%E3%81%AF",
+      "label_evidence_summary": "本文に「2021年以降は事実上の隔年連載となっている」（現在形）とあり、巻数フィールドも2025年1月現在と直近だが、書籍収録分とサイトのみ掲載分の区別が紛らわしいため迷ったに該当。",
+      "label_confused": true,
+      "label_confused_conditions": [
+        "c"
+      ],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 72,
+      "input_title": "サキュバス&ヒットマン",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 73,
+      "input_title": "バーコードファイター",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 74,
+      "input_title": "ラブ・モンスター",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 75,
+      "input_title": "バカが全裸でやってくる",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 76,
+      "input_title": "理系の人々",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 77,
+      "input_title": "日本国大統領 桜坂満太郎",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 78,
+      "input_title": "バーテンダー à Tokyo",
+      "label": "完結",
+      "judge_status": "連載中",
+      "bucket": "D_error",
+      "is_mismatch": true,
+      "judge_evidence": "本作の続編として『バーテンダー6stp』が『グランドジャンプPREMIUM』で連載されている。",
+      "judge_matched_title": "バーテンダー à Tokyo",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%83%90%E3%83%BC%E3%83%86%E3%83%B3%E3%83%80%E3%83%BC_%C3%A0_Tokyo",
+      "label_evidence_summary": "本文に「2016年1号から同年7号まで連載」と明記され、インフォボックスも一致し完結。続編『6stp』は別題のため状況を変えない。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "confirmed",
+        "detail": "本文（extract）中に該当文が実在する"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 79,
+      "input_title": "平成生まれ",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 80,
+      "input_title": "孔明のヨメ。",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 81,
+      "input_title": "キャッツ・愛",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 82,
+      "input_title": "ゴーストワールド (コミック)",
+      "label": "完結",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "ゴーストワールド (コミック)",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%82%B4%E3%83%BC%E3%82%B9%E3%83%88%E3%83%AF%E3%83%BC%E3%83%AB%E3%83%89_%28%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%29",
+      "label_evidence_summary": "本文に「1993年6月-1997年3月」の連載期間と1997年の書籍化が明記され完結。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 83,
+      "input_title": "なんと孫六",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 84,
+      "input_title": "カワセミさんの釣りごはん",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 85,
+      "input_title": "声優かっ!",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 86,
+      "input_title": "冒険者になりたいと都に出て行った娘がSランクになってた",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 87,
+      "input_title": "MIXIM☆11",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 88,
+      "input_title": "JESUS 砂塵航路",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 89,
+      "input_title": "殺せんせーVS斉木楠雄〜入間市最終決戦〜",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 90,
+      "input_title": "なのに、千輝くんが甘すぎる。",
+      "label": "連載中",
+      "judge_status": "連載中",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 91,
+      "input_title": "プルーの犬日記",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 92,
+      "input_title": "アクタージュ act-age",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 93,
+      "input_title": "ミミズクと夜の王",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 94,
+      "input_title": "ドラえもん プラス",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 95,
+      "input_title": "のりりん",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 96,
+      "input_title": "殴る白衣の天使",
+      "label": "判定不能",
+      "judge_status": "判定不能",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 97,
+      "input_title": "妻をめとらば",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 98,
+      "input_title": "ヤリチン☆ビッチ部",
+      "label": "連載中",
+      "judge_status": "判定不能",
+      "bucket": "E_missed",
+      "is_mismatch": true,
+      "judge_evidence": null,
+      "judge_matched_title": "ヤリチン☆ビッチ部",
+      "judge_url": "https://ja.wikipedia.org/wiki/%E3%83%A4%E3%83%AA%E3%83%81%E3%83%B3%E2%98%86%E3%83%93%E3%83%83%E3%83%81%E9%83%A8",
+      "label_evidence_summary": "本文に「2012年より不定期連載されており」（現在形）と明記され連載中。",
+      "label_confused": false,
+      "label_confused_conditions": [],
+      "category_D_article_update_check": {
+        "result": "N/A",
+        "detail": "evidence自体がNone（判定不能/記事なし行）"
+      },
+      "category_A_v3_hole_known_example": null,
+      "category_BC_note": "人間が read して category を B(#141-144の修正範囲) / C(新種) / その他 のいずれかに分類する。judge_evidence と label_evidence_summary を突き合わせて判断する。"
+    },
+    {
+      "no": 99,
+      "input_title": "みえるひと",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    },
+    {
+      "no": 100,
+      "input_title": "空色パンデミック",
+      "label": "完結",
+      "judge_status": "完結",
+      "bucket": "A_correct",
+      "is_mismatch": false
+    }
+  ]
+}
