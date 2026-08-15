@@ -14,8 +14,9 @@ comic_checker/本体は変更しない。
     rows = json.load(open('docs/regression_corpus_2026-08/regression_corpus_wikitext.json',
                            encoding='utf-8'))['rows']
     r = rows[0]
-    print(run_judge_with_snapshot(r['input_title'], r['matched_title'], r['extract'],
-                                   r['url'], r['wikitext']))
+    result = run_judge_with_snapshot(r['input_title'], r['matched_title'], r['extract'],
+                                      r['url'], r['wikitext'])
+    print(r['input_title'], '->', result.status, '/', result.evidence)
     "
 """
 import sys
