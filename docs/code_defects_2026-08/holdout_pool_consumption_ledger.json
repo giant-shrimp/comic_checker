@@ -1,0 +1,83 @@
+{
+  "purpose": "プロジェクト全体でのMonte Carlo系抽出（random.Random(seed).sample()等）のseed重複を防ぎ、hastemplate:\"Infobox animanga/Manga\"母集団由来のホールドアウトプール（step93_2_holdout_pool.json、362件）の消費状況を記録する。新しい標本を抽出する前に、この記録を確認し、抽出後に必ず更新すること。",
+  "created_at": "2026-08-16",
+
+  "pool_hastemplate_infobox_animanga_manga": {
+    "description": "「有効性の証拠」用の独立標本を将来にわたって抽出するための母集団。系統1〜5・案Bの修正検討に使った記事（holdout100・regression94）を含まない。",
+    "query": "hastemplate:\"Infobox animanga/Manga\"",
+    "sroffset": 5000,
+    "raw_candidates": 500,
+    "deduped": 490,
+    "exclusion_set_file": "step90_1_used_titles.json（1233件、リポジトリ外。census・旧30件・新30件・85-2・Issue #41母集団・テストフィクスチャ実在タイトル等の既使用タイトルを網羅）",
+    "after_exclusion": 462,
+    "draws": [
+      {
+        "seed": 90,
+        "n": 100,
+        "date": "2026-08-13",
+        "purpose": "一般精度ベースライン測定（作業90〜95）のsample100。この100件はstep93_2_holdout_pool.jsonの362件には含まれない（462件から除外して362件を確定した側）。",
+        "classification": "有効性の証拠（当時の一般精度測定用）",
+        "source_record": "docs/accuracy_baseline_2026-08.md",
+        "pool_before": 462,
+        "pool_after": 362
+      },
+      {
+        "seed": 93,
+        "n": 100,
+        "date": "2026-08-13",
+        "purpose": "ホールドアウト100件（98-A/98-B測定、系統1〜5の発見材料、系統1の副作用チェック）",
+        "classification": "当初「有効性の証拠」を意図したが、事後的に系統1〜5の発見材料としても機能したため、系統1〜5に対しては「回帰フィクスチャ」または「副作用チェック用」に位置づけを訂正済み（spinoff_markers_verification.md参照）。系統2〜5・案Bに対する「有効性の証拠」としては使えない。",
+        "source_record": "docs/holdout_measurement_2026-08/step98_a2_preregistration.json",
+        "pool_before": 362,
+        "pool_after": 262
+      }
+    ],
+    "current_remaining": 262,
+    "remaining_pool_note": "step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた262件。まだ抽出していない。",
+    "designed_not_yet_executed": [
+      {
+        "seed": 517,
+        "n": 50,
+        "designed_at": "2026-08-16",
+        "status": "設計のみ。タイトルの選定（順列先頭50件の特定）は実測済みだが、Wikipediaへのextract/wikitext/revision_id取得は未実行。実行前提の事前登録として、seedはここで確定・予約する（他作業での再利用を防ぐ）。",
+        "method": "random.Random(517).sample(remaining_262, len(remaining_262))で完全順列を生成し、先頭50件をスライス。N=50延長時はfull_perm[50:100]をそのまま使う（同一seedの連続抽出）。",
+        "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（1回目、N=50）。追加が必要な場合はfull_perm[50:100]・[100:150]を同一seedのまま使う（上限150件）。",
+        "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md",
+        "holdout100との重複": "実測0件",
+        "titles": [
+          "天獄 -HEAVEN'S PRISON-", "新☆だぁ!だぁ!だぁ!", "蒼の封印", "バトルガール藍",
+          "ミリオンシャンテンさだめだ!!", "AliceQuartet", "コイバナ!〜恋せよ花火〜",
+          "Half&half", "トカゲの王", "BAMBOO BLADE B", "超犬リープ",
+          "特命女子アナ 並野容子", "任侠沈没", "大人にゃ恋の仕方がわからねぇ!",
+          "GIRL FRIENDS", "特攻の島", "おたんこナース", "ミラクルボール",
+          "世界の終わりに柴犬と", "ことはの王子様", "ちいさいひと 青葉児童相談所物語",
+          "おかえりアリス", "リトルコップ", "満潮!ツモクラテス", "グリードパケット∞",
+          "仄見える少年", "じみへん", "塩対応の佐藤さんが俺にだけ甘い",
+          "シェイプアップ乱", "影執事マルクシリーズ", "ラブ・ウィッチ", "0能者ミナト",
+          "虹をよぶ拳", "ヴァンピアーズ", "おとまりHONEY", "ALMIGHTY×10",
+          "3秒後、野獣。〜合コンで隅にいた彼は淫らな肉食でした", "外道坊", "君ノ声",
+          "ゴロロ", "ハムスターの研究レポート", "まんがかぞく",
+          "誰かこの状況を説明してください!", "東山道転墜異聞", "将来的に死んでくれ",
+          "生理ちゃん", "3D甲子園 プラコン大作", "四十七大戦",
+          "シュガーポットのないしょ話", "さつきばれっ!"
+        ]
+      }
+    ]
+  },
+
+  "global_seed_usage": [
+    {"seed": 41, "pool": "Stage Bパイロット30件（旧30件）", "purpose": "diff分類パイロット", "source_record": "step57_3_pilot_selection.json（リポジトリ外）", "date": "不明（作業57系）"},
+    {"seed": 85, "pool": "独立20件標本", "purpose": "作業85-2", "source_record": "handoff_comic_checker_2026-08-12.md", "date": "不明（作業85系）"},
+    {"seed": 90, "pool": "hastemplate:Infobox animanga/Manga母集団（462件時点）", "purpose": "一般精度ベースラインsample100", "source_record": "docs/accuracy_baseline_2026-08.md", "date": "2026-08-13"},
+    {"seed": 93, "pool": "step93_2_holdout_pool.json（362件）", "purpose": "ホールドアウト100件（98-A/98-B）", "source_record": "docs/holdout_measurement_2026-08/step98_a2_preregistration.json", "date": "2026-08-13"},
+    {"seed": 98, "pool": "holdout100自身の「確信」サブセット", "purpose": "98-A-3スポットチェック用15件の再抽出（新規プールからの抽出ではない）", "source_record": "docs/holdout_measurement_2026-08/step98_a2_preregistration.json", "date": "2026-08-13"},
+    {"seed": 134, "pool": "不明（新30件、デュエル・マスターズ関連）", "purpose": "不明", "source_record": "step83_2_preregistration.json（リポジトリ外）", "date": "不明（作業83系）"},
+    {"seed": 143, "pool": "既存32件（新規プール抽出ではない）", "purpose": "98-A-3スポットチェック材料のシャッフル順", "source_record": "step98_a3_verification_material.md（リポジトリ外）", "date": "2026-08-14"},
+    {"seed": 982, "pool": "既存68件（既存100件から32件を除いた残り、新規プール抽出ではない）", "purpose": "98-A-3再設計スポットチェック", "source_record": "step98_a3_redesign_proposal.md（リポジトリ外）", "date": "2026-08-14"},
+    {"seed": 20260728, "pool": "不明（M6-D-3関連、将来使用予定として事前登録のみ）", "purpose": "起票時の60件抽出設計（未実行の可能性あり）", "source_record": "docs/m6d3_labeling_rationale.md", "date": "不明（設計時点。実行済みかは未確認）"},
+    {"seed": 153, "pool": "160件（holdout99+regression61、生wikitextスナップショット）", "purpose": "実judge()ハーネスの判別力確認用5件抽出（作業2-3、ネットワーク直呼びとの一致確認）", "source_record": "会話履歴のみ。どのファイルにも保存していなかったため、grepでは検出不能だった（本ledgerで初めて記録する）", "date": "2026-08-15"},
+    {"seed": 517, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（設計のみ、未実行）", "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md", "date": "2026-08-16（設計時点。取得はまだ実行していない）"}
+  ],
+
+  "process_note": "153が『どのファイルにも記録されず、grepで検出不能だった』ことが、本ledgerを新設する直接のきっかけ。今後は、新しい標本抽出の直前に本ファイルへ抽出予定(seed・件数・用途)を追記してから実行し、実行後に実際の結果で更新する運用とする。"
+}
