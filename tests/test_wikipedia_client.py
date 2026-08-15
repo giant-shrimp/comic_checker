@@ -1552,6 +1552,77 @@ def test_judge_extract_skips_spinoff_sentence_in_multimedia_path_saijaku_teimaa(
     assert evidence is None
 
 
+# Issue #151（作業98-B抜き取り測定で発見、実データ）。同一ファイル内の
+# DERIVATIVE_WORK_MARKERS（Issue #51）には既に「続編」が含まれているのに、
+# SPINOFF_MARKERSには無かった非対称性が原因で、別題続編「バーテンダー6stp」に
+# ついての「連載されている」という文が、本編『バーテンダー à Tokyo』自身の
+# 完結文（「2016年1号から同年7号まで連載。」）の代わりに判定文として誤採用され、
+# 「連載中」と誤答していた（正しくは「完結」）。
+BARTENDER_A_TOKYO_EXTRACT = (
+    "『バーテンダー à Tokyo』（バーテンダー ア トーキョー）は、原作：城アラキ、"
+    "作画：加治佐修による日本の漫画作品。『グランドジャンプ』（集英社）にて、"
+    "2013年23号から2015年23号まで連載した後、『グランドジャンプPREMIUM』"
+    "（同社刊）に掲載誌を移した後に2016年1号から同年7号まで連載。\n"
+    "『バーテンダー à Paris』の直接の続編で、主人公も同じ。"
+    "本作の続編として『バーテンダー6stp』が『グランドジャンプPREMIUM』で"
+    "連載されている。\n"
+)
+
+
+def test_judge_extract_excludes_zokuhen_sentence_bartender_a_tokyo():
+    """回帰テスト（実データ、Issue #151）: SPINOFF_MARKERSに「続編」を含めることで、
+    別題続編についての連載中文を本編の判定として採用しない。
+
+    本編自身の完結文はIssue #30由来のhas_ongoing_elsewhere veto（`_has_ongoing_signal`
+    がSPINOFF_MARKERSを経由せず抽出全体を走査するため、続編文の「連載されている」を
+    拾って無効化する）にかかるため、`_judge_extract`単体では判定不能に倒れる
+    （本編の完結判定は`judge()`のインフォボックス・フォールバックで達成される。
+    そちらはjudge()全体の統合テストの対象であり、ここでは対象外）。
+
+    このテストが単独で検知できる壊れ方: SPINOFF_MARKERSから「続編」が外れ（または
+    そもそも追加されず）、別題続編の連載中文を本編の判定として誤採用し
+    「連載中」と誤答するリグレッション。
+    """
+    status, evidence = _judge_extract(BARTENDER_A_TOKYO_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
+
+
+# Issue #151（作業98-B抜き取り測定で発見、実データ）。前作『ジーザス』（本編とは
+# 別作品）の連載期間を述べる「…の続編である。」という文が、本編『JESUS 砂塵航路』
+# 自身の判定文として誤採用されていた。誤採用されたまま出力された「完結」は、
+# たまたま正解ラベルと一致していたに過ぎない（本来の正しい根拠はインフォボックスの
+# 終了フィールドであり、`_judge_extract`が誤った文で先に決着してしまうと、
+# `judge()`のインフォボックス・フォールバックへ到達できず本来の正しい根拠を
+# 参照できない）。
+JESUS_SAJIN_KORO_EXTRACT = (
+    "『JESUS 砂塵航路』（ジーザス さじんこうろ）は、七月鏡一原作・藤原芳秀作画に"
+    "よる日本の漫画。\n\n\n"
+    "== 概要 ==\n"
+    "1992年から1995年まで『週刊少年サンデー』に連載された『ジーザス』"
+    "（以下「前作」）の続編である。2009年2月20日から、小学館の携帯コミックサイト"
+    "『モバMAN』にて配信されていた。話数カウントは前作と同じく「Lesson.○」。"
+    "単行本は全14巻。\n"
+)
+
+
+def test_judge_extract_excludes_zokuhen_sentence_jesus_sajin_koro():
+    """回帰テスト（実データ、Issue #151）: 前作（別作品）の連載終了を述べる
+    「…の続編である。」という文を、本編自身の判定として採用しない。
+
+    除外した結果、本編自身について走査範囲内に他の決着文が無いため判定不能に
+    倒れる（「配信されていた」はCOMPLETED_WEAK_REの「配信された」と活用形が
+    異なり一致しない。この語彙ギャップは別のIssue候補として扱う）。
+
+    このテストが単独で検知できる壊れ方: SPINOFF_MARKERSから「続編」が外れ、
+    前作の連載終了文を本編自身の判定として誤採用し、`status == "完結"`かつ
+    `evidence`に前作名『ジーザス』を含む文字列を返すリグレッション。
+    """
+    status, evidence = _judge_extract(JESUS_SAJIN_KORO_EXTRACT)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
+
+
 # --- 作業70: 69-2(b)で分類Aとしたレスポンス解析系の残り未カバー箇所 ----------------------
 #
 # L494（_mentions_as_derivative_work の空白正規化タイトル分岐）は対象外とする。
