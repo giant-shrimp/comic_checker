@@ -657,10 +657,25 @@ def test_strong_completion_is_not_vetoed_by_ongoing_elsewhere():
     # 「完結」（強シグナル）は、走査範囲内に別の連載中シグナルがあっても無効化しない。
     # 作品名自体に「完結」を含めるとタイトルの文がCOMPLETED_STRONG_REに一致してしまい、
     # 本来検査したい文とは別の文が根拠に採用されるため、無関係な作品名にしている。
+    #
+    # Issue #154（案B）: 別作品を示す文にSPINOFF_MARKERSタグ（「スピンオフ」等）を
+    # 使うと、_has_ongoing_signal()がその文を走査から除外するようになり、
+    # has_ongoing_elsewhereが常にFalseになってveto自体が発火しなくなる
+    # （このテストの意図が空洞化する）。案B適用後もveto判定が実際に発火した状態を
+    # 保つため、SPINOFF_MARKERSタグの付かない語「リメイク版」に差し替えた
+    # （has_ongoing_signal()の戻り値が修正前後とも変わらずTrueのままであることを
+    # 実測で確認済み）。
+    #
+    # 「リメイク版」は現行コーパス（holdout99+regression61、160件）には実在しない
+    # 合成表現である。SPINOFF_MARKERSに含まれず、かつONGOING_REと共起する形で
+    # 「本編とは別の作品」を示す語は、160件の実データ走査（
+    # docs/code_defects_2026-08/mutation_candidate_search_result.md）でも
+    # 見つからなかった（該当する56文全てが本編自身の掲載状況を直接述べる文のみ
+    # だった）。実在する代替語が無いため、この合成表現をそのまま使う。
     extract = (
         "『例の終了作品』は、某作者による日本の漫画作品。"
         "本編は2020年に完結した。"
-        "スピンオフ『例の終了作品外伝』は現在も連載中。"
+        "リメイク版『例の終了作品Rebirth』は現在も連載中。"
     )
     status, evidence = _judge_extract(extract)
     assert status == "完結"
@@ -1521,18 +1536,33 @@ def test_judge_extract_skips_a_decisive_sentence_that_also_names_a_spinoff():
 
 
 def test_judge_extract_skips_next_generation_spinoff_setogiwa_hanayome():
-    """回帰テスト（実データ、Issue #144）: 「次世代編」を含む決着文は、本編
+    """回帰テスト（実データ、Issue #144・#154）: 「次世代編」を含む文は、本編
     （セトギワ花ヨメ自身）ではなく子ども世代を主役とする派生作品の連載開始を
-    述べているに過ぎないため、本編の判定として採用してはならない。除外した結果
-    他に決着文が無いため判定不能に倒れる（fail-closed、Issue #8以来の方針）。
+    述べているに過ぎないため、本編の判定として採用してはならない——これがIssue
+    #144が守ろうとしたものであり、案B適用後も変わらず成立している。
+
+    Issue #144時点の期待値は「判定不能」だったが、これは「セトギワ花ヨメの真の
+    状態が判定不能である」という主張ではなく、次世代編の文をSPINOFF_MARKERSで
+    除外した結果、（当時は）他に決着文が無くなるという構造的な帰結だった
+    （PR #146）。真の状態は`~/comic_checker-agent-notes/step95_2_labels_final.json`
+    に「完結」として記録済み（本編は2023年8月号まで連載、終了号/終了日記載）。
+
+    案B（Issue #154）適用後、`_has_ongoing_signal()`も次世代編の文を走査から
+    除外するようになったため、`has_ongoing_elsewhere`veto（M6-B-3）が発火しなく
+    なり、本編自身の完結文（弱シグナル、「…2005年6月号より2023年8月号まで連載。」）
+    が取り消されずに採用され、真の状態「完結」に到達するようになった
+    （E_missed→A_correct）。Issue #144が防いだ「次世代編の連載中文を本編の判定
+    として誤採用し『連載中』と誤答する」という危険な誤り（D_error）には戻って
+    いない——次世代編の文は引き続きSPINOFF_MARKERSで除外され、判定文として採用
+    されることはない。
 
     このテストが単独で検知できる壊れ方: SPINOFF_MARKERSから「次世代編」が
     外れ（またはそもそも追加されず）、次世代編の連載開始文を本編の判定として
     誤採用し「連載中」と誤答するリグレッション。
     """
     status, evidence = _judge_extract(SETOGIWA_HANAYOME_EXTRACT)
-    assert status == STATUS_UNKNOWN
-    assert evidence is None
+    assert status == "完結"
+    assert "2023年8月号まで連載" in evidence
 
 
 def test_judge_extract_skips_spinoff_sentence_in_multimedia_path_saijaku_teimaa():
@@ -1570,22 +1600,24 @@ BARTENDER_A_TOKYO_EXTRACT = (
 
 
 def test_judge_extract_excludes_zokuhen_sentence_bartender_a_tokyo():
-    """回帰テスト（実データ、Issue #151）: SPINOFF_MARKERSに「続編」を含めることで、
-    別題続編についての連載中文を本編の判定として採用しない。
+    """回帰テスト（実データ、Issue #151・#154）: SPINOFF_MARKERSに「続編」を含める
+    ことで、別題続編についての連載中文を本編の判定として採用しない。
 
-    本編自身の完結文はIssue #30由来のhas_ongoing_elsewhere veto（`_has_ongoing_signal`
-    がSPINOFF_MARKERSを経由せず抽出全体を走査するため、続編文の「連載されている」を
-    拾って無効化する）にかかるため、`_judge_extract`単体では判定不能に倒れる
-    （本編の完結判定は`judge()`のインフォボックス・フォールバックで達成される。
-    そちらはjudge()全体の統合テストの対象であり、ここでは対象外）。
+    Issue #154（案B）適用後、`_has_ongoing_signal()`もSPINOFF_MARKERSタグ付きの
+    文を走査から除外するようになったため、Issue #30由来のhas_ongoing_elsewhere
+    vetoが続編文の「連載されている」を拾わなくなった。これにより、本編自身の
+    完結文（弱シグナル、「…2016年1号から同年7号まで連載。」）の取り消しが解除され、
+    `_judge_extract`単体で「完結」に到達するようになった（案B適用前は判定不能に
+    倒れ、`judge()`のインフォボックス・フォールバック経由でしか完結に到達できな
+    かった）。
 
     このテストが単独で検知できる壊れ方: SPINOFF_MARKERSから「続編」が外れ（または
     そもそも追加されず）、別題続編の連載中文を本編の判定として誤採用し
     「連載中」と誤答するリグレッション。
     """
     status, evidence = _judge_extract(BARTENDER_A_TOKYO_EXTRACT)
-    assert status == STATUS_UNKNOWN
-    assert evidence is None
+    assert status == "完結"
+    assert "2016年1号から同年7号まで連載" in evidence
 
 
 # Issue #151（作業98-B抜き取り測定で発見、実データ）。前作『ジーザス』（本編とは
