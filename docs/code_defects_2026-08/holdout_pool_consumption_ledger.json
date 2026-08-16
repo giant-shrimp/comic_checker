@@ -41,7 +41,7 @@
         "designed_at": "2026-08-16",
         "status": "設計のみ。タイトルの選定（順列先頭50件の特定）は実測済みだが、Wikipediaへのextract/wikitext/revision_id取得は未実行。実行前提の事前登録として、seedはここで確定・予約する（他作業での再利用を防ぐ）。",
         "method": "random.Random(517).sample(remaining_262, len(remaining_262))で完全順列を生成し、先頭50件をスライス。N=50延長時はfull_perm[50:100]をそのまま使う（同一seedの連続抽出）。",
-        "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（1回目、N=50）。追加が必要な場合はfull_perm[50:100]・[100:150]を同一seedのまま使う（上限150件）。",
+        "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（1回目、N=50）。追加が必要な場合はfull_perm[50:100]・[100:150]を同一seedのまま使う（上限150件）。対象Issue: 系統2 #156・系統3 #157・系統4 #158・系統5 #159・案B #154。",
         "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md",
         "holdout100との重複": "実測0件",
         "titles": [
@@ -76,7 +76,7 @@
     {"seed": 982, "pool": "既存68件（既存100件から32件を除いた残り、新規プール抽出ではない）", "purpose": "98-A-3再設計スポットチェック", "source_record": "step98_a3_redesign_proposal.md（リポジトリ外）", "date": "2026-08-14"},
     {"seed": 20260728, "pool": "不明（M6-D-3関連、将来使用予定として事前登録のみ）", "purpose": "起票時の60件抽出設計（未実行の可能性あり）", "source_record": "docs/m6d3_labeling_rationale.md", "date": "不明（設計時点。実行済みかは未確認）"},
     {"seed": 153, "pool": "160件（holdout99+regression61、生wikitextスナップショット）", "purpose": "実judge()ハーネスの判別力確認用5件抽出（作業2-3、ネットワーク直呼びとの一致確認）", "source_record": "会話履歴のみ。どのファイルにも保存していなかったため、grepでは検出不能だった（本ledgerで初めて記録する）", "date": "2026-08-15"},
-    {"seed": 517, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（設計のみ、未実行）", "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md", "date": "2026-08-16（設計時点。取得はまだ実行していない）"}
+    {"seed": 517, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（設計のみ、未実行）。対象Issue: 系統2 #156・系統3 #157・系統4 #158・系統5 #159・案B #154。", "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md", "date": "2026-08-16（設計時点。取得はまだ実行していない）"}
   ],
 
   "process_note": "153が『どのファイルにも記録されず、grepで検出不能だった』ことが、本ledgerを新設する直接のきっかけ。今後は、新しい標本抽出の直前に本ファイルへ抽出予定(seed・件数・用途)を追記してから実行し、実行後に実際の結果で更新する運用とする。"
