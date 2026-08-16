@@ -35,6 +35,41 @@ introduced — their measurement date is unknown, and their freshness is not gua
   main work, trading a false `完結` for a false `判定不能` on a much larger set of rows.
   If this shows up in real data, prefer narrowing which sections are scanned over
   widening the veto's reach.
+- **`_has_ongoing_signal()` also excludes `SPINOFF_MARKERS`-tagged sentences from its
+  scan (Issue #154, 案B).** Before this, a sentence about a spin-off/sequel/derivative
+  work being ongoing (「続編」「番外編」「スピンオフ」「外伝」「次世代編」) could veto a
+  genuinely-completed main work's weak-tier `完結` — that's what happened to バーテンダー
+  à Tokyo (`_judge_extract` path) and 陰陽師 (`judge()`'s infobox-fallback path) and,
+  discovered only after implementation via the full test-suite run rather than the
+  pre-registered prediction, セトギワ花ヨメ (次世代編, Issue #144's own fixture).
+  **Real-data confirmation exists for only two of the five `SPINOFF_MARKERS` elements**
+  — 続編 (バーテンダー à Tokyo, 陰陽師) and 次世代編 (セトギワ花ヨメ). 番外編・外伝 have
+  zero real sentences co-occurring with `ONGOING_RE` in the current corpus
+  (holdout99+regression61) and **can't be confirmed on real data from this corpus at
+  all** (`docs/code_defects_2026-08/effective_hit_rate_analysis.md`). スピンオフ does
+  have 3 real co-occurring rows, but none of them actually flip the outcome (another
+  ongoing sentence in the same row already keeps the row's status unchanged either
+  way), so its exclusion behavior is verified only via synthetic fixtures
+  (`tests/test_wikipedia_client.py::test_has_ongoing_signal_excludes_each_spinoff_
+  marker_individually`), not real data. See
+  `docs/code_defects_2026-08/planb_criterion3_withdrawal_and_verdict.md` for the full
+  accounting (verdict: 条件付き合格) and
+  `docs/code_defects_2026-08/planb_prediction_scope_defect.md` for how セトギワ花ヨメ
+  surfaced (a test-suite failure, not something the pre-registered prediction caught —
+  the prediction's scope was the 160-row snapshot corpus only, and this fixture lives
+  only in `tests/`).
+- **The `SPINOFF_MARKERS` exclusion check (used both here and at the `_judge_extract()`
+  decision-loop level) is a plain substring match (`marker in sentence`) with no word
+  boundary.** A sentence containing an unrelated word that happens to contain one of the
+  five markers as a substring (e.g. 「継続編成」contains 続編, 「海外伝道師」contains
+  外伝, 「次世代編成局」contains 次世代編) gets excluded too, confirmed on synthetic
+  fixtures. Zero real occurrences of this were found across the 160-row corpus
+  (`docs/code_defects_2026-08/issue_draft_marker_boundary.md`), and the same
+  substring-match pattern is used throughout the module for other marker lists
+  (`MANGA_MARKERS`, `NOVEL_MARKERS`, `DERIVATIVE_WORK_MARKERS`,
+  `ARTICLE_RELEVANCE_MARKERS`, `MERGED_COVERAGE_MARKERS`, `CONTINUATION_MARKER`,
+  `ONGOING_FIELD_MARKER`, `HIATUS_MARKER`) — this isn't specific to `SPINOFF_MARKERS`.
+  Not yet filed as an Issue; draft only.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
