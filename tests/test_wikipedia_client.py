@@ -2963,3 +2963,130 @@ def test_status_strings_are_pinned():
     # 定数と突き合わせてはいないため、定数側を変えても検出できなかった（#62）。
     assert STATUS_UNKNOWN == "判定不能"
     assert STATUS_NOT_FOUND == "記事なし"
+
+
+# --- Issue #154（案B）: _has_ongoing_signal() へのSPINOFF_MARKERS除外 ---
+#
+# docs/code_defects_2026-08/prereg_planb_safety_verification.md・
+# docs/code_defects_2026-08/planb_verification_result.md・
+# docs/code_defects_2026-08/planb_mutation_result.mdを参照。
+
+
+def test_has_ongoing_signal_excludes_each_spinoff_marker_individually():
+    """SPINOFF_MARKERSの5要素それぞれについて、その要素タグ付きの文が
+    _has_ongoing_signal()の走査から個別に除外されることを確認する
+    （案Bの合成フィクスチャによるミューテーションテスト、
+    docs/code_defects_2026-08/planb_mutation_result.md参照）。
+
+    5要素を1つの文にまとめず個別にテストすることで、CLAUDE.mdが定める
+    「複数ガードが同じ値を返す場合、一つを除去しても出力が変わらない」問題
+    （1要素が機能しなくても他要素が拾ってしまい合格に見える問題）を避ける。
+    """
+    fixtures = [
+        ("続編", "続編『二代目主人公』が『月刊なんとか』にて連載中。"),
+        ("番外編", "番外編『裏エピソード』が『月刊なんとか』にて連載中。"),
+        ("スピンオフ", "スピンオフ『外伝物語』が『月刊なんとか』にて連載中。"),
+        ("外伝", "外伝『裏話』が『月刊なんとか』にて連載中。"),
+        ("次世代編", "次世代編『新世代』が『月刊なんとか』にて連載中。"),
+    ]
+    for marker, sentence in fixtures:
+        assert _has_ongoing_signal(sentence) is False, (
+            f"「{marker}」タグ付き文がhas_ongoing_signal()の走査から除外されなかった"
+        )
+
+
+def test_has_ongoing_signal_does_not_exclude_unrelated_words():
+    """負のコントロール: SPINOFF_MARKERSに無い語（元のマーカーと意味は近いが
+    部分文字列としても重ならない語）では除外が働かないことを確認する。
+    除外判定がSPINOFF_MARKERSの5語だけに反応しており、無関係な近い語を
+    巻き込んでいないことの担保（除外判定の粒度の確認、
+    docs/code_defects_2026-08/planb_mutation_result.md「追加した負のコントロールの
+    設計」参照）。
+    """
+    fixtures = [
+        "リメイク版『新装版』が『月刊なんとか』にて連載中。",
+        "後編『新装版』が『月刊なんとか』にて連載中。",
+        "特別編『新装版』が『月刊なんとか』にて連載中。",
+        "スピンアウト『新装版』が『月刊なんとか』にて連載中。",
+        "外典『新装版』が『月刊なんとか』にて連載中。",
+        "新世代作品『新装版』が『月刊なんとか』にて連載中。",
+    ]
+    for sentence in fixtures:
+        assert _has_ongoing_signal(sentence) is True, f"無関係な語が誤って除外された: {sentence}"
+
+
+# Issue #154（作業98-B抜き取り測定の延長、案Bの安全性検証で発見、実データ）。
+# 『陰陽師』本編は`終了号 = [[2005年]]7月号`と実際に完結しているが、続編
+# 『陰陽師 玉手匣』についての「連載されている」という文（`_has_ongoing_signal()`が
+# SPINOFF_MARKERSを経由せず抽出全体を走査していたため拾われていた）が、
+# インフォボックスの「完結」判定をvetoしていた（`judge()`のIssue #30由来のveto）。
+# 案B適用後、この続編文が除外されるためvetoが発火しなくなり、インフォボックス経由で
+# 正しく「完結」に到達する。
+ONMYOJI_EXTRACT_FULL = (
+    "『陰陽師』（おんみょうじ）は、夢枕獏の小説『陰陽師』を原作とする岡野玲子の漫画。"
+    "1993年から2005年に、『コミックバーガー』『コミックバーズ』（いずれもスコラ）、"
+    "『月刊メロディ』（白泉社）で連載された。2006年、第37回星雲賞コミック部門を"
+    "受賞している。2019年4月時点でシリーズ累計発行部数は600万部を突破している。\n"
+    "続編に『陰陽師 玉手匣』がある。\n"
+    "なお、夢枕の同小説の漫画化作品には他に、睦月ムンクによる『陰陽師 瀧夜叉姫』と"
+    "伊藤勢による『瀧夜叉姫 陰陽師絵草子』がある（小説の記事を参照）。\n\n\n"
+    "== 概要 ==\n"
+    "『コミックバーガー』1993年7月号から1996年4月号、『コミックバーズ』1996年7月号"
+    "から1999年5月号、『月刊メロディ』1999年8月号から2005年5月号に連載された。"
+    "単行本は全13巻が白泉社（JETS COMICS）から発行された。\n"
+    "なお、続編の『陰陽師 玉手匣』は『MELODY』2011年2月号から連載されている。\n"
+)
+
+# 実際のWikipedia記事『陰陽師 (漫画)』のインフォボックスをそのまま書き写した
+# （regression_corpus_2026-08/regression_corpus_wikitext.jsonの保存済みスナップショット
+# より、2026-08-15取得時点の値）。
+ONMYOJI_REAL_WIKITEXT = (
+    "{{Infobox animanga/Manga\n"
+    "|作者= [[夢枕獏]]（原作）\n"
+    "|作画= [[岡野玲子]]\n"
+    "|出版社= [[スコラ]]、[[白泉社]]\n"
+    "|掲載誌= [[月刊バーズ|コミックバーガー]]<br />→[[月刊バーズ|コミックバーズ]]<br "
+    "/>→[[MELODY (雑誌)|月刊メロディ]]\n"
+    "|レーベル= [[ジェッツコミックス|JETS COMICS]]\n"
+    "|開始号= [[1993年]]7月号 - [[1996年]]5月号<br />（コミックバーガー）<br "
+    "/>1996年7月号 - [[1999年]]5月号<br />（コミックバーズ）<br />1999年8月号\n"
+    "|終了号= [[2005年]]7月号<br />（月刊メロディ）\n"
+    "|開始日= 1993年[[5月26日]]\n"
+    "|終了日= 2005年[[5月28日]]\n"
+    "|巻数= 全13巻\n"
+    "|話数=\n"
+    "|その他= \n"
+    "}}"
+)
+
+
+def test_judge_onmyoji_reaches_completed_via_infobox_after_zokuhen_exclusion():
+    """回帰テスト（実データ、Issue #154）: 陰陽師は案B適用後、`_judge_extract`単体は
+    判定不能のままだが、`judge()`全体ではインフォボックスveto経由で「完結」に到達する。
+
+    バーテンダー à Tokyo（`test_judge_extract_excludes_zokuhen_sentence_bartender_a_tokyo`
+    参照）とは異なり、本編自身の決着文候補（「…で連載された。」）が
+    `is_multimedia=True`かつMANGA_MARKERSを含まないためmultimedia gateで
+    決着せず、`_judge_extract`単体では判定不能のまま残る。したがって
+    `judge()`全体（インフォボックス・フォールバックを含む）でしか変化を
+    観測できず、この回帰テストは`_judge_extract`直呼びではなく`judge()`経由で書く
+    （既存のM6-B-3関連のインフォボックスveto回帰テスト、
+    `test_judge_does_not_let_infobox_declare_completed_against_prose_ongoing_signal`
+    等と同じ形式）。
+
+    このテストが単独で検知できる壊れ方: `_has_ongoing_signal()`のSPINOFF_MARKERS
+    除外が外れる（またはそもそも実装されない）リグレッション。その場合、続編文の
+    「連載されている」を拾ってインフォボックスの「完結」判定がvetoされ続け、
+    判定不能に戻る。
+    """
+    responses = [
+        _response(_resolve_response(existing=["陰陽師 (漫画)"], missing=["陰陽師"])),
+        _response(_extract_response("陰陽師 (漫画)", ONMYOJI_EXTRACT_FULL)),
+        _response(_wikitext_response(ONMYOJI_REAL_WIKITEXT)),
+    ]
+
+    with patch("comic_checker.wikipedia_client.requests.get", side_effect=responses):
+        result = judge("陰陽師")
+
+    assert result.status == "完結"
+    assert result.evidence == "インフォボックス: 終了号 = [[2005年]]7月号<br />（月刊メロディ）"
