@@ -630,8 +630,17 @@ def _split_sentences(text):
 
 
 def _has_ongoing_signal(extract):
-    """走査範囲内に、明確な現在形の連載シグナルが1文でもあるか（M6-B-3）。"""
-    return any(ONGOING_RE.search(sentence) for sentence in _split_sentences(extract))
+    """走査範囲内に、明確な現在形の連載シグナルが1文でもあるか（M6-B-3）。
+
+    Issue #154（案B）: SPINOFF_MARKERSに一致する文（番外編・スピンオフ・外伝・
+    次世代編・続編についての文）は、本編ではなく派生作品の状況を述べている
+    可能性があるため、走査対象から除外する。
+    """
+    return any(
+        ONGOING_RE.search(sentence)
+        for sentence in _split_sentences(extract)
+        if not any(marker in sentence for marker in SPINOFF_MARKERS)
+    )
 
 
 def _is_novel_primary(extract):
