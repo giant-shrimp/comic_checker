@@ -1,3 +1,17 @@
+> **本文書はIssue #171として起票済み**。分析内容・実測データ自体は本文書と
+> Issue #171で同一だが、**最新の行番号情報はIssue #171本文が保持している**
+> （起票時点＝2026-08-19の実測値）。
+>
+> **行番号依存を解消した経緯**: 本文書「影響範囲」表は当初、行番号
+> （例: `L693`）を直接記載していたが、これは案B（Issue #154）適用前の
+> 状態で記録されたものだった。案Bが`_has_ongoing_signal()`のSPINOFF_MARKERS
+> 除外ロジック等を追加した結果、記載していた行番号の多くが実装からズレる
+> 事態が生じた（Issue #171起票時に判明、詳細は
+> `~/comic_checker-agent-notes/marker_boundary_filing_decision_material.md`
+> 8節参照）。再発を防ぐため、下記「影響範囲」表は行番号を直接記載する形式
+> から、定数名・関数名と`grep`コマンドによる参照形式に変更した
+> （2026-08-19、参照形式の変更のみ。分析内容・結論は無変更）。
+
 ## 背景
 
 案B（Issue #154）の合成フィクスチャによるミューテーションテスト
@@ -42,17 +56,20 @@ holdout99+regression61（計160行）の全`extract`に対し、`SPINOFF_MARKERS
 形式の部分文字列一致は`SPINOFF_MARKERS`に限らず、マーカー語彙を扱う複数の
 箇所で使われている（いずれも単語境界を考慮しない同じ性質を持つ）。
 
-| 箇所（行番号） | 対象定数 | 用途 |
+**参照方法**: 下表は行番号を記載しない。各定数について、以下の形式の
+`grep`コマンド（リポジトリルートから実行）で現在の該当箇所を再測定できる。
+
+| 対象定数 | 用途 | 参照コマンド |
 |---|---|---|
-| L355 | `ARTICLE_RELEVANCE_MARKERS` | 記事の関連性判定 |
-| L512 | `MERGED_COVERAGE_MARKERS` | 複数作品併記の宣言判定（`_declares_merged_coverage`） |
-| L518, L571 | `DERIVATIVE_WORK_MARKERS`（デフォルト引数） | 派生作品としての言及判定（`_marker_modifies_mention`／`_mentions_as_derivative_work`、Issue #51） |
-| L645, L647, L700 | `NOVEL_MARKERS` | メディアミックス（原作小説）判定 |
-| L648, L699, L1270 | `MANGA_MARKERS` | 漫画マーカー判定 |
-| L693 | `SPINOFF_MARKERS` | 決着文からの派生作品文除外（案Bの`_has_ongoing_signal()`除外もこの定数を使う） |
-| L820 | `CONTINUATION_MARKER`（`not in`） | M6-B-4継続の証拠判定 |
-| L869 | `ONGOING_FIELD_MARKER` | インフォボックス「連載中」判定 |
-| L873 | `HIATUS_MARKER` | インフォボックス「休載」判定 |
+| `ARTICLE_RELEVANCE_MARKERS` | 記事の関連性判定 | `grep -n "ARTICLE_RELEVANCE_MARKERS" comic_checker/wikipedia_client.py` |
+| `MERGED_COVERAGE_MARKERS` | 複数作品併記の宣言判定（`_declares_merged_coverage`） | `grep -n "MERGED_COVERAGE_MARKERS" comic_checker/wikipedia_client.py` |
+| `DERIVATIVE_WORK_MARKERS`（デフォルト引数） | 派生作品としての言及判定（`_mentions_as_derivative_work`／`_marker_modifies_mention`、Issue #51）。実際の部分文字列比較は`_marker_modifies_mention()`内で引数名`markers`として行われるため、`grep`結果は定義・デフォルト引数指定箇所を指す | `grep -n "DERIVATIVE_WORK_MARKERS" comic_checker/wikipedia_client.py` |
+| `NOVEL_MARKERS` | メディアミックス（原作小説）判定 | `grep -n "NOVEL_MARKERS" comic_checker/wikipedia_client.py` |
+| `MANGA_MARKERS` | 漫画マーカー判定 | `grep -n "MANGA_MARKERS" comic_checker/wikipedia_client.py` |
+| `SPINOFF_MARKERS` | 決着文からの派生作品文除外（案Bの`_has_ongoing_signal()`除外もこの定数を使う） | `grep -n "SPINOFF_MARKERS" comic_checker/wikipedia_client.py` |
+| `CONTINUATION_MARKER`（`not in`） | M6-B-4継続の証拠判定 | `grep -n "CONTINUATION_MARKER" comic_checker/wikipedia_client.py` |
+| `ONGOING_FIELD_MARKER` | インフォボックス「連載中」判定 | `grep -n "ONGOING_FIELD_MARKER" comic_checker/wikipedia_client.py` |
+| `HIATUS_MARKER` | インフォボックス「休載」判定 | `grep -n "HIATUS_MARKER" comic_checker/wikipedia_client.py` |
 
 **この欠陥はSPINOFF_MARKERS・案B固有のものではなく、プロジェクト全体でマーカー語彙を
 扱う際の共通パターンに内在する性質である。**
