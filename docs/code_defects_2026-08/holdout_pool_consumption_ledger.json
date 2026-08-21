@@ -30,10 +30,20 @@
         "source_record": "docs/holdout_measurement_2026-08/step98_a2_preregistration.json",
         "pool_before": 362,
         "pool_after": 262
+      },
+      {
+        "seed": 158,
+        "n": 120,
+        "date": "2026-08-21",
+        "purpose": "holdout2（未観測の評価用標本の再構築、Issue #180）。事前登録docs/code_defects_2026-08/prereg_corpus_expansion_holdout2.md（md5 384c77c0149c0366dcbf57012f35803e）に基づく抽出。取得成功119件・記事なし1件。",
+        "classification": "有効性の証拠（未観測標本としての評価用途）。既存160件（regression61+holdout99）とは統合せず独立したスナップショットとして並存させる（docs/holdout2_measurement_2026-08/README.md参照）。",
+        "source_record": "docs/code_defects_2026-08/prereg_corpus_expansion_holdout2.md",
+        "pool_before": 262,
+        "pool_after": 142
       }
     ],
-    "current_remaining": 262,
-    "remaining_pool_note": "step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた262件。まだ抽出していない。",
+    "current_remaining": 142,
+    "remaining_pool_note": "step93_2_holdout_pool.jsonの362件からseed=93の100件・seed=158の120件を除いた142件。まだ抽出していない。",
     "designed_not_yet_executed": [
       {
         "seed": 517,
@@ -79,7 +89,8 @@
     {"seed": 982, "pool": "既存68件（既存100件から32件を除いた残り、新規プール抽出ではない）", "purpose": "98-A-3再設計スポットチェック", "source_record": "step98_a3_redesign_proposal.md（リポジトリ外）", "date": "2026-08-14"},
     {"seed": 20260728, "pool": "不明（M6-D-3関連、将来使用予定として事前登録のみ）", "purpose": "起票時の60件抽出設計（未実行の可能性あり）", "source_record": "docs/m6d3_labeling_rationale.md", "date": "不明（設計時点。実行済みかは未確認）"},
     {"seed": 153, "pool": "160件（holdout99+regression61、生wikitextスナップショット）", "purpose": "実judge()ハーネスの判別力確認用5件抽出（作業2-3、ネットワーク直呼びとの一致確認）", "source_record": "会話履歴のみ。どのファイルにも保存していなかったため、grepでは検出不能だった（本ledgerで初めて記録する）", "date": "2026-08-15"},
-    {"seed": 517, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（設計のみ、未実行）。対象Issue: 系統2 #156・系統3 #157・系統4 #158・系統5 #159・案B #154。【2026-08-16、実行しないことを決定（中止）。詳細はdesigned_not_yet_executed配下の同seedエントリのcancellation_reasonを参照】", "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md", "date": "2026-08-16（設計時点。取得は実行せず中止した）"}
+    {"seed": 517, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "系統2〜5・案Bの「有効性の証拠」用独立標本（設計のみ、未実行）。対象Issue: 系統2 #156・系統3 #157・系統4 #158・系統5 #159・案B #154。【2026-08-16、実行しないことを決定（中止）。詳細はdesigned_not_yet_executed配下の同seedエントリのcancellation_reasonを参照】", "source_record": "docs/code_defects_2026-08/corpus_expansion_design.md", "date": "2026-08-16（設計時点。取得は実行せず中止した）"},
+    {"seed": 158, "pool": "残存262件（step93_2_holdout_pool.jsonの362件からseed=93の100件を除いた分）", "purpose": "holdout2標本120件抽出（Issue #180、未観測評価用標本の再構築）。取得成功119件・記事なし1件。", "source_record": "docs/code_defects_2026-08/prereg_corpus_expansion_holdout2.md", "date": "2026-08-21"}
   ],
 
   "process_note": "153が『どのファイルにも記録されず、grepで検出不能だった』ことが、本ledgerを新設する直接のきっかけ。今後は、新しい標本抽出の直前に本ファイルへ抽出予定(seed・件数・用途)を追記してから実行し、実行後に実際の結果で更新する運用とする。"
