@@ -1,0 +1,632 @@
+{
+  "segment": "31-60",
+  "count": 30,
+  "labels": [
+    {
+      "title": "ぬるめた",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2020年5月号より連載中」の明記があり、巻数欄も既刊6巻（2026年1月27日現在）と直近の更新。終了号・終了日フィールド自体が存在しない。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ORANGE (能田達規の漫画)",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2001年48号から2004年6号まで連載された」と過去形で明記。インフォボックス終了=2004年6号（非null、R3'該当）。全13巻。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ササエルの中には誰もいない",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2021年8月号から10月号までゲスト掲載後、同年12月号から2024年1月号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "アイドライジング!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルは「2011年2月から2012年3月まで刊行された」、2本のコミカライズも「連載された」と過去形で明記。extractにコミカライズの語があるためR1'不成立、いずれの終了フィールドも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ベリーベリー",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "インフォボックスその他欄に「2010年12号を最後に休載中」と明記され、本文にも「現在は休止（中断）状態」「連載再開のメドは立っていない」と実質的に再開不定の記述がある。完結・打ち切りの明示的宣言は無い（R4該当）。終了フィールド自体は空欄でR3'不成立。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "戦う!セバスチャン",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本編（1999-2009・全8巻）、『#』（2009-2016・全5巻）、『少年セバスチャンの執事修行』（2009-2016・全5巻）はいずれも終了済みだが、最新作『執事セバスチャンの職業事情』（2016年6月号開始）は終了日が空欄・巻数「既刊8巻（2025年11月現在）」と直近更新があり、本文も「連載が行われている」と記す。旧アークの終了フィールドでR3'が機械的に発火しないよう、最新アークの状態を優先して連載中と判断したが、複数インフォボックスの統合読解が必要で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "女神の鬼",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2005年21・22合併号から2014年34号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "超犬リープ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作（1965-1967）は終了日非null・本文も過去形で明記（R3'該当）。1995-1996年の復活連載は「掲載誌の廃刊により打ち切り」（全7話・未完）とインフォボックスに明記されており、いずれも現在は連載していない。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "お前ら全員めんどくさい!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2014年1月29日から2020年3月25日まで連載された」と明記。インフォボックス終了日も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "Magico",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2011年13号から2012年31号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。その他欄に「完結編掲載」の記載もあり。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "異形人おに若丸",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「平成14年24号から平成16年8号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "地政学ボーイズ 〜国がサラリーマンになって働く会社〜",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2021年21号より連載中」の明記があり、巻数欄も既刊9巻（2026年7月17日現在）と約1ヶ月前の直近更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "えすぴー都 見参!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2003年11月号から2012年8月号まで連載」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ラブ・ウィッチ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "インフォボックス終了=2002年6月号が非null・「連載中」不含のためR3'該当。ただし本文は「わずか数話で休載に入り、連載は再開されなかった」と記しており、明確な完結宣言ではなく再開されないまま放置された休載に近い性質であるため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "彼女のカレラ My Favorite Carrera",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "初代（2004-2012、打ち切り後移籍）・RS（2013-2015、作者自身の意思で終了）はいずれも終了済みだが、最新作『GT3』のインフォボックス終了日欄には文字通り「連載中」と記載されておりR3'の除外規定に該当し、本文も「2018年4月より連載中」と明記。旧作の終了フィールドでR3'が機械的に発火しないよう最新作の状態を優先して連載中と判断したが、3期にわたる複雑な連載史の統合読解が必要で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "賢い犬リリエンタール",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2009年42号から2010年23号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "SHIORI EXPERIENCE ジミなわたしとヘンなおじさん",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2013年Vol.11から連載中」の明記があり、巻数欄も既刊25巻（2026年2月現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "外見至上主義",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「NAVERのウェブトゥーンにて2014年11月から連載されている」と明記。終了号・終了日・巻数はいずれも空欄で参照できないが、明示的な継続記述がありR6は不成立。2023年の累計視聴回数達成発表も継続を裏付ける。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "キャンディポップナイトメア",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2011年Vol.02から2016年Vol.08まで連載」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "フルアヘッド!ココ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（1997-2002）・サンセットローズ（2012-2017）・ゼルヴァンス（2017-2022）いずれも本文で「連載された」と過去形かつインフォボックス終了号・終了日が非null（R3'該当）。ゼルヴァンス途中の2020年6月号の一時休載は同作の終了（2022年1月号）までに解消済み。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "りびんぐゲーム",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1990年10月から1993年4月まで連載された」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "アゴなしゲンとオレ物語",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2009年27号をもって『第二部完』として連載終了となった」と明記。インフォボックス終了も非null（R3'該当）。5年後の読み切り掲載は連載再開ではない。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ウェディング・ライセンス",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1973年14号より33号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ボンボン坂高校演劇部",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1992年34号から1995年30号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "土下座で頼んでみた",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本タイトルの商業版巻数は「全2巻」で完結済みの固定巻数。本文が描く現在進行中の活動（2024年4月連載開始の「もっと土下座で頼んでみた」）は別タイトルの続編であり、本タイトル自身の終了号・終了日は空欄でR3'不成立。続編との切り分けが必要で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "わたるがぴゅん!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2004年10月号で連載終了」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "生理ちゃん",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "月刊コミックビーム誌上連載は「2018年12月号から2020年11月号まで連載された」と過去形で明記、インフォボックス終了号・終了日も非null（R3'該当）。一方、原型であるWeb版『ツキイチ! 生理ちゃん』（オモコロ）は本文で「連載されている」と現在形の記述があり、誌上連載の終了とWeb版の継続とで記述に緊張があるため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ひぐらしのなく頃に 巡",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "前編『業』（2020-2021）・本題『巡』（2021-2024）いずれも本文で「連載された」と過去形かつインフォボックス終了日が非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "はるみねーしょん",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2008年2月号から2019年8月号にかけて連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "地獄ようちえん",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "終了号欄は空欄だが終了日=2014年10月が非null・「連載中」不含のためR3'該当。本文は雑誌4誌同時展開という企画概要の記述に留まり終了そのものへの直接言及は無い。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    }
+  ]
+}

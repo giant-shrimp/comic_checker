@@ -1,0 +1,595 @@
+{
+  "segment": "91-119",
+  "count": 29,
+  "labels": [
+    {
+      "title": "わ!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2009年11月号から2011年4月号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ブライトの憂鬱",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "インフォボックス終了号=2004年11月号が非null（R3'該当）。単行本全2巻で完結した作品として記載。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "レース鳩0777",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1978年から1980年にかけて連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ショショリカ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載された」と過去形の記述があり、巻数=全10巻（既刊ではなく固定）。終了号・終了日フィールド自体が存在せずR3'不成立、いずれの規則にも該当せず通常の読解で完結と判断。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "夢みる太陽",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2007年11月号から2011年9月号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "マテリアルゴースト",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルは「2006年1月から2007年5月まで刊行された」、コミカライズも「2011年5月号から2012年4月号まで...連載された」といずれも過去形で明記。extractにコミカライズの語があるためR1'不成立、両者の終了フィールドが非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "砂の栄冠",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2010年30号から2015年37・38合併号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。参照文献の題名にも「完結」の語あり。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "魔砲使い黒姫",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2011年2月更新分（第5部第24話）にて完結」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "Rust Blaster",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2005年11月号から2006年4月号にて連載。全6話、単行本は全1巻」と明記。インフォボックス終了日も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "異国色恋浪漫譚",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載されていた」と過去形の記述があり、単行本は既刊1巻のみでOVA化等も既に完了。Mangaブロックの開始・終了フィールドは空欄でR3'不成立、いずれの規則にも該当せず通常の読解で完結と判断。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "源君物語",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2011年42号から2019年40号まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。「最終第16巻」との記述もあり。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "スーパーショートコミックス",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「掲載終了」の明記があるが、その時期（2016年5月）はインフォボックス終了日（2015年12月20日）と食い違う。いずれも連載終了自体は一致しR3'該当（完結）と判断したが、日付の不一致がある点で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "モンキーピーク",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（2016-2019）・前日譚『モンキーサークル』（2018-2020）・続編『the Rock』（2019-2021）いずれも本文で「連載された」と過去形、インフォボックス終了フィールドも全て非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "3D甲子園 プラコン大作",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1984年4月号から1985年3月号、および同年の春休み増刊号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "グリードパケット∞",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「2011年8月号から長期休載」と明記されており、休載を示す記述があり、かつ完結・打ち切りの明示的宣言は記事中に無い（R4該当）。終了号フィールドは空欄でR3'不成立。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ねこようかい",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2016年12月号から連載中」の明記があり、巻数欄も既刊11巻（2026年2月20日現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "SとM",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（第1章2005-2012・第2章2017-2020）・スピンオフ『SとMエクスタシー』（2016-2017）いずれも本文で「連載した」と過去形、インフォボックス終了フィールドも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "らくてんパパ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1981年9月24日号より1995年10月7日号まで連載」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "くじびき勇者さま",
+      "expected_status": "判定不能",
+      "applied_rule": "R1'",
+      "evidence_summary": "原作はライトノベル（is_novel_primary該当）で、extract中に「漫画」「コミカライズ」「コミック版」「漫画版」のいずれも一切出現しない。原作小説の終了フィールドは非null（R1'該当）。なお、実在するコミカライズ側インフォボックスの終了号は「未完」という値であり、判定不能という結論と方向性は一致するが、この事実自体はextractから読み取れないためR1'の判定根拠には用いていない。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ニチアサ以外はやってます!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2021年6月号から2023年4月号にかけて連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "デビルマンG",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「翌6月号から2014年2月号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "天堂家物語",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「『LaLa』に移籍して2018年2月号から連載中」の明記があり、巻数欄も既刊17巻（2026年3月5日現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ゴロロ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2010年3月号から2012年7月号まで連載されていた」と明記。インフォボックス終了号も非null（R3'該当）。あらすじも終章まで完結している。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "モリモリッ!ばんちょー!!キヨハラくん",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本タイトル自身は「2003年4月号から2005年12月号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。以降の同作者シリーズの経緯は別タイトルの話。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ヴァンピアーズ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2019年3月号より2023年5月号まで連載」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ローカル女子の遠吠え",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「『まんがタイム』での連載は継続」と明記されている。終了号フィールドの値は「（まんがタイム）」という雑誌名の断片のみで実質的な終了記録を含まないためR3'不成立と判断した。巻数欄も既刊12巻（2025年12月5日現在）と直近の更新。複数誌にまたがる連載史の統合読解とフィールド値の実質的意味の判断を要し迷った。この論点はI-003として別途記録する。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ハムスターの研究レポート",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "インフォボックス終了=「silky 2008年8・10月号」が非null（R3'該当）。本文にも2017年に「これで『完結』と銘打たれた」と明記されている。ただし2008年に連載が途絶えてから9年後に補完的な文庫新刊をもって遡って完結宣言がなされたという特殊な経緯であり、通常の完結とは性質が異なるため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "今日も一日",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "終了号・終了日フィールドは空欄だが、発表期間フィールドに「1962年3月-1966年6月」と終了時期が非null・「連載中」不含で記載されている（R3'相当）。本文も「全1450回連載された」と過去形かつ完結した回数を明記しており、判断は明確。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "戦国小町苦労譚",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "原作小説は「連載されており」、書籍版は「刊行されている」、コミカライズも「連載されている」といずれも現在形で明記。extractにコミカライズの語があるためR1'不成立、終了フィールドはいずれも空欄。巻数欄も既刊19巻（2026年3月現在）・既刊20巻（2026年6月現在）と直近の更新。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    }
+  ]
+}
