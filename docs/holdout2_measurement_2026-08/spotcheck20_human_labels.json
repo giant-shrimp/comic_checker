@@ -1,0 +1,128 @@
+{
+  "prereg": "docs/holdout2_measurement_2026-08/prereg_spotcheck_20.md",
+  "prereg_md5": "ff7218e8a06479090e5039c2f9576936",
+  "instruction": "spotcheck20_presentation.json とラベル規則v3 のみを参照し，human_status と human_evidence を記入すること。holdout2_labels_auto.json を参照してはならない。",
+  "labels_rules": "docs/holdout_measurement_2026-08/step98_a_labeling_rules_v3.json",
+  "records": [
+    {
+      "no": 1,
+      "title": "生理ちゃん",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 2,
+      "title": "えすぴー都 見参!",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 3,
+      "title": "15歳、今日から同棲はじめます。",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 4,
+      "title": "スーパーショートコミックス",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 5,
+      "title": "魔女と野獣",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 6,
+      "title": "グリードパケット∞",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 7,
+      "title": "CHARON",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 8,
+      "title": "マテリアルゴースト",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 9,
+      "title": "ファイアパンチ",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 10,
+      "title": "りびんぐゲーム",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 11,
+      "title": "彼女のカレラ My Favorite Carrera",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 12,
+      "title": "ダーリンは70歳",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 13,
+      "title": "トカゲの王",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 14,
+      "title": "チチチチ",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 15,
+      "title": "新新宿駅企画課 あるぷすひろば",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 16,
+      "title": "ギリシャ神話劇場 神々と人々の日々",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 17,
+      "title": "俺たちのフィールド",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 18,
+      "title": "ショショリカ",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 19,
+      "title": "おたんこナース",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "no": 20,
+      "title": "大人にゃ恋の仕方がわからねぇ!",
+      "human_status": "",
+      "human_evidence": ""
+    }
+  ]
+}
