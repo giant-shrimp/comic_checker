@@ -1,0 +1,851 @@
+{
+  "created_at_utc": "2026-08-21T06:09:36Z",
+  "purpose": "holdout2 標本119件への自動ラベル付与。judge() 未実行。",
+  "prereg": "docs/code_defects_2026-08/prereg_corpus_expansion_holdout2.md",
+  "prereg_md5": "384c77c0149c0366dcbf57012f35803e",
+  "method": "wikitext と extract の読解による人手相当の判断。正規表現・パターンマッチによる自動判定は行っていない。",
+  "labeling_rules": "docs/holdout_measurement_2026-08/step98_a_labeling_rules_v3.json の R1'〜R5",
+  "count": 119,
+  "status_counts": {
+    "連載中": 13,
+    "完結": 93,
+    "判定不能": 13
+  },
+  "confused_count": 22,
+  "process_note": "ラベル付与作業の途中でコンテキスト圧縮が発生し，1〜90件目の個別判断根拠が失われたため，全119件の読解をやり直した。本ファイルのラベルはやり直し後（第2回）の判断である。圧縮前に報告されていた1〜90件目の区間別 status 内訳と第2回の同区間の内訳を対比したところ，3区間すべてで差異が検出された。全体合計は一致するが，これは区間間の相殺によるものである。変化した項目数の下限は3件（3/90 = 3.3%以上）であり，本ラベルにはこの読解者内不一致に由来する誤差が含まれる。詳細は docs/holdout2_measurement_2026-08/relabel_consistency_finding.md を参照。judge() の実行および正規表現による自動判定は，いずれの回においても行っていない。",
+  "labels": [
+    {
+      "title": "チチチチ",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊9巻(2026年4月現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "ちいさいひと 青葉児童相談所物語",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2013年10月25日(年入り)、本文も過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "Theチェリー・プロジェクト",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了1991年12月号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "東山道転墜異聞",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "開始号・終了号等の日付情報はないが、本文が過去形で1998年当時の連載を語り、巻数は2巻で確定している。",
+      "confused": true
+    },
+    {
+      "title": "僕の呪いの吸血姫",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊9巻(2026年4月現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "盟約のリヴァイアサン",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「コミカライズが…連載され」と明記、終了号2015年3月(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "MEAN 遥かなる歌",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "元連載は2009年3月に一旦終了し、2019年に同人誌『完結編』で物語を完結させたとの記述がある。",
+      "confused": true
+    },
+    {
+      "title": "Half&half",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2015年6月号(年入り)、過去形「連載された」、全2巻確定。",
+      "confused": false
+    },
+    {
+      "title": "月に吠えらんねえ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2019年9月号(年入り)、過去形「連載」。",
+      "confused": false
+    },
+    {
+      "title": "S線上のテナ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2010年8月(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "15歳、今日から同棲はじめます。",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "唯一の継続性の手がかりである巻数情報(既刊3巻)が2018年4月時点のもので、現在から見て古すぎる。",
+      "confused": true
+    },
+    {
+      "title": "ポピーザぱフォーマー",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に漫画化作品が過去形「連載されていた」と明記、巻数は全1巻で確定。",
+      "confused": true
+    },
+    {
+      "title": "みそララ",
+      "expected_status": "判定不能",
+      "applied_rule": "R5",
+      "evidence_summary": "「第一部・完」の区切り記述後、Web BULLでの散発掲載(4号-13号)が示されるが「以後休載」で、直近12か月以内の掲載月が本文から確認できない。",
+      "confused": true
+    },
+    {
+      "title": "CHARON",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「打ち切りとも言える形で連載が終了した」の明記、終了号2014年(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "EDEN 〜It's an Endless World!〜",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2008年8月号にて完結している」と明記。",
+      "confused": false
+    },
+    {
+      "title": "飴色紅茶館歓談",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2011年11月号(年入り)、全2巻確定。",
+      "confused": false
+    },
+    {
+      "title": "清村くんと杉小路くんと",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2002年1月号(年入り)、過去形「連載されていた」、全4巻。",
+      "confused": false
+    },
+    {
+      "title": "ループ7回目の悪役令嬢は、元敵国で自由気ままな花嫁生活を満喫する",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが「掲載している」と現在形で言及、既刊8巻(2025年12月現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "俺たちのフィールド",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了1998年45号(年入り)、過去形「連載された」、全34巻。",
+      "confused": false
+    },
+    {
+      "title": "大人にゃ恋の仕方がわからねぇ!",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "唯一の継続性の手がかりである巻数情報(既刊3巻)が2020年10月時点のもので古すぎる。",
+      "confused": true
+    },
+    {
+      "title": "新新宿駅企画課 あるぷすひろば",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載終了」の明記、終了号2010年12月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "プリティフェイス",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2003年28号(年入り)、本文に「連載開始から約1年で終了した」の明記。",
+      "confused": false
+    },
+    {
+      "title": "まんがかぞく",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2011年12月20日号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "BAKUDAN",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1995年8号(年入り)、過去形「連載され」、全2巻確定。",
+      "confused": false
+    },
+    {
+      "title": "齢5000年の草食ドラゴン、いわれなき邪竜認定",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「コミカライズが…連載された」と明記、終了号2019年12月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "世界の終わりに柴犬と",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日欄が空欄、直近の巻数情報も2022年10月時点のもので古く、継続・完結いずれの明確な記述もない。",
+      "confused": true
+    },
+    {
+      "title": "月の夜 星の朝",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1985年11月号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "蟲と眼球シリーズ",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "インフォボックスの開始号・終了号が「情報求」(未確定)で具体的な連載期間の記載がなく、コミカライズ自体の終了時期を本文からも確認できない。",
+      "confused": true
+    },
+    {
+      "title": "ハツカネズミの時間",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2008年4月号(年入り)、全4巻確定。",
+      "confused": false
+    },
+    {
+      "title": "魔女と野獣",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「2023年1号より休載中」の明記があり、完結・打ち切り等の宣言は見当たらない。",
+      "confused": false
+    },
+    {
+      "title": "ぬるめた",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊6巻(2026年1月27日現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "ORANGE (能田達規の漫画)",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2004年6号(年入り)、全13巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ササエルの中には誰もいない",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2024年1月号(年入り)、全2巻確定。",
+      "confused": false
+    },
+    {
+      "title": "アイドライジング!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが過去形で「連載された」と明記、終了日2014年9月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "ベリーベリー",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「現在は休止(中断)状態にある」「連載再開のメドは立っていない」の明記があり、完結・打ち切り等の宣言はない。",
+      "confused": false
+    },
+    {
+      "title": "戦う!セバスチャン",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "infoboxは原題自体の終了(2009年、年入り)を示す。全8巻確定。",
+      "confused": false
+    },
+    {
+      "title": "女神の鬼",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2014年34号(年入り)、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "超犬リープ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日1967年8月(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "お前ら全員めんどくさい!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2020年3月25日(年入り)、全10巻確定。",
+      "confused": false
+    },
+    {
+      "title": "Magico",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2012年31号(年入り)、その他欄に「完結編掲載」の記載あり。",
+      "confused": false
+    },
+    {
+      "title": "異形人おに若丸",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日に西暦2004年の記載あり、全4巻確定。",
+      "confused": false
+    },
+    {
+      "title": "地政学ボーイズ 〜国がサラリーマンになって働く会社〜",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊9巻(2026年7月17日現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "えすぴー都 見参!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2012年8月号(年入り)、全5巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ラブ・ウィッチ",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「わずか数話で休載に入り、連載は再開されなかった」の明記があり、完結・打ち切り等の宣言はない。",
+      "confused": true
+    },
+    {
+      "title": "彼女のカレラ My Favorite Carrera",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「打ち切り」による終了の明記、終了日2012年9月24日(年入り)、全24巻確定。",
+      "confused": false
+    },
+    {
+      "title": "賢い犬リリエンタール",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2010年23号(年入り)、過去形「連載された」、全4巻。",
+      "confused": false
+    },
+    {
+      "title": "SHIORI EXPERIENCE ジミなわたしとヘンなおじさん",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊25巻(2026年2月現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "外見至上主義",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載されている」と現在形の明記があり、終了日欄も空欄。",
+      "confused": false
+    },
+    {
+      "title": "キャンディポップナイトメア",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2016年Vol.08(年入り)、終了日も年入り、全7巻確定。",
+      "confused": false
+    },
+    {
+      "title": "フルアヘッド!ココ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "infoboxは原題自体の終了(2002年7月4日、年入り)を示す。全30巻確定。本文末尾の「休載」記述は後続作を指すと解釈。",
+      "confused": true
+    },
+    {
+      "title": "りびんぐゲーム",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了1993年4月(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "アゴなしゲンとオレ物語",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載終了となった」の明記(第二部完)、終了2009年27号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "ウェディング・ライセンス",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1973年33号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "ボンボン坂高校演劇部",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了1995年30号(年入り)、全12巻確定。",
+      "confused": false
+    },
+    {
+      "title": "土下座で頼んでみた",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "商業版巻数が「全2巻」で確定、2024年に別タイトルの続編が開始されていることから完結と推定。",
+      "confused": true
+    },
+    {
+      "title": "わたるがぴゅん!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載終了。全58巻」の明記、終了号2004年10月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "生理ちゃん",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "インフォボックスに終了日2020年10月12日(年入り)・全4巻の記載があり完結と判断。Web版について本文が現在形で言及している点は不確定要素。",
+      "confused": true
+    },
+    {
+      "title": "ひぐらしのなく頃に 巡",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に連載期間(2021年10月15日-2024年1月26日、全19話・全5巻)が明記され過去形で完結を示すが、infoboxは前編の情報を表示しておりタイトルとの対応にずれがある。",
+      "confused": true
+    },
+    {
+      "title": "はるみねーしょん",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2019年8月号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "地獄ようちえん",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に連載終了に関する明記はないが、infoboxの終了日(2014年10月、年入り)から完結と判断。",
+      "confused": true
+    },
+    {
+      "title": "鉄娘な3姉妹",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2010年12月号をもって終了した」の明記、終了号も年入り。",
+      "confused": false
+    },
+    {
+      "title": "ファイアパンチ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2018年1月1日(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "外道坊",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2009年(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "可愛いたぬきも楽じゃない",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記はあるが、裏付けとなる直近情報(電子版既刊5巻、2022年4月5日現在)が古く、現在の連載継続を裏付けられない。",
+      "confused": true
+    },
+    {
+      "title": "おれと一乃のゲーム同好会活動日誌",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが過去形で「掲載された」と明記、終了2013年2月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "世紀末★ダーリン",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "infoboxの単行本発売期間(1994年-1998年)と全4巻(確定)から完結と判断。連載期間そのものの明記はない。",
+      "confused": true
+    },
+    {
+      "title": "四十七大戦",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2023年4月13日まで連載された」と明記、終了日も年入りで一致。続編は別タイトルのため対象外。",
+      "confused": false
+    },
+    {
+      "title": "ギリシャ神話劇場 神々と人々の日々",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2022年1月号(年入り)、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "ステルス交境曲",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2014年9月23日(年入り)、本文に「連載が終了した」の明記。",
+      "confused": false
+    },
+    {
+      "title": "女子小学生はじめましたP!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2019年18号(年入り)、全10巻確定。",
+      "confused": false
+    },
+    {
+      "title": "トカゲの王",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが過去形で「連載された」と明記、終了号2013年8月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "煙と蜜",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊7巻(2026年3月現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "ことはの王子様",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "infoboxの終了欄が文字通り「休載中」であり、完結・打ち切り等の宣言は見当たらない。",
+      "confused": false
+    },
+    {
+      "title": "アーサーGARAGE",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2005年(年入り)、過去形「連載された」、全5巻確定。",
+      "confused": false
+    },
+    {
+      "title": "思春期ビターチェンジ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2019年1月24日(年入り)、全9巻確定。",
+      "confused": false
+    },
+    {
+      "title": "紫電改のマキ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2020年2月号(年入り)、全15巻確定。",
+      "confused": false
+    },
+    {
+      "title": "さつきばれっ!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2008年8月号(年入り)、全1巻確定。",
+      "confused": false
+    },
+    {
+      "title": "花は咲くか",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "infoboxの発表期間(2006年8月〜2015年1月)と全5巻(確定)から完結と判断。本文中に明確な連載終了の記述はない。",
+      "confused": true
+    },
+    {
+      "title": "虹をよぶ拳",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1971年6月号(年入り)、全7巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ダーリンは70歳",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、その他欄に2026年3号での改題まで記録されており直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "チョコレート・クリスマス",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1988年1月号(年入り)、全1巻確定。",
+      "confused": false
+    },
+    {
+      "title": "GIRL FRIENDS",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2010年8月21日(年入り)、全5巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ゆりてつ 私立百合ヶ咲女子高鉄道部",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2013年11月号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "おたんこナース",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日1998年(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "食キング",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2004年4月(年入り)、過去形「連載した」、全27巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ごきチャ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2016年8月号(年入り)、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "アイドルのあかほん",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2006年28号から48号まで連載された」と明記、全1巻確定。",
+      "confused": false
+    },
+    {
+      "title": "いつか、眠りにつく日",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが過去形で「連載された」と明記、終了号2022年9月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "海皇紀",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了2010年8月号(年入り)、過去形「連載された」、全45巻。",
+      "confused": false
+    },
+    {
+      "title": "ぷいぷい!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが過去形で「連載された」と明記、終了号2009年4月号(年入り)。",
+      "confused": false
+    },
+    {
+      "title": "わ!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2011年4月号(年入り)、終了日も年入り、全3巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ブライトの憂鬱",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2004年11月号(年入り)、全2巻確定。",
+      "confused": false
+    },
+    {
+      "title": "レース鳩0777",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1980年42号(年入り)、過去形「連載された」。",
+      "confused": false
+    },
+    {
+      "title": "ショショリカ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "開始号・終了号等の日付情報が皆無だが、本文が過去形「連載された」であり、全10巻(確定)は本文とinfobox双方で一致。",
+      "confused": true
+    },
+    {
+      "title": "夢みる太陽",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2011年9月号(年入り)、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "マテリアルゴースト",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "infoboxが存在しない記事だが、本文に「2011年5月号から2012年4月号までコミカライズが連載された」と明記(年入り)。",
+      "confused": true
+    },
+    {
+      "title": "砂の栄冠",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2015年37・38合併号(年入り)、脚注にも「完結」の記載あり。",
+      "confused": false
+    },
+    {
+      "title": "魔砲使い黒姫",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2011年2月更新分にて完結」と明記。",
+      "confused": false
+    },
+    {
+      "title": "Rust Blaster",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了日2006年3月18日(年入り)、全1巻確定。",
+      "confused": false
+    },
+    {
+      "title": "異国色恋浪漫譚",
+      "expected_status": "判定不能",
+      "applied_rule": "なし",
+      "evidence_summary": "開始号・終了号等の連載期間情報が本文・infoboxいずれにもなく、巻数「既刊1巻」も時点情報なしで判断材料に乏しい。",
+      "confused": true
+    },
+    {
+      "title": "源君物語",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2019年40号(年入り)、全16巻確定。",
+      "confused": false
+    },
+    {
+      "title": "スーパーショートコミックス",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2016年5月掲載終了」と明記、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "モンキーピーク",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2019年9月6日号(年入り)、全12巻確定。",
+      "confused": false
+    },
+    {
+      "title": "3D甲子園 プラコン大作",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1985年3月号(年入り)、発表期間も年入り、全6巻確定。",
+      "confused": false
+    },
+    {
+      "title": "グリードパケット∞",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「2011年8月号から長期休載」の明記があり、完結・打ち切り等の宣言はない。",
+      "confused": false
+    },
+    {
+      "title": "ねこようかい",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊11巻(2026年2月20日現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "SとM",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "第1章・第2章とも過去形「連載した」で終了が明記され、冊数も全31巻で確定。",
+      "confused": false
+    },
+    {
+      "title": "らくてんパパ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号1995年10月7日号(年入り)、全5巻確定。",
+      "confused": false
+    },
+    {
+      "title": "くじびき勇者さま",
+      "expected_status": "判定不能",
+      "applied_rule": "R1'",
+      "evidence_summary": "原作はライトノベルで本文中に「漫画」「コミカライズ」等の語が一切登場しない。infoboxの終了号は非null(「未完」)だが、これが漫画版の状態を裏付けるか本文からは確認できない。",
+      "confused": true
+    },
+    {
+      "title": "ニチアサ以外はやってます!",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2023年4月号(年入り)、終了日も年入り。",
+      "confused": false
+    },
+    {
+      "title": "デビルマンG",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に2012年5月号から2014年2月号までの連載期間が明記(年入り)、全5巻確定。",
+      "confused": false
+    },
+    {
+      "title": "天堂家物語",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「連載中」の明記があり、既刊17巻(2026年3月5日現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "ゴロロ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2012年7月号(年入り)、全6巻確定。",
+      "confused": false
+    },
+    {
+      "title": "モリモリッ!ばんちょー!!キヨハラくん",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2003年4月号から2005年12月号まで連載された」と明記(年入り)、全3巻確定。後続の「中断」はシリーズ全体の別作品に関する記述。",
+      "confused": true
+    },
+    {
+      "title": "ヴァンピアーズ",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "終了号2023年5月号(年入り)、終了日も年入り、全9巻確定。",
+      "confused": false
+    },
+    {
+      "title": "ローカル女子の遠吠え",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に『まんがタイム』での連載が「継続」と明記、既刊12巻(2025年12月5日現在)で直近の活動が確認できる。",
+      "confused": false
+    },
+    {
+      "title": "ハムスターの研究レポート",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2017年12月…これで『完結』と銘打たれた」と明記。",
+      "confused": false
+    },
+    {
+      "title": "今日も一日",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「1966年6月21日まで全1450回連載された」と明記、発表期間も年入り。",
+      "confused": false
+    },
+    {
+      "title": "戦国小町苦労譚",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文にコミカライズが「連載されている」と現在形で明記、既刊20巻(2026年6月現在)で直近の活動が確認できる。",
+      "confused": false
+    }
+  ]
+}
