@@ -8,7 +8,7 @@
     "sroffset": 5000,
     "raw_candidates": 500,
     "deduped": 490,
-    "exclusion_set_file": "step90_1_used_titles.json（1233件、リポジトリ外。census・旧30件・新30件・85-2・Issue #41母集団・テストフィクスチャ実在タイトル等の既使用タイトルを網羅）",
+    "exclusion_set_file": "docs/holdout_pool_2026-08/step90_1_used_titles.json（1233件。census・旧30件・新30件・85-2・Issue #41母集団・テストフィクスチャ実在タイトル等の既使用タイトルを網羅。PR #177でリポジトリ内へ移設済み）",
     "after_exclusion": 462,
     "draws": [
       {
