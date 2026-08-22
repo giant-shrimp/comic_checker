@@ -1,0 +1,584 @@
+{
+  "segment": "61-90",
+  "count": 30,
+  "labels": [
+    {
+      "title": "鉄娘な3姉妹",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2010年12月号をもって終了した」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ファイアパンチ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2016年4月18日から2018年1月1日まで...連載された」と明記。インフォボックス終了日も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "外道坊",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2006年から2009年まで...連載された」と明記。インフォボックス終了も非null（R3'該当）。中盤の改題は同一連載内の出来事。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "可愛いたぬきも楽じゃない",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2017年5月号より連載中」の明記があるが、巻数欄（書籍版2018年2月・電子版2022年4月時点）はいずれも3年以上前の情報でやや古い。明示的な継続記述がありR6は不成立、いずれの規則にも該当せず本文の記述を採用したが、裏付け情報が古いため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "おれと一乃のゲーム同好会活動日誌",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルは「2010年7月から2014年5月まで刊行された」、コミカライズも「2012年1月号から2013年2月号まで掲載された」といずれも過去形で明記。extractにコミカライズの語があるためR1'不成立、両者の終了フィールドが非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "世紀末★ダーリン",
+      "expected_status": "判定不能",
+      "applied_rule": "R6",
+      "evidence_summary": "本文は1994年の初刊行とメディアミックスのみに触れ、連載中・完結等の明示的な記述が無い。4期にわたるインフォボックスはいずれも終了号・終了日フィールドを持たず「発売日」の範囲表記のみで、R3'は不成立。最新（4期目）の巻数欄「既刊7巻（2012年11月28日時点）」が唯一の手がかりであり、基準年月が3年以上前（R6該当）。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "四十七大戦",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本タイトル自身は「2021年8月26日から2023年4月13日まで連載された」と明記、インフォボックス終了日も非null（R3'該当）。続編『四十七大戦+』が別タイトルとして連載中と本文にあり、対象タイトルとの切り分けが必要で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ギリシャ神話劇場 神々と人々の日々",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "『ジャンプ改』『小説すばる』を通じ「連載」と過去形で明記。インフォボックス終了号・終了日とも非null（R3'該当）。移籍中の休載は解消済み。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ステルス交境曲",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「短期間で連載が終了した」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "女子小学生はじめましたP!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2014年12月から2019年18号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "トカゲの王",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルの終了フィールドは空欄で状況不明だが、コミカライズは「連載された」と過去形で明記されインフォボックス終了号も非null（R3'該当）。extractにコミカライズの語があるためR1'不成立。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "煙と蜜",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「Vol.59より連載中」の明記があり、巻数欄も既刊7巻（2026年3月現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ことはの王子様",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "インフォボックス終了欄に文字通り「休載中」と記載されている。この値は「連載中」の文字列を含まないためR3'の除外規定には形式上該当しないが、明らかに完結の記録ではないため、infobox_fieldsの値に「休載中」が含まれる場合として実質的にR4条件を適用（完結・打ち切りの明示的宣言は記事中に無い）。この判断はI-002として別途記録する解釈上の論点である。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "アーサーGARAGE",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "第1部（2002-2005・全5巻）・第2部『熱血中古車屋魂!!』（2006-2010・全15巻）とも本文で「連載された」と過去形、インフォボックス終了フィールドも両方非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "思春期ビターチェンジ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2012年10月25日から2019年1月24日まで連載された」と明記。インフォボックス終了日も非null（R3'該当）。ウェブ版前身の休止は別作品の記述。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "紫電改のマキ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2013年10月号から2020年2月号まで連載」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "さつきばれっ!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2007年11月号から2008年8月号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "花は咲くか",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "終了号・終了日フィールドは空欄だが、発表期間フィールドに「2006年8月〜2015年1月」と終了時期が非null・「連載中」不含で記載されており、これをR3'の終了号/終了日に相当するものとして扱った（本文も「連載された」と過去形）。フィールド名が非標準的で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "虹をよぶ拳",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1969年から1971年まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ダーリンは70歳",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2014年23号から連載中」の明記があり、その他欄には2026年3号で「ダーリンは81歳」に改題した記録まであり、直近まで連載継続が確認できる。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "チョコレート・クリスマス",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1987年12月号と1988年1月号に前後編が掲載された」と明記。インフォボックス終了号も非null（R3'該当）。全1巻の完結した2話読み切り。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "GIRL FRIENDS",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「Vol.19からVol.65まで連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ゆりてつ 私立百合ヶ咲女子高鉄道部",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2011年4月号から2013年11月号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。後継作『ギャル鉃』への伏線は別タイトルの話。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "おたんこナース",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1995年から1998年にかけて連載された」と明記。インフォボックス終了日も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "食キング",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（1999-2004）は本文で「連載した」と過去形、続編『極食キング』（2009-2012）もインフォボックス終了日が非null（R3'該当）。両ブロックとも終了済みで矛盾無し。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ごきチャ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2011年9月号から2016年8月号にかけて定期連載された」と明記。インフォボックス終了号・終了日とも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "アイドルのあかほん",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2006年28号から48号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "いつか、眠りにつく日",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作小説は複数版あり状況は多岐にわたるが、コミカライズは「2021年4月号より2022年9月号まで...連載された」と過去形で明記されインフォボックス終了号も非null（R3'該当）。extractにコミカライズの語があるためR1'不成立。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "海皇紀",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1998年３月号より2010年８月号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。連載中の一時休載は解消済みの過去の出来事。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ぷいぷい!",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベル（『ぷりぷり!!』へ改題後の分も含む）は「2010年2月まで刊行された」、コミカライズも「2009年4月号まで連載された」といずれも過去形で明記。extractにコミカライズの語があるためR1'不成立、終了フィールドも非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    }
+  ]
+}

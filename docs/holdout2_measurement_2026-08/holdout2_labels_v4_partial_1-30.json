@@ -1,0 +1,648 @@
+{
+  "segment": "1-30",
+  "count": 30,
+  "labels": [
+    {
+      "title": "チチチチ",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2013年No.11から連載中」の明記があり、巻数欄も既刊9巻（2026年4月20日現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ちいさいひと 青葉児童相談所物語",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（2010年49号-2012年29号→サンデーS 2013年12月号）・新章（2016年9月号-2024年1月号）とも「連載された」と過去形で明記され、両インフォボックスの終了号・終了日も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "Theチェリー・プロジェクト",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1990年から1991年まで連載された」と過去形で明記。インフォボックス終了=1991年12月号（非null、R3'該当）。単行本全3巻で完結。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "東山道転墜異聞",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に完結・連載中等の明示的な語は無いが、「1998年、桜桃書房よりGUSTにて連載されGUSTコミックスで出版」と過去形で記述され、巻数=2（既刊ではなく固定巻数）、2005年に新装版が出版された旨も過去の出来事として記される。終了号・終了日は空欄でR3'不成立、いずれの規則にも該当せず通常の読解で完結と判断した。明示的な語が無いため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "僕の呪いの吸血姫",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2021年8月号（7月12日発売）より連載中」の明記があり、巻数欄も既刊9巻（2026年4月11日現在）と直近の更新。終了号・終了日は空欄。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "盟約のリヴァイアサン",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルは「2012年から2016年まで全8巻が刊行された」、コミカライズも「2013年12月号から2015年3月号まで...連載され」といずれも過去形で明記。extractにコミカライズの語があるためR1'は不成立、コミカライズ側インフォボックスの終了号（2015年3月号、非null・「連載中」不含）でR3'該当。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "MEAN 遥かなる歌",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "インフォボックス終了=2009年3月11日（非null、「連載中」不含のためR3'該当、完結）。ただし本文では『月刊マガジンZ』休刊に伴う『ヒーロークロスライン第一期』終了という外的事情での連載終了であった旨が記され、10年以上後の2019年に同人誌『完結編』で物語が結末を迎えたという経緯も記述されており、通常の完結とは性質が異なるため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "Half&half",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2012年10月号から2015年6月号まで連載された」と過去形で明記。インフォボックス終了号=2015年6月号（非null、R3'該当）。単行本全2巻。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "月に吠えらんねえ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2013年11月号から2019年9月号まで連載」と明記。インフォボックス終了=2019年9月号（非null、R3'該当）。全11巻。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "S線上のテナ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文は「創刊号から2010年10月号まで連載された」とする一方、インフォボックス終了は「2010年8月」となっており終了時期の記載に食い違いがある（いずれも連載終了自体は一致）。終了フィールドは非nullでR3'該当・完結と判断したが、日付の不一致がある点で判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "15歳、今日から同棲はじめます。",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「2014年12月より...配信中」の明記があるが、唯一の手がかりである巻数欄「既刊3巻（2018年4月現在）」は約8年前の情報で古い。明示的な継続記述があるためR6は不成立、いずれの規則にも該当せず本文の「配信中」を採用したが、裏付け情報が古いため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "ポピーザぱフォーマー",
+      "expected_status": "完結",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「...講談社「月刊マガジンZ」で連載されていた」と過去形の記述があり、巻数=全1巻（既刊ではなく固定）。放送は2000-2001年で完結済みの旧作。終了号・終了日は空欄でR3'不成立、いずれの規則にも該当せず通常の読解で完結と判断。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "みそララ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "終了号フィールドに「2012年12月号（本文『第一部・完』）」と「Web BULL：4号-13号（以後休載）」が併記されており、フィールド非null・「連載中」文字列を含まないためR3'（完結）が機械的に該当する。しかし本文は2022年にWeb BULLで連載再開後、フィールド上「以後休載」と記されており、実質的には第一部完結後の不定期連載パターン（R5相当）に近く、R3'の『完結』判定とは緊張関係にあるため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "CHARON",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2013年42号から2014年4・5合併号まで連載された」に加え、本文に『打ち切りとも言えるような形で連載が終了した』と明示。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "EDEN 〜It's an Endless World!〜",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「2008年8月号にて完結している」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "飴色紅茶館歓談",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文は一話読み切りの経緯や再録を記すのみで完結の明言は無いが、インフォボックス終了号=2011年11月号が非null・「連載中」を含まないためR3'該当。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "清村くんと杉小路くんと",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "3期にわたる連載（清杉と2000-2002・清杉よ2002-2005・清杉ろ2008-2012）いずれもインフォボックス終了号が非null（R3'該当）。最新の清杉ろも2012年6月号終了で以降の続報は無い。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ループ7回目の悪役令嬢は、元敵国で自由気ままな花嫁生活を満喫する",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "原作小説「2020年2月から連載中」、コミカライズも「最新話を掲載している」と本文に明記。コミカライズの語があるためR1'不成立、終了号・終了日は小説・漫画とも空欄でR3'不成立、他の規則も該当せず、本文の明記通り連載中と判断。巻数欄も既刊6巻（2023年12月現在）・既刊8巻（2025年12月現在）と比較的直近。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "俺たちのフィールド",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「1992年3・4合併号から1998年45号まで連載された」と明記。インフォボックス終了も非null（R3'該当）。全34巻。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "大人にゃ恋の仕方がわからねぇ!",
+      "expected_status": "連載中",
+      "applied_rule": "なし",
+      "evidence_summary": "本文に「...連載されており」の明記があるが、唯一の手がかりである巻数欄「既刊3巻（2020年10月現在）」は約5年10ヶ月前の情報で古い。明示的な継続記述があるためR6は不成立、いずれの規則にも該当せず本文の記述を採用したが、裏付け情報が古いため判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "title": "新新宿駅企画課 あるぷすひろば",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「同年12月号で連載終了」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "プリティフェイス",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本文に「連載開始から約1年で終了した」と明記。インフォボックス終了も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "まんがかぞく",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「2010年7月6日号から2011年12月20日号まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "BAKUDAN",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "インフォボックス終了号=1995年8号が非null（R3'該当）。本文自体はBAKUDANの終了を明言していないが（『打ち切り』の言及は同作者の別作品『瑪羅門の家族』についての記述）、終了号フィールドから完結と判断。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "齢5000年の草食ドラゴン、いわれなき邪竜認定",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作小説「2017年6月から2020年6月にかけて連載された」、コミカライズも「2018年2月から2019年12月にかけて...連載された」といずれも過去形で明記。extractにコミカライズの語があるためR1'不成立、両者の終了号・終了日が非null（R3'該当）。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "世界の終わりに柴犬と",
+      "expected_status": "判定不能",
+      "applied_rule": "R6",
+      "evidence_summary": "本文に連載中・完結等の明示的な記述は無く、判定材料として使えるのは巻数欄「既刊4巻（2022年10月時点）」のみで、この基準年月は3年以上前（R6該当）。よって判定不能。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": false
+        },
+        {
+          "rule_id": "R5",
+          "matched": false
+        },
+        {
+          "rule_id": "R2",
+          "matched": false
+        },
+        {
+          "rule_id": "R6",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "月の夜 星の朝",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "本編（1983年2月号-1985年11月号）が本文に「連載された」と明記され、インフォボックス終了号も非null（R3'該当）。スピンオフ2作（35ans:2009-2012・D.S.:2013-2014）も終了号がいずれも非null。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "蟲と眼球シリーズ",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "原作ライトノベルは「2005年6月から2007年5月まで刊行された」と明記され、終了フィールドも非null（R3'該当）。extractにコミカライズの語があるためR1'不成立。ただしコミカライズ版自体の開始号・終了号はインフォボックス上「情報求」（未記載）で個別の連載期間が不明であり、判断に迷った。",
+      "confused": true,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "ハツカネズミの時間",
+      "expected_status": "完結",
+      "applied_rule": "R3'",
+      "evidence_summary": "「モーニングで連載開始し、月刊アフタヌーンに移籍して2008年まで連載された」と明記。インフォボックス終了号も非null（R3'該当）。全4巻。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "title": "魔女と野獣",
+      "expected_status": "判定不能",
+      "applied_rule": "R4",
+      "evidence_summary": "本文に「2021年6号より連載中」との記述の後、「2023年1号より休載中」と明記されており、『休載中』の文字列を含み、かつ完結・打ち切りの明示的宣言は無い（R4該当、優先ノートにより時系列的に後の休載記述を優先）。巻数欄も既刊10巻（2022年8月19日現在）で約4年前とやや古く、休載継続の判断と整合的。",
+      "confused": false,
+      "rule_trace": [
+        {
+          "rule_id": "R1'",
+          "matched": false
+        },
+        {
+          "rule_id": "R3'",
+          "matched": false
+        },
+        {
+          "rule_id": "R4",
+          "matched": true
+        }
+      ]
+    }
+  ]
+}
