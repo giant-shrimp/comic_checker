@@ -1,0 +1,114 @@
+{
+  "purpose": "prereg_rules_v4.md §6 が記入必須と定める human_evidence を含む，再スポットチェック20件の人手判断記入用ファイル。本ブロック時点では未記入。",
+  "prereg": "docs/holdout2_measurement_2026-08/prereg_rules_v4.md",
+  "prereg_md5": "5dc3d0d8a138e6aeefe713c94e09b64d",
+  "value_domain_human_status": [
+    "連載中",
+    "完結",
+    "判定不能",
+    ""
+  ],
+  "count": 20,
+  "records": [
+    {
+      "item_id": "S01",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S02",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S03",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S04",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S05",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S06",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S07",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S08",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S09",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S10",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S11",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S12",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S13",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S14",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S15",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S16",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S17",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S18",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S19",
+      "human_status": "",
+      "human_evidence": ""
+    },
+    {
+      "item_id": "S20",
+      "human_status": "",
+      "human_evidence": ""
+    }
+  ]
+}

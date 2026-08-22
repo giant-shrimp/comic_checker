@@ -1,0 +1,52 @@
+{
+  "purpose": "prereg_rules_v4.md §6-§7 が定める再スポットチェック用の新標本20件の抽出記録，および同§7(c)が定めるkの確定記録。",
+  "prereg": "docs/holdout2_measurement_2026-08/prereg_rules_v4.md",
+  "prereg_md5": "5dc3d0d8a138e6aeefe713c94e09b64d",
+  "extraction": {
+    "population_definition": "holdout2 119件から，spotcheck20_human_labels.json の title フィールドで特定した前回スポットチェック済み20件を除いた99件。",
+    "population_count": 99,
+    "seed": 2026,
+    "seed_source": "prereg_rules_v4.md §6 に明記された値をそのまま使用（新規選定なし）。",
+    "algorithm": "母集団99件をタイトル昇順（Python標準の文字列比較）でソートした上で random.Random(2026).sample(population_sorted, 20) を適用。",
+    "algorithm_rationale": "docs/holdout2_measurement_2026-08/README.md に記載された原初抽出（未消費262件を昇順ソートし random.Random(158).sample(pool, 120)）と同一方式であり，本プロジェクトの既存前例に整合する非恣意的な手順。",
+    "command": "import random\npopulation_sorted = sorted(population_99)\nsample = random.Random(2026).sample(population_sorted, 20)",
+    "extracted_at_utc": "2026-08-21T18:16:14Z"
+  },
+  "sample_count": 20,
+  "sample_titles": [
+    "お前ら全員めんどくさい!",
+    "ステルス交境曲",
+    "四十七大戦",
+    "土下座で頼んでみた",
+    "源君物語",
+    "いつか、眠りにつく日",
+    "ゆりてつ 私立百合ヶ咲女子高鉄道部",
+    "戦国小町苦労譚",
+    "東山道転墜異聞",
+    "天堂家物語",
+    "モンキーピーク",
+    "女神の鬼",
+    "夢みる太陽",
+    "超犬リープ",
+    "齢5000年の草食ドラゴン、いわれなき邪竜認定",
+    "僕の呪いの吸血姫",
+    "飴色紅茶館歓談",
+    "戦う!セバスチャン",
+    "レース鳩0777",
+    "わ!"
+  ],
+  "k": {
+    "value": 4,
+    "method": "抽出20件について holdout2_labels_v4.json の confused フラグを参照し，confused=true の件数を数える（prereg_rules_v4.md §7(c) 手順1-2）。",
+    "confused_true_titles": [
+      "四十七大戦",
+      "土下座で頼んでみた",
+      "東山道転墜異聞",
+      "戦う!セバスチャン"
+    ],
+    "total_confused_119": 21,
+    "total_confused_exceeds_30": false
+  },
+  "judgment_criterion": "不一致件数 > k ならば「ラベル品質に問題あり」と判定する（prereg_rules_v4.md §7(c)）。",
+  "human_judgment": "未着手。次ブロックで実施する（本ファイル作成時点では欄を設けない）。"
+}
