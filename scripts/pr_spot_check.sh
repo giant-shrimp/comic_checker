@@ -17,13 +17,28 @@ set -euo pipefail
 PERIOD_DAYS="${1:-30}"
 SEED="${2:-0}"
 SAMPLE_SIZE="${3:-3}"
+# 母集団の絞り込み範囲。"code"（既定）はコード変更PRのみ、"all"は絞り込み
+# 無し（従来どおり全PR対象）。既定を"code"にした根拠は実測に基づく
+# （直近30日130件中、comic_checker/・tests/・scripts/配下の変更を1つも
+# 含まないPRが87件＝66.9%を占めた。無作為抽出のままではドキュメント/記録
+# のみのPRが選ばれやすく、実際に初回運用〔seed=20260825〕で3件とも
+# ドキュメント系になり、「コードの理解が失われているか」を検知できなかった）。
+SCOPE="${4:-code}"
+
+# コード変更PRと判定するパスのパターン。1箇所変更すれば差し替えられる。
+CODE_PATH_PATTERN='^(comic_checker|tests|scripts)/'
+
+if [ "$SCOPE" != "code" ] && [ "$SCOPE" != "all" ]; then
+  echo "エラー: 第4引数（絞り込み範囲）は code または all を指定してください（渡された値: ${SCOPE}）" >&2
+  exit 1
+fi
 
 for name_val in "PERIOD_DAYS:$PERIOD_DAYS" "SEED:$SEED" "SAMPLE_SIZE:$SAMPLE_SIZE"; do
   name="${name_val%%:*}"
   val="${name_val#*:}"
   if ! [[ "$val" =~ ^[0-9]+$ ]]; then
     echo "エラー: ${name} は0以上の整数で指定してください（渡された値: ${val}）" >&2
-    echo "使い方: $0 [集計期間の日数=30] [seed=0] [抽出件数=3]" >&2
+    echo "使い方: $0 [集計期間の日数=30] [seed=0] [抽出件数=3] [絞り込み範囲=code|all（既定code）]" >&2
     exit 1
   fi
 done
@@ -34,15 +49,30 @@ command -v python3 >/dev/null 2>&1 || { echo "エラー: python3 が必要です
 
 SINCE="$(date -u -d "-${PERIOD_DAYS} days" +%Y-%m-%d)"
 
-PR_CMD="gh pr list --state merged --search \"merged:>=${SINCE}\" --limit 500 --json number,title,additions,deletions,changedFiles,url"
-PR_JSON="$(gh pr list --state merged --search "merged:>=${SINCE}" --limit 500 --json number,title,additions,deletions,changedFiles,url)" \
+PR_CMD="gh pr list --state merged --search \"merged:>=${SINCE}\" --limit 500 --json number,title,additions,deletions,changedFiles,url,files"
+PR_JSON_RAW="$(gh pr list --state merged --search "merged:>=${SINCE}" --limit 500 --json number,title,additions,deletions,changedFiles,url,files)" \
   || { echo "エラー: マージ済みPR一覧の取得に失敗しました" >&2; exit 1; }
+
+RAW_TOTAL="$(echo "$PR_JSON_RAW" | jq 'length')"
+
+if [ "$SCOPE" = "code" ]; then
+  PR_JSON="$(echo "$PR_JSON_RAW" | jq --arg pat "$CODE_PATH_PATTERN" \
+    '[.[] | select(any(.files[]; .path | test($pat)))]')"
+else
+  PR_JSON="$PR_JSON_RAW"
+fi
 
 TOTAL="$(echo "$PR_JSON" | jq 'length')"
 
-echo "=== マージ済みPRの抜き取り確認（集計期間: 直近${PERIOD_DAYS}日、${SINCE}以降、seed=${SEED}） ==="
-echo "算出コマンド（母集団）: $PR_CMD"
-echo "母集団のPR数（期間内・全体）: ${TOTAL}"
+echo "=== マージ済みPRの抜き取り確認（集計期間: 直近${PERIOD_DAYS}日、${SINCE}以降、seed=${SEED}、絞り込み範囲=${SCOPE}） ==="
+echo "算出コマンド（母集団の取得）: $PR_CMD"
+if [ "$SCOPE" = "code" ]; then
+  echo "算出コマンド（絞り込み）: jq 'select(any(.files[]; .path | test(\"${CODE_PATH_PATTERN}\")))'"
+  echo "母集団のPR数（期間内・絞り込み前）: ${RAW_TOTAL}"
+  echo "母集団のPR数（期間内・コード変更PRのみ）: ${TOTAL}"
+else
+  echo "母集団のPR数（期間内・全体、絞り込み無し）: ${TOTAL}"
+fi
 echo
 
 if [ "$TOTAL" -eq 0 ]; then
