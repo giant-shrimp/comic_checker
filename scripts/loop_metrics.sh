@@ -8,10 +8,15 @@
 # 提言は一切出力しない（読み方は計画書 Phase 7 を参照すること）。
 #
 # 取得可能性は指標ごとに異なる（docs/runbook.md「月次の効果測定」参照）:
-#   - 採用率: 取得可能。ただしAI製PRと人間製PRを機械的に区別する手段が
-#     本リポジトリには無い（全PRのauthorが同一アカウントに帰属し、
-#     ラベル運用も無い）ため、全PRを対象にした値のみを出す。
-#     参考情報として loop/<issue> ブランチ由来PR数も併記する。
+#   - 採用率: 取得可能。全PRのauthorが同一アカウントに帰属するため、
+#     ラベル運用（AI_LABEL）が無い限りAI製PRと人間製PRを機械的に区別
+#     できず、全PR対象の値のみを出す。ラベル運用がある場合はAI製PR限定の
+#     値も併せて出す（実行時にラベルの使用実績を確認して分岐する。
+#     固定文言では書かない）。
+#     いずれの値も、本プロジェクトの運用（対話セッションで verify.sh を
+#     通してからPRを作る）により構造的に100%へ張り付きやすく、計画書
+#     Phase 7 の「50%を下回ったら赤信号」という判定基準は、この分母の
+#     ままでは機能しない。
 #   - コスト: 条件付き。scripts/work_loop.sh の実行ログ（logs/run_*.json）
 #     に total_cost_usd が記録されるが、logs/ は .gitignore 対象で
 #     永続化されない設計（Phase4完了条件）。ログが無ければ「取得不能」。
@@ -76,10 +81,27 @@ PR_TOTAL="$(echo "$PR_JSON" | jq 'length')"
 PR_MERGED="$(echo "$PR_JSON" | jq '[.[] | select(.state=="MERGED")] | length')"
 PR_LOOP="$(echo "$PR_JSON" | jq '[.[] | select(.headRefName | startswith("loop/"))] | length')"
 
+# 「ラベルが1件も付いていない」を「該当期間に0件」と区別するため、
+# 期間を絞らず全期間でこのラベルの使用実績があるかを先に確認する
+# （bugラベルの判定〔指標3〕と同じパターン）。存在しないラベル名を
+# 指定しても gh は空配列を返すだけでエラーにならないため
+# （実測済み）、この事前チェックが無いと「未運用」と「該当0件」を
+# 区別できず、静かに 0% を出す経路になる。
+# ここで先に判定するのは、指標1の注記自体をラベル運用の実態に応じて
+# 出し分けるため（欠陥1の修正: 固定文言のまま「ラベル運用も無い」と
+# 書き続けると、運用開始後の出力と矛盾する）。
+AI_LABEL_EVER="$(gh pr list --state all --label "$AI_LABEL" --limit 1 --json number | jq 'length')" \
+  || { echo "エラー: ${AI_LABEL}ラベルの確認に失敗しました" >&2; exit 1; }
+
 echo "--- 指標1: 採用率 ---"
-echo "注記: AI製PRと人間製PRを機械的に区別する手段が本リポジトリには無い"
-echo "（全PRのauthorが同一アカウントに帰属し、ラベル運用も無い、実測済み）。"
-echo "そのため全PRを対象にした値のみを出す。"
+if [ "$AI_LABEL_EVER" -eq 0 ]; then
+  echo "注記: AI製PRと人間製PRを機械的に区別する手段が本リポジトリには無い"
+  echo "（全PRのauthorが同一アカウントに帰属し、${AI_LABEL}ラベルの運用実績も無い、実測済み）。"
+  echo "そのため全PRを対象にした値のみを出す。"
+else
+  echo "注記: ${AI_LABEL}ラベルの運用実績があるため、全PR対象の値に加えて、"
+  echo "${AI_LABEL}ラベルによるAI製PR限定の値（下記「指標1（続き）」）も出す。"
+fi
 col "作成されたPR数（全体）" "$PR_TOTAL" "$PR_CMD"
 col "MERGEDされたPR数（全体）" "$PR_MERGED" "$PR_CMD | jq 'select(.state==\"MERGED\")'"
 if [ "$PR_TOTAL" -gt 0 ]; then
@@ -88,19 +110,15 @@ else
   RATE="対象PR無し"
 fi
 col "採用率（MERGED/作成、全PR対象）" "$RATE" "MERGED数 / 作成数"
+echo "注記（欠陥2の記録・修正はしない）: この値は構造的に100%へ張り付きやすい。"
+echo "本プロジェクトは対話セッションで ./scripts/verify.sh を通してからPRを作る"
+echo "運用のため、「作られたPR」を分母にする限り不採用がほぼ発生しない。"
+echo "計画書Phase7の「採用率50%を下回ったら赤信号」という判定基準は、この分母の"
+echo "ままでは機能しない。100%という値は品質の高さを示すものではない。"
 col "参考: loop/<issue> ブランチ由来PR数" "$PR_LOOP" "$PR_CMD | jq 'select(.headRefName|startswith(\"loop/\"))'"
 echo
 
 # --- 指標1（続き）: ラベルによるAI製PR限定の採用率 ---
-# 「ラベルが1件も付いていない」を「該当期間に0件」と区別するため、
-# 期間を絞らず全期間でこのラベルの使用実績があるかを先に確認する
-# （bugラベルの判定〔指標3〕と同じパターン）。存在しないラベル名を
-# 指定しても gh は空配列を返すだけでエラーにならないため
-# （実測済み）、この事前チェックが無いと「未運用」と「該当0件」を
-# 区別できず、静かに 0% を出す経路になる。
-AI_LABEL_EVER="$(gh pr list --state all --label "$AI_LABEL" --limit 1 --json number | jq 'length')" \
-  || { echo "エラー: ${AI_LABEL}ラベルの確認に失敗しました" >&2; exit 1; }
-
 echo "--- 指標1（続き）: ${AI_LABEL}ラベルによるAI製PR限定の採用率 ---"
 if [ "$AI_LABEL_EVER" -eq 0 ]; then
   col "AI製PR限定の採用率" "取得不能" \
@@ -115,6 +133,9 @@ else
   if [ "$AI_PR_TOTAL" -gt 0 ]; then
     AI_RATE="$(python3 -c "print(f'{${AI_PR_MERGED} / ${AI_PR_TOTAL} * 100:.1f}%')")"
     col "AI製PR限定の採用率" "$AI_RATE" "MERGED数 / ${AI_LABEL}ラベル付きPR数（期間内）"
+    echo "注記（欠陥2の記録・修正はしない）: この値も上記「全PR対象」と同じ構造的"
+    echo "理由（検証後にPRを作る運用）により100%へ張り付きやすい。品質の高さを"
+    echo "示すものではない。"
   else
     col "AI製PR限定の採用率" "取得不能" \
       "理由: ${AI_LABEL}ラベルは全期間で使われているが、指定した期間（${SINCE}以降）には該当PRが無い"
