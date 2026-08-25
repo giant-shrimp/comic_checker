@@ -303,27 +303,19 @@ PR番号・タイトル・変更ファイル数・差分行数・URLという事
    保たれている」の根拠とする。
 
 この判定を成立させるには、PR本文の冒頭に1行要約が置かれている必要がある。
-`.github/PULL_REQUEST_TEMPLATE.md`は本節作成時点で**存在しない**
-（実測: `find .github -iname "*PULL_REQUEST_TEMPLATE*"`が空）。新設すれば
-GitHub上でPR作成時に本文へ自動挿入されるため、書き忘れを構造的に防げる
-（`verify.sh`や`.githooks/pre-push`と同じ「構造で守る」考え方）。ただし
-`.github/**`はADR-003によりAIの編集対象から外れているため、**テンプレートの
-下書きを提示し、配置は人間が行う。**
+**`.github/PULL_REQUEST_TEMPLATE.md`は配置済み**（ADR-003の手順どおり、
+AIが下書きを提示し人間が配置。内容はAI提示分とdiff照合済み、完全一致を
+確認済み）。GitHub上でPR作成時に本文へ自動挿入されるため、書き忘れを
+構造的に防げる（`verify.sh`や`.githooks/pre-push`と同じ「構造で守る」
+考え方）。内容は`.github/PULL_REQUEST_TEMPLATE.md`本体を参照する
+（`.github/**`はADR-003によりAIの編集対象から外れているため、本文書には
+複製しない。複製すると2箇所が食い違いうる）。
 
-下書き（`.github/PULL_REQUEST_TEMPLATE.md`として配置する想定）:
-
-```markdown
-<!--
-冒頭に「なぜこの変更が必要だったか」を1行で書いてください。
-マージ済みPRの抜き取り確認（docs/runbook.md）で、この1行だけを読んで
-判定します。詳細を書く欄は下にあります。
--->
-なぜ必要か:
-
-## 概要
-
-## 検証
-```
+GitHubの`community/profile` API（`gh api repos/<owner>/<repo>/community/
+profile`）の`files.pull_request_template`フィールドで、GitHub側が
+このファイルを実際にテンプレートとして認識しているかを確認できる
+（配置直後・未pushの時点では`null`になる。`main`へマージされてから
+確認すること）。
 
 このテンプレートを新設しない場合は、runbookに運用ルールとして書くだけに
 留める選択肢もあるが、実効性はテンプレートに劣る（PR作成の都度、書き手が
