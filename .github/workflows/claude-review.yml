@@ -86,6 +86,7 @@ jobs:
           fi
 
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v4
         # fetch-depth: 0 / ref: refs/pull/<n>/head は指定していない。
         # pull_request トリガーでは actions/checkout の既定動作が
@@ -169,9 +170,10 @@ jobs:
             根拠を示せない指摘は書かないでください。
           # --max-budget-usd は付けていない（ADR-005）。OAuth経由はドル建て
           # 従量課金ではないため、このフラグに対応する予算上限が存在しない。
-          # --max-turns を代わりの歯止めとして使う。値（35）の根拠は
-          # ERRORS.md「claude-review.yml（Phase 5 Step 1）: num_turns
-          # 探り実測（作業19〜21）で分かったこと・分からなかったこと」を参照。
+          # --max-turns を代わりの歯止めとして使う。値の由来:
+          #   初期値35の根拠はERRORS.md「claude-review.yml（Phase 5 Step 1）:
+          #      num_turns探り実測（作業19〜21）で分かったこと・分からなかったこと」。
+          #      当時の観測は12〜21ターンのクラスタだった。
           #
           # --allowedTools は Read,Glob,Grep のみに絞った。gh CLIでの
           # diff/PR情報取得は指示していない。tagモードは fetchGitHubData()
@@ -192,6 +194,26 @@ jobs:
           claude_args: "--model sonnet --max-turns 35 --allowedTools Read,Glob,Grep --disallowedTools mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files"
 
       - name: Verify a substantive review was posted
+        # PR #149（run 31804568563）で「Claude PR Review」がmax-turns超過に
+        # より失敗し、このステップが暗黙のif: success()によりスキップされた。
+        # 「実質的なレビューが投稿されているか」の機械的確認は、上限超過の
+        # ときこそ必要なのに、まさにそのときだけ働かない構造になっていた。
+        # !cancelled()（always()ではない）を使うのは、人間が手動でワークフローを
+        # キャンセルした場合にまでこのステップを強制実行する理由が無いため
+        # （キャンセルはmax-turns超過とは別の状況で、無意味な追加失敗を生むだけ）。
+        # steps.checkout.outcome == 'success' で絞るのは、fork PR拒否
+        # （「Reject cross-repository (fork) PR」がexit 1する経路）で
+        # Checkout自体がスキップされたケースを除外するため。この場合、
+        # トラッキングコメントは存在せず、Verifyを走らせても無意味な失敗を
+        # 追加するだけになる。
+        #
+        # 【未検証】このif:を追加した場合に、ジョブ全体の結論が実際に
+        # failureのまま保たれることは、GitHub Actionsの文書化された挙動
+        # （いずれかのステップがfailureならジョブ全体もfailureという集約規則、
+        # continue-on-errorが無い限り後続ステップの成否では上書きされない）
+        # から導いた判断であり、このリポジトリで実際に1回runさせて確認した
+        # ものではない。適用後の最初のrunで確認すること。
+        if: "!cancelled() && steps.checkout.outcome == 'success'"
         # 実行前後のコメント数比較ではなく、最終コメント本文の中身を検証する
         # （tagモードは実行前にトラッキング用コメントを作成するため、
         # 件数比較は常に「増加」を示してしまい機能しない。ERRORS.md参照）。
