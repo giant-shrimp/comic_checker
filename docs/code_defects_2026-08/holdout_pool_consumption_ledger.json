@@ -44,6 +44,7 @@
     ],
     "current_remaining": 142,
     "remaining_pool_note": "step93_2_holdout_pool.jsonの362件からseed=93の100件・seed=158の120件を除いた142件。まだ抽出していない。",
+    "note_on_262_references": "本ファイル内で『残存262件』『pool_before: 262』等として登場する262という値は、draws配列のseed=93消費後（2026-08-13）からseed=158消費前（2026-08-21）までの間だけ正しかった中間時点の値である。具体的には designed_not_yet_executed[0] の cancellation_reason・seed_reservation_note・method、および global_seed_usage 配列の seed=517・seed=158 エントリ内の記述がこれに該当する（各エントリの date フィールドで時点を確認できる）。現時点で正しい残数は、直上の current_remaining（142）である。この注記は2026-08-25に追記した。既存の数値・記述は履歴として書き換えていない。",
     "designed_not_yet_executed": [
       {
         "seed": 517,
@@ -73,7 +74,13 @@
           "誰かこの状況を説明してください!", "東山道転墜異聞", "将来的に死んでくれ",
           "生理ちゃん", "3D甲子園 プラコン大作", "四十七大戦",
           "シュガーポットのないしょ話", "さつきばれっ!"
-        ]
+        ],
+        "holdout2_overlap_check": {
+          "checked_at": "2026-08-25",
+          "duplicate_count": 22,
+          "derivation_command": "python3 -c \"import json; a=set(json.load(open('docs/code_defects_2026-08/holdout_pool_consumption_ledger.json'))['pool_hastemplate_infobox_animanga_manga']['designed_not_yet_executed'][0]['titles']); b=set(json.load(open('docs/holdout2_measurement_2026-08/holdout2_sample_titles.json'))['sample_titles']); print(len(a & b))\"",
+          "note": "この50件（seed=517、未取得のまま予約）とholdout2（seed=158、2026-08-21取得済み、120件）は、いずれも同じ『残存262件』プールから独立に選ばれたため22件が重複している。seed=517は取得（extract/wikitext取得）を実行していないため、現時点でこの重複自体が標本を汚染してはいない。将来この予約を復活させる場合、重複する22件はholdout2として既に別目的（Issue #180の評価用）で消費済みであり、そのまま流用すると標本の独立性が崩れる。復活させる場合は、この22件を除いた残り28件に加えて、現在の未消費142件プールから新たに再選定する必要がある。"
+        }
       }
     ]
   },
