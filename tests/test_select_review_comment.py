@@ -116,12 +116,11 @@ def test_empty_comments_list_fails_closed():
 # 実データ。リポジトリ外の作業ディレクトリにあり、このリポジトリの
 # バージョン管理対象ではない）。
 #
-# 個人名（GitHubアカウント名）除去について: 元データの body には
-# `@giant-shrimp`（アカウント名へのメンション）と
-# `github.com/giant-shrimp/comic_checker`（URLパス中のアカウント名）が
-# 含まれていたため、いずれも `@USERNAME` / `github.com/OWNER/REPO` の
-# プレースホルダに置換した。author.login の値（"github-actions"）は
-# GitHub Actionsの投稿者名であり個人名ではないため、そのまま使用している。
+# 個人名（GitHubアカウント名）除去について: 元データの body にはアカウント名への
+# メンションと、URLパス中のアカウント名が含まれていたため、それぞれ
+# `@USERNAME` / `github.com/OWNER/REPO` のプレースホルダに置換した。
+# author.login の値（"github-actions"）は GitHub Actionsの投稿者名であり
+# 個人名ではないため、そのまま使用している。
 #
 # 事前登録: 手順1の実測（19件の実データ pr*_comments.json 全件、および
 # 現行の `gh pr view <n> --json comments` の出力）で、author.login の値は
