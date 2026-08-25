@@ -149,3 +149,23 @@ Actions タブ → 実行中のワークフロー実行を選択 → **Cancel wo
   `iter-N` を1つずつ取り出して手動で `./scripts/verify.sh` を回して確認する
 - `main` まで戻す必要が生じた場合も同様に、`revert` 後に `verify.sh` を
   実行してから push する
+
+## 5. 月次の効果測定
+
+`scripts/loop_metrics.sh` で、AI Loop実装計画書 Phase 7 が挙げる効果測定
+指標を集計する。数値と算出コマンドのみを出力し、評価・提言は行わない
+（読み方は `ai-loop-implementation-plan_v8.md` Phase 7「効果を測る」を
+参照する）。
+
+```bash
+./scripts/loop_metrics.sh        # 既定: 直近30日
+./scripts/loop_metrics.sh 7      # 集計期間を日数で指定（例: 直近7日）
+```
+
+依存: `gh`（認証済みであること）・`jq`。読み取りのみで、GitHubの設定・
+issue・PRは一切変更しない。
+
+出力される指標のうち、現時点で「取得不能」と出るものがある（受け入れ
+1件あたりのコスト、verify.shをすり抜けた不具合の件数）。これは実測に
+基づく判断であり、実装漏れではない。理由は各行に出力される。取得
+可能にするための条件（bugラベルの運用開始等）も同じ行に記載される。
