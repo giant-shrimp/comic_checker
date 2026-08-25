@@ -24,6 +24,16 @@ set -euo pipefail
 
 PERIOD_DAYS="${1:-30}"
 
+# AI製PRを区別するラベル名。手順2の推奨案（ai-authored 1種類のみ）を
+# 仮採用している。ラベル運用が実際に始まったら、この1行だけを変更すれば
+# 差し替えられる。ラベル自体はこのスクリプトでは作成しない
+# （`gh label create` は実行しない。docs/runbook.md 参照）。
+AI_LABEL="ai-authored"
+
+# ラベル運用を開始した日（YYYY-MM-DD）。未運用のうちは空のままにする。
+# 運用を開始したら、この行に開始日を設定する。
+AI_LABEL_START_DATE=""
+
 if ! [[ "$PERIOD_DAYS" =~ ^[0-9]+$ ]]; then
   echo "エラー: 集計期間は正の整数（日数）で指定してください。例: $0 30" >&2
   exit 1
@@ -79,6 +89,40 @@ else
 fi
 col "採用率（MERGED/作成、全PR対象）" "$RATE" "MERGED数 / 作成数"
 col "参考: loop/<issue> ブランチ由来PR数" "$PR_LOOP" "$PR_CMD | jq 'select(.headRefName|startswith(\"loop/\"))'"
+echo
+
+# --- 指標1（続き）: ラベルによるAI製PR限定の採用率 ---
+# 「ラベルが1件も付いていない」を「該当期間に0件」と区別するため、
+# 期間を絞らず全期間でこのラベルの使用実績があるかを先に確認する
+# （bugラベルの判定〔指標3〕と同じパターン）。存在しないラベル名を
+# 指定しても gh は空配列を返すだけでエラーにならないため
+# （実測済み）、この事前チェックが無いと「未運用」と「該当0件」を
+# 区別できず、静かに 0% を出す経路になる。
+AI_LABEL_EVER="$(gh pr list --state all --label "$AI_LABEL" --limit 1 --json number | jq 'length')" \
+  || { echo "エラー: ${AI_LABEL}ラベルの確認に失敗しました" >&2; exit 1; }
+
+echo "--- 指標1（続き）: ${AI_LABEL}ラベルによるAI製PR限定の採用率 ---"
+if [ "$AI_LABEL_EVER" -eq 0 ]; then
+  col "AI製PR限定の採用率" "取得不能" \
+    "理由: ${AI_LABEL}ラベルの付与実績が無い（実測: gh pr list --label ${AI_LABEL} が全期間で0件）。ラベル運用が未開始のため、上の「全PR対象」の値のみが利用できる"
+else
+  AI_PR_CMD="gh pr list --state all --label \"${AI_LABEL}\" --search \"created:>=${SINCE}\" --limit 500 --json number,state"
+  AI_PR_JSON="$(gh pr list --state all --label "$AI_LABEL" --search "created:>=${SINCE}" --limit 500 --json number,state)" \
+    || { echo "エラー: ${AI_LABEL}ラベル付きPRの期間集計に失敗しました" >&2; exit 1; }
+  AI_PR_TOTAL="$(echo "$AI_PR_JSON" | jq 'length')"
+  AI_PR_MERGED="$(echo "$AI_PR_JSON" | jq '[.[] | select(.state=="MERGED")] | length')"
+  col "${AI_LABEL}ラベル付きPR数（作成、期間内）" "$AI_PR_TOTAL" "$AI_PR_CMD"
+  if [ "$AI_PR_TOTAL" -gt 0 ]; then
+    AI_RATE="$(python3 -c "print(f'{${AI_PR_MERGED} / ${AI_PR_TOTAL} * 100:.1f}%')")"
+    col "AI製PR限定の採用率" "$AI_RATE" "MERGED数 / ${AI_LABEL}ラベル付きPR数（期間内）"
+  else
+    col "AI製PR限定の採用率" "取得不能" \
+      "理由: ${AI_LABEL}ラベルは全期間で使われているが、指定した期間（${SINCE}以降）には該当PRが無い"
+  fi
+  if [ -n "$AI_LABEL_START_DATE" ] && [[ "$SINCE" < "$AI_LABEL_START_DATE" ]]; then
+    echo "注記: 集計期間の開始（${SINCE}）がラベル運用開始日（${AI_LABEL_START_DATE}）より前のため、運用開始前の期間はラベルによる絞り込みの対象外になっている。"
+  fi
+fi
 echo
 
 # ---------------------------------------------------------------------------
