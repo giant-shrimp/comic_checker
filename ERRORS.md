@@ -30,9 +30,14 @@
    `scripts/work_loop.settings.json`（`git commit`/`git push`/`git add`を常にdeny）を
    `--settings`で追加読み込みさせる方式に変更した。**プロンプト文面で「commitして」と
    明示してもdenyは緩まないことを実測で確認済み**（denyは権限システム側の強制であり、
-   モデルへの指示ではないため）。commitを許可したい場合は、`work_loop.sh`の呼び出し元が
-   環境変数`ALLOW_COMMIT=1`を明示的に設定する必要がある（プロンプト文言ではなく、
-   スクリプト起動時の帯域外の手段で許可する設計）。この過程で、`disable-model-invocation:
+   モデルへの指示ではないため）。**当時は**、commitを許可したい場合は`work_loop.sh`の
+   呼び出し元が環境変数`ALLOW_COMMIT=1`を明示的に設定する必要がある（プロンプト文言
+   ではなく、スクリプト起動時の帯域外の手段で許可する設計）**と考えていたが、この
+   迂回路はオール・オア・ナッシング（`work_loop.settings.json`の読み込みを丸ごと止める）
+   という設計上の問題があったため、導入から66分後に撤去された**（コミット3341902で
+   導入、6d7ef64で撤去。根拠は`scripts/loop_git.sh`の該当コメント。
+   `grep -n "ALLOW_COMMIT" scripts/loop_git.sh`で再取得できる）。現在の`work_loop.sh`に
+   環境変数等による迂回路は無い。この過程で、`disable-model-invocation:
    true`のスキルは`-p`のプロンプト文字列にリテラルな`/skill-name`呼び出しが無い限り
    自動発火せず、SKILL.mdの内容が一度もコンテキストに読み込まれないことも判明したため、
    `work_loop.sh`のPROMPTを`/work ${ISSUE}`のリテラル呼び出しに修正した。
