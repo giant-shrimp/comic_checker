@@ -120,3 +120,28 @@ def test_verdict_done_returns_exit_0(tmp_path):
     result = _run_process_result(tmp_path)
     assert result.returncode == 0
     assert (tmp_path / "verdict.txt").read_text(encoding="utf-8").strip() == "DONE"
+
+
+def test_verdict_line_present_but_not_on_first_line_returns_exit_3(tmp_path):
+    """(9) `VERDICT: APPROVE_CONTINUE`という行自体は存在するが1行目ではなく
+    3行目にあるならexit 3（1行目限定が外れていないことを確認する）。
+
+    ケース3（本文中にAPPROVE_CONTINUEという裸の単語を含むだけでVERDICT:
+    接頭辞を伴わない）とは違い、これは「VERDICT: <値>」という行自体が
+    本文のどこかに実在するケースである。1行目限定を外し本文全体から
+    grep等で検索する変異は、ケース3では検出できないことが実測で判明した
+    （VERDICT: 接頭辞を伴わない裸の単語には元々ヒットしないため）。
+    このケースはその変異を確実に検出するために追加した。
+    """
+    _write_result_json(
+        tmp_path,
+        result=(
+            "この監査は以下の通りである。\n"
+            "本文の続きはこちら。\n"
+            "VERDICT: APPROVE_CONTINUE\n"
+            "\nCONTRADICTIONS:\n- なし\n"
+        ),
+    )
+    result = _run_process_result(tmp_path)
+    assert result.returncode == 3
+    assert not (tmp_path / "verdict.txt").exists()
