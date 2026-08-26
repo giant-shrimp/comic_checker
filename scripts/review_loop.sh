@@ -84,6 +84,22 @@ snapshot() {
 
 command -v jq >/dev/null || die "jq が必要です（brew install jq / apt install jq）"
 
+# ブランチ検査（work_loop.shのプリフライト4と同じ流儀。エラーメッセージの
+# 書き方・git rev-parse --abbrev-ref HEADによる取得・exit 1の前提条件エラー
+# 扱いを揃えた）。ただし判定の向きはwork_loop.shとは逆になる。work_loop.sh
+# はmainから新しいループブランチを分岐させるためmain "である"ことを要求するが、
+# review_loop.shは実行役に既存の作業ブランチ上でファイルを編集させる設計
+# （新しいブランチをこのスクリプト自身が作ることはしない）なので、main "で
+# ない"ことを要求する。main上で実行すると、実行役の変更がそのままmainの
+# 作業ツリーに入ってしまう。
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$CURRENT_BRANCH" = "main" ]; then
+  echo "review_loop.sh: エラー: main 上で実行しています。" >&2
+  echo "      作業用ブランチを作成してから再実行してください（例:" >&2
+  echo "      git checkout -b fix/some-topic）。" >&2
+  exit 1
+fi
+
 INSTRUCTION_FILE="$1"
 [ -f "$INSTRUCTION_FILE" ] || die "instruction-file が存在しません: ${INSTRUCTION_FILE}"
 INSTRUCTION_FILE="$(cd "$(dirname "$INSTRUCTION_FILE")" && pwd)/$(basename "$INSTRUCTION_FILE")"
