@@ -1503,6 +1503,14 @@ ADR-011の「review_loop」設計時等）、同じ誤解を避けるための�
 
 ## `review_loop.sh`: 次ラウンドのinstructionに監査役のFOLLOWUPSが混入する（ADR-011段階1の判断材料収集で発覚、未検証の経路）
 
+**ADR-012（`docs/decisions/ADR-012-stage1-decision.md`）決定3により修正済み。**
+`build_next_instruction()`関数を新設し、`c`選択時に`review.md`全体では
+なく、FOLLOWUPS節を機械的に除去した内容（VERDICT行＋CONTRADICTIONS節）
+を次のinstructionにするよう変更した。変異テスト2種（FOLLOWUPS除去を
+無効化する変異、除去範囲を広げすぎてCONTRADICTIONSまで消す変異）で、
+対応するテストが実際に落ちることを確認済み。以下は発見時の記録として
+節ごと残す。
+
 **発見の経緯**: ADR-011段階0の初回試走（`docs/ai_loop_state/
 review_loop_trial_2026-08-26.md`）は1ラウンドで人間が`q`を選び終了した
 ため、`c`を選んで次ラウンドへ進む経路は一度も通っていなかった。段階1

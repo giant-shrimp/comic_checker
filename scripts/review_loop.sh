@@ -80,6 +80,20 @@ snapshot() {
   } | sha256sum | cut -d' ' -f1
 }
 
+# ADR-012決定3: 次ラウンドのinstructionからFOLLOWUPS節を機械的に除去する。
+# review.md（監査役の出力全文）のうち、FOLLOWUPS:行より前（VERDICT行＋
+# CONTRADICTIONS節）だけをout_fileへ書き出す。CONTRADICTIONS節だけを渡す
+# 案C（ADR-012決定1で却下）とは異なり、VERDICT行を含めた大部分をそのまま
+# 残す最小限の修正であることに注意（設計判断の理由はADR-012本文を参照）。
+# 変異テストで単体検証できるよう、review_audit.shのreview_audit_process_result
+# と同様に独立した関数にしてある。
+build_next_instruction() {
+  local review_md="$1" out_file="$2"
+  awk '/^FOLLOWUPS:/{exit} {print}' "$review_md" > "$out_file"
+}
+
+main() {
+
 [ "$#" -eq 1 ] || usage
 
 command -v jq >/dev/null || die "jq が必要です（brew install jq / apt install jq）"
@@ -208,7 +222,8 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
       c)
         PREV_VERDICT="$VERDICT"
         PREV_SNAPSHOT="$ROUND_SNAPSHOT"
-        CURRENT_INSTRUCTION_FILE="${ROUND_DIR}/review.md"
+        build_next_instruction "${ROUND_DIR}/review.md" "${ROUND_DIR}/next_instruction.md"
+        CURRENT_INSTRUCTION_FILE="${ROUND_DIR}/next_instruction.md"
         break
         ;;
       q)
@@ -221,3 +236,12 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
     esac
   done
 done
+
+}
+
+# 変異テストからこのファイルを`source`してbuild_next_instructionだけを
+# 直接呼び出せるよう、実行ファイルとして呼ばれたときだけmainを走らせる
+# （review_audit.shと同じ流儀）。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
