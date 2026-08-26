@@ -1417,3 +1417,48 @@ seed=517は未取得のため現時点で標本の汚染は起きていないが
 相互の重複を確認しない」という失敗パターン自体を機械的に防止する仕組み
 （`verify.sh`のゲート等）は無く、今後も同種の標本管理作業のたびに、
 同じ判断力に依存した再発防止が必要になるため。
+
+## CI（非対話）環境のclaude-reviewで、`--allowedTools`に無いBashコマンドの一部は通り一部は拒否される権限ゲートを発見した（Issue #91調査、PR #208 / run 32858669412）
+
+**発見**: `.github/workflows/claude-review.yml`は`--allowedTools Read,Glob,Grep`
+`--disallowedTools mcp__github_file_ops__commit_files,mcp__github_file_ops__
+delete_files`を指定しているが、実際にSDKへ渡される`allowedTools`はこれより
+広く、`Glob, Grep, LS, Read, mcp__github_comment__update_claude_comment,
+mcp__github_ci__*（3種）, Bash(git add:*), Bash(git commit:*),
+Bash(<git-push.sh>:*), Bash(git rm:*)`だった（PR #208のrunログで実測）。
+このいずれにも該当しない`git diff origin/main...HEAD -- ...`は実行が通り、
+同じくいずれにも該当しない`python3 -c "..."`（PRの主張する重複件数を
+独立検証しようとした操作）は拒否された。
+
+**拒否の実測値**: `decision_reason="This command requires approval"`、
+`non_execution_kind="user-rejected"`（PR #208 / run 32858669412）。
+
+**含意**: `--disallowedTools`（特定ツール名を名指しで禁止する仕組み）とは別に、
+Bashコマンド単位で承認要否を判定する権限ゲートが存在する。非対話（CI）環境
+では、人間が承認できないため「要承認」と判定されたコマンドは自動的に拒否
+（`user-rejected`）される。どの基準で「要承認」と判定されるかは、明示された
+`allowedTools`リストとの単純な一致では説明できない（`git diff`は非該当でも
+通った）。
+
+**限界（過度な一般化をしないこと）**: この拒否はBash経由の`python3`実行に
+対するものであり、Issue #91が本来問うている`mcp__github_file_ops__
+commit_files`/`delete_files`への拒否ではない。この2ツールへの呼び出し試行は
+Issue #91の実測4件（PR #204・#205・#206・#208）を通じて一貫して0件であり、
+「拒否ログが無いこと」は依然として「拒否機構が機能していない」ことの証拠にも
+「機能している」ことの証拠にもならない（判別不能のまま）。**「Bashの権限
+ゲートが機能している」という今回の発見を、「file_opsの拒否も機能している」
+という主張に拡張してはならない。** 両者は別の仕組みであり、実測の対象も別。
+
+**実務上の影響**: claude-reviewがPRの主張（本件では標本重複22件という
+数値）を独立に再実行して検証しようとしても、検証に使うコマンドの種類に
+よっては拒否されうる。レビューが「言われたことをそのまま信じるしかない」
+状態になりうる点は、レビューの実効性に関わる。
+
+**分類の判断**: 本記録は`docs/errors_md_inventory.md`の分類基準でいう
+**B（再発しうる・パターンとして有効）**に該当すると判断する。根拠:
+今回の発見はPR #208という1件のrunの実測に基づくが、「明示された
+allowedTools/disallowedToolsの一覧だけでは、実際にどのBashコマンドが
+通り、どれが拒否されるかを予測できない」という構造自体は解消されておらず、
+今後Issue #91の実測を継続するたびに、同じ誤読（部分的な拒否ログを見て
+無関係な仕組みの動作を早合点する等）を避ける注意力に依存した再発防止が
+必要になるため。
