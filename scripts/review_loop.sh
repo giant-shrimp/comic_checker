@@ -34,14 +34,19 @@
 #
 # 終了コード:
 #   0   人間が q を選んで正常終了（起案役の呼び出しが失敗した場合・起案役が
-#       NO_FURTHER_ACTIONと判断した場合も、人間が q を押してここへ合流する。
+#       NO_FURTHER_ACTIONと判断した場合・実行役がis_error=trueで終了した場合
+#       （Issue #223）も、人間が q を押してここへ合流する。
 #       ADR-014が「未決定」として残していた「起案役の失敗に新しい終了コードを
 #       新設するか否か」は、**新設しない**と判断した。決定8が定める扱いは
 #       「HALT_NEEDS_HUMAN相当／DONE相当として人間の判断待ちにする」ことであり、
 #       これは既存のq限定入力待ちの分岐でそのまま表現できる。ループは
 #       強制終了せず人間の入力を待つため、停止条件（exit 10-12）のような
-#       新しい終了コードを必要としない）
-#   2   実行役の呼び出し自体が失敗（timeoutでexecutor_result.jsonが空/不正なJSON）
+#       新しい終了コードを必要としない。実行役のis_error=true検出（Issue #223）
+#       も同じ思想で同じ扱いとし、新しい終了コードは割り当てていない）
+#   2   実行役の呼び出し自体が失敗（timeoutでexecutor_result.jsonが空/不正なJSON。
+#       executor_result.jsonが有効なJSONだがis_error=trueの場合はexit 2ではなく
+#       上記exit 0の経路に入る。「呼び出し自体の失敗」と「呼び出しは成立したが
+#       完了しなかった」を区別している。Issue #223）
 #   10  停止条件: ラウンド数上限に到達
 #   11  停止条件: 同一VERDICTが2ラウンド連続
 #   12  停止条件: no-opハッシュが前ラウンドと不変
@@ -148,6 +153,48 @@ propose_next_instruction() {
   return 0
 }
 
+# Issue #223: 実行役呼び出し直後のexecutor_result.jsonを検査する。
+# 「呼び出し自体の失敗（executor_result.jsonが空/不正なJSON）」と
+# 「呼び出しは成立したが実行役が完了しなかった（is_error=true。典型例:
+# max_turns到達）」を区別する。前者を検出しないままだと、後者のケースで
+# 空のreport.mdのまま監査役へ進んでしまう欠陥があった
+# （docs/ai_loop_state/review_loop_trial3_2026-08-29.md「4. 欠陥1」）。
+#
+# claudeを呼ばずにこの関数だけを試せるよう、executor_result.jsonが既に
+# round_dirに存在する前提で動く独立した関数にしてある（変異テスト用。
+# review_audit.shのreview_audit_process_result()と同じ流儀）。is_error=true
+# の場合、terminal_reason・num_turnsを画面へ出力する（呼び出し元でwait_for_
+# quit_onlyへ渡す前の、人間向けの診断表示）。
+#
+# 戻り値（$?）:
+#   0  is_error=false（従来どおり後続処理へ進んでよい）
+#   1  is_error=true（実行役が完了しなかった。診断情報を画面へ出力済み）
+#   2  executor_result.jsonが空/不正なJSON（呼び出し自体の失敗）
+check_executor_result() {
+  local round_dir="$1"
+  local executor_result="${round_dir}/executor_result.json"
+
+  if [ ! -s "$executor_result" ] || ! jq -e . "$executor_result" >/dev/null 2>&1; then
+    return 2
+  fi
+
+  local is_error
+  is_error="$(jq -r '.is_error // false' "$executor_result")"
+  if [ "$is_error" = "true" ]; then
+    local terminal_reason num_turns
+    terminal_reason="$(jq -r '.terminal_reason // "unknown"' "$executor_result")"
+    num_turns="$(jq -r '.num_turns // "unknown"' "$executor_result")"
+    echo "--- 実行役が正常終了しませんでした ---"
+    echo "terminal_reason : ${terminal_reason}"
+    echo "num_turns       : ${num_turns}"
+    echo "executor_result : ${executor_result}"
+    echo "executor_err    : ${round_dir}/executor_result.err"
+    return 1
+  fi
+
+  return 0
+}
+
 # 人間の1キー入力（q のみ）を待つ。ADR-011決定8の「1キーで承認」という形式を
 # 保ったまま、続行できない理由が複数（VERDICTがHALT_NEEDS_HUMAN／DONE、
 # 起案役の呼び出し失敗、NO_FURTHER_ACTION）に増えたため関数へ切り出した。
@@ -227,11 +274,29 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
     > "${ROUND_DIR}/executor_result.json" \
     2> "${ROUND_DIR}/executor_result.err" || true
 
-  if [ ! -s "${ROUND_DIR}/executor_result.json" ] || ! jq -e . "${ROUND_DIR}/executor_result.json" >/dev/null 2>&1; then
+  executor_check=0
+  check_executor_result "$ROUND_DIR" || executor_check=$?
+
+  if [ "$executor_check" -eq 2 ]; then
     echo "review_loop.sh: 実行役の呼び出し自体が失敗しました。" >&2
     echo "  ${ROUND_DIR}/executor_result.err を確認してください（timeoutの可能性も含む）。" >&2
     exit 2
   fi
+
+  # Issue #223: 呼び出し自体（executor_result.jsonが有効なJSONであること）は
+  # 成立していても、is_error=trueは「実行役が最後まで完了しなかった」ことを
+  # 示す（典型例: max_turns到達）。exit 2（呼び出し自体の失敗）とは性質が
+  # 異なるため区別する。強制終了（新しいexit code）ではなく、ADR-014決定8が
+  # 起案役の失敗について採った「HALT_NEEDS_HUMAN相当として人間の判断待ちに
+  # する」という思想に揃え、wait_for_quit_only()でq限定の入力待ちにする。
+  # ADR-011決定8の1キー承認をここでも維持する。
+  if [ "$executor_check" -eq 1 ]; then
+    EXECUTOR_TERMINAL_REASON="$(jq -r '.terminal_reason // "unknown"' "${ROUND_DIR}/executor_result.json")"
+    wait_for_quit_only "実行役が正常終了しなかった（is_error=true, terminal_reason=${EXECUTOR_TERMINAL_REASON}）"
+    echo "review_loop.sh: round ${round} で終了します（実行役 is_error=true）。"
+    exit 0
+  fi
+
   jq -r '.result // empty' "${ROUND_DIR}/executor_result.json" > "${ROUND_DIR}/report.md"
 
   ./scripts/verify.sh > "${ROUND_DIR}/verify.txt" 2>&1 || true

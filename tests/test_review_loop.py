@@ -15,6 +15,7 @@ review_audit.shのようにsourceして関数単体を呼ぶことはできな�
 （main上では検査で止まり、main以外の場合も存在しないinstruction-fileの
 チェックで止まるようにテストしている）。
 """
+import json
 import subprocess
 
 from pathlib import Path
@@ -285,3 +286,108 @@ def test_build_next_instruction_is_fully_removed():
     code_lines = [line for line in SCRIPT_TEXT.splitlines()
                   if "build_next_instruction" in line and not line.strip().startswith("#")]
     assert code_lines == []
+
+
+# --- check_executor_result() のテスト（Issue #223） -------------------------
+#
+# ADR-014決定8と同じ思想で、実行役のis_error=trueもHALT_NEEDS_HUMAN相当として
+# 人間の判断待ちにする（強制終了ではなく、wait_for_quit_only()でq限定にする）。
+# review_audit.shのreview_audit_process_result()と同じ流儀で、claudeを呼ばず
+# 偽のexecutor_result.jsonを直接フィクスチャとして与えて検証する。
+
+def _write_executor_result(round_dir: Path, *, result: str = "", is_error: bool = False,
+                            terminal_reason: str = "completed", num_turns: int = 5) -> None:
+    (round_dir / "executor_result.json").write_text(
+        json.dumps(
+            {
+                "is_error": is_error,
+                "terminal_reason": terminal_reason,
+                "num_turns": num_turns,
+                "total_cost_usd": 0.1,
+                "permission_denials": [],
+                "result": result,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _run_check_executor_result(round_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; check_executor_result "$2"',
+         "_", str(SCRIPT), str(round_dir)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_check_executor_result_missing_json_returns_2(tmp_path):
+    """executor_result.jsonが存在しない（呼び出し自体の失敗を模す）ならexit 2。"""
+    result = _run_check_executor_result(tmp_path)
+    assert result.returncode == 2
+
+
+def test_check_executor_result_invalid_json_returns_2(tmp_path):
+    """executor_result.jsonが不正なJSONならexit 2。"""
+    (tmp_path / "executor_result.json").write_text("not json", encoding="utf-8")
+    result = _run_check_executor_result(tmp_path)
+    assert result.returncode == 2
+
+
+def test_check_executor_result_is_error_true_stops(tmp_path):
+    """(1) is_error=trueのとき停止する（戻り値1。exit 2でもexit 0でもない）。"""
+    _write_executor_result(tmp_path, is_error=True, terminal_reason="max_turns", num_turns=21)
+    result = _run_check_executor_result(tmp_path)
+    assert result.returncode == 1
+
+
+def test_check_executor_result_is_error_false_proceeds(tmp_path):
+    """(2) is_error=falseのとき従来どおり後続処理（監査役）へ進んでよい
+    （戻り値0）。"""
+    _write_executor_result(tmp_path, result="作業を完了しました。", is_error=False)
+    result = _run_check_executor_result(tmp_path)
+    assert result.returncode == 0
+
+
+def test_check_executor_result_prints_terminal_reason_and_num_turns(tmp_path):
+    """(3) terminal_reasonとnum_turnsが画面出力（stdout）に含まれる。"""
+    _write_executor_result(tmp_path, is_error=True, terminal_reason="max_turns", num_turns=21)
+    result = _run_check_executor_result(tmp_path)
+    assert "max_turns" in result.stdout
+    assert "21" in result.stdout
+
+
+def test_check_executor_result_is_error_false_does_not_print_diagnostics(tmp_path):
+    """（対照実験）is_error=falseのときは診断表示が出ない
+    （上のテストが「常に出力される」だけの弱いテストでないことを示す）。"""
+    _write_executor_result(tmp_path, result="ok", is_error=False, terminal_reason="completed")
+    result = _run_check_executor_result(tmp_path)
+    assert "実行役が正常終了しませんでした" not in result.stdout
+
+
+# --- main()内のexecutor_check分岐の構造テスト -------------------------------
+
+def test_executor_is_error_branch_uses_wait_for_quit_only_not_hard_exit():
+    """Issue #223: is_error=true（executor_check == 1）の分岐は、既存の
+    停止条件（exit 10/11/12）のような強制終了ではなく、wait_for_quit_only()
+    を経由してexit 0へ合流する（ADR-011決定8の1キー承認を維持する）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    branch_idx = next(i for i, line in enumerate(lines)
+                      if '"$executor_check" -eq 1' in line)
+    # 分岐内でwait_for_quit_onlyが呼ばれ、exit 10/11/12のような数値終了
+    # コードには到達しない（次の空行またはfiまでの範囲を見る）。
+    end_idx = next(i for i in range(branch_idx, len(lines)) if lines[i].strip() == "fi")
+    branch_body = lines[branch_idx:end_idx]
+    assert any("wait_for_quit_only" in line for line in branch_body)
+    assert any("exit 0" in line for line in branch_body)
+    assert not any(line.strip() in ("exit 10", "exit 11", "exit 12") for line in branch_body)
+
+
+def test_executor_check_call_precedes_report_md_extraction():
+    """check_executor_result()の呼び出しは、report.mdへの.result抽出より前に
+    ある（is_error検出が抜け道にならないよう、抽出の手前で必ず通過する）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    check_call_idx = next(i for i, line in enumerate(lines) if 'check_executor_result "$ROUND_DIR"' in line)
+    report_idx = next(i for i, line in enumerate(lines) if 'report.md"' in line and "jq -r '.result" in line)
+    assert check_call_idx < report_idx
