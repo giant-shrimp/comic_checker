@@ -133,11 +133,13 @@ snapshot() {
 #   2  起案役が「次にやることが無い」と判断した（NO_FURTHER_ACTION）。
 #      ADR-014決定8によりDONE相当として扱う（失敗ではない）
 propose_next_instruction() {
-  local original_instruction="$1" review_md="$2" round_dir="$3"
+  local original_instruction="$1" review_md="$2" round_dir="$3" executor_allowed="$4"
   local proposer_dir="${round_dir}/proposer"
 
+  # Issue #225: 起案役へ実行役の許可ツール一覧（EXECUTOR_ALLOWED）を渡し、
+  # 実行不可能なinstructionを生成しないよう制約する。
   local proposer_exit=0
-  "${SCRIPT_DIR}/review_proposer.sh" "$original_instruction" "$review_md" "$proposer_dir" \
+  "${SCRIPT_DIR}/review_proposer.sh" "$original_instruction" "$review_md" "$proposer_dir" "$executor_allowed" \
     || proposer_exit=$?
 
   if [ "$proposer_exit" -ne 0 ]; then
@@ -356,7 +358,7 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
   # 起案役を呼ぶ（ADR-014決定6。監査役の直後、人間の1キー入力より前）。
   echo "review_loop.sh: 起案役を呼び出しています（次ラウンドのinstructionを生成）..."
   propose_exit=0
-  propose_next_instruction "$ORIGINAL_INSTRUCTION_FILE" "${ROUND_DIR}/review.md" "$ROUND_DIR" \
+  propose_next_instruction "$ORIGINAL_INSTRUCTION_FILE" "${ROUND_DIR}/review.md" "$ROUND_DIR" "$EXECUTOR_ALLOWED" \
     || propose_exit=$?
 
   NEXT_INSTRUCTION_FILE="${ROUND_DIR}/proposer/next_instruction.md"
