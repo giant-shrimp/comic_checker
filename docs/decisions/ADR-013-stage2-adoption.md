@@ -5,6 +5,9 @@
 - **`docs/decisions/ADR-012-stage1-decision.md`決定2（段階0.5の採用）・決定4
   （段階2へ進む条件）をsupersedeする。決定1（案Cを採用しない）・決定3
   （FOLLOWUPS混入欠陥の修正）は有効なまま**
+- **`docs/decisions/ADR-014-proposer-design.md`により、決定4
+  （`build_next_instruction()`の`FOLLOWUPS:`依存への対処）がsupersedeされた。
+  決定1・2・3・5は有効なまま**
 
 ## 背景
 
