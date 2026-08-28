@@ -69,75 +69,219 @@ def test_passes_branch_check_on_non_main_branch(tmp_path):
     assert "instruction-file が存在しません" in result.stderr
 
 
-# --- build_next_instruction() のテスト（ADR-012決定3） ---------------------
+
+
+# --- propose_next_instruction() のテスト（ADR-014決定1・3・6・8） -----------
+#
+# ADR-014決定3により、旧 build_next_instruction()（review.mdをawkで機械抽出
+# して次のinstructionにする、ADR-012決定3の実装）は廃止した。その3件のテスト
+# も併せて削除し、置き換えとして本節を追加した。
 #
 # review_loop.shはmain()関数＋ソースガード（BASH_SOURCE比較）を持つため、
 # review_audit.shのreview_audit_process_result()と同じ方式で、sourceして
-# build_next_instructionだけを直接呼び出せる。claudeは呼ばない。
+# 個別の関数だけを直接呼び出せる。起案役の実体（scripts/review_proposer.sh、
+# 内部でclaudeを呼ぶ）は呼ばない。代わりに SCRIPT_DIR を一時ディレクトリへ
+# 差し替え、そこに置いた偽の review_proposer.sh を呼ばせる。
 
-REVIEW_MD_WITH_FOLLOWUPS = (
-    "VERDICT: REVISE\n"
-    "\n"
-    "CONTRADICTIONS:\n"
-    "- 報告書は「テストを追加した」と書いているが、diffにテストファイルの"
-    "変更が無い。\n"
-    "\n"
-    "FOLLOWUPS:\n"
-    "- コメントの根拠を追記するとよい。\n"
-    "- docs/architecture.mdの更新も検討すること。\n"
-)
+PROPOSER_STUB_HEADER = "#!/usr/bin/env bash\nset -euo pipefail\n"
 
 
-def _run_build_next_instruction(review_md: Path, out_file: Path) -> subprocess.CompletedProcess:
+def _install_proposer_stub(script_dir: Path, body: str) -> None:
+    """SCRIPT_DIR差し替え用の偽 review_proposer.sh を置く。
+
+    本物と同じ引数（original-instruction / review.md / output-dir）を受け取り、
+    argvを argv.txt に記録する。bodyで終了コードや出力を制御する。
+    """
+    stub = script_dir / "review_proposer.sh"
+    stub.write_text(
+        PROPOSER_STUB_HEADER
+        + 'mkdir -p "$3"\n'
+        + 'printf "%s\\n" "$1" "$2" "$3" > "$3/argv.txt"\n'
+        + body,
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+
+def _run_propose_next_instruction(script_dir: Path, original: Path, review_md: Path,
+                                  round_dir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", "-c", 'source "$1"; build_next_instruction "$2" "$3"',
-         "_", str(SCRIPT), str(review_md), str(out_file)],
+        ["bash", "-c",
+         'source "$1"; SCRIPT_DIR="$2"; propose_next_instruction "$3" "$4" "$5"',
+         "_", str(SCRIPT), str(script_dir), str(original), str(review_md), str(round_dir)],
         capture_output=True,
         text=True,
     )
 
 
-def test_build_next_instruction_strips_followups(tmp_path):
-    """FOLLOWUPS節は次のinstructionに含まれない（ADR-012決定3の本題）。"""
-    review_md = tmp_path / "review.md"
-    review_md.write_text(REVIEW_MD_WITH_FOLLOWUPS, encoding="utf-8")
-    out_file = tmp_path / "next_instruction.md"
-
-    result = _run_build_next_instruction(review_md, out_file)
-
-    assert result.returncode == 0
-    content = out_file.read_text(encoding="utf-8")
-    assert "FOLLOWUPS" not in content
-    assert "コメントの根拠を追記するとよい" not in content
-    assert "docs/architecture.mdの更新も検討すること" not in content
-
-
-def test_build_next_instruction_keeps_verdict_and_contradictions(tmp_path):
-    """VERDICT行とCONTRADICTIONS節の内容は保持される
-    （案C＝CONTRADICTIONSだけを渡す、とは異なる最小修正であることの確認）。"""
-    review_md = tmp_path / "review.md"
-    review_md.write_text(REVIEW_MD_WITH_FOLLOWUPS, encoding="utf-8")
-    out_file = tmp_path / "next_instruction.md"
-
-    result = _run_build_next_instruction(review_md, out_file)
-
-    assert result.returncode == 0
-    content = out_file.read_text(encoding="utf-8")
-    assert "VERDICT: REVISE" in content
-    assert "CONTRADICTIONS:" in content
-    assert "テストファイルの変更が無い" in content
-
-
-def test_build_next_instruction_handles_no_followups_marker(tmp_path):
-    """FOLLOWUPS:行が無い（想定外の出力形式）場合でもクラッシュせず、
-    全文がそのまま出力される。"""
+def _setup_round(tmp_path: Path) -> tuple:
+    """偽SCRIPT_DIR・元instruction・review.md・round_dirを用意する。"""
+    script_dir = tmp_path / "scripts"
+    script_dir.mkdir()
+    original = tmp_path / "instruction_round1.md"
+    original.write_text("§3-Cの記述を実態に合わせて修正せよ。\n", encoding="utf-8")
     review_md = tmp_path / "review.md"
     review_md.write_text("VERDICT: APPROVE_CONTINUE\n\nCONTRADICTIONS:\n- なし\n", encoding="utf-8")
-    out_file = tmp_path / "next_instruction.md"
+    round_dir = tmp_path / "round_1"
+    round_dir.mkdir()
+    return script_dir, original, review_md, round_dir
 
-    result = _run_build_next_instruction(review_md, out_file)
+
+def test_propose_next_instruction_passes_original_instruction(tmp_path):
+    """ADR-014決定1: 起案役へ渡される第1引数は「1ラウンド目のinstruction」で
+    あり、直近ラウンドのreview.mdではない（元のタスクの目的を保持する）。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(script_dir, 'echo "次の指示。" > "$3/next_instruction.md"\n')
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
 
     assert result.returncode == 0
-    content = out_file.read_text(encoding="utf-8")
-    assert "VERDICT: APPROVE_CONTINUE" in content
-    assert "CONTRADICTIONS:" in content
+    argv = (round_dir / "proposer" / "argv.txt").read_text(encoding="utf-8").splitlines()
+    assert argv[0] == str(original)
+    assert argv[1] == str(review_md)
+
+
+def test_propose_next_instruction_uses_proposer_subdir(tmp_path):
+    """起案役の出力先は round_N/proposer/ であり、round_N/ 直下ではない
+    （review_audit.shが同名で書く prompt.txt / result.json / metrics.json を
+    上書きしないための分離）。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    (round_dir / "result.json").write_text('{"auditor": "must survive"}', encoding="utf-8")
+    _install_proposer_stub(
+        script_dir,
+        'echo "次の指示。" > "$3/next_instruction.md"\n'
+        'echo "{\\"proposer\\": true}" > "$3/result.json"\n',
+    )
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 0
+    assert (round_dir / "proposer" / "next_instruction.md").exists()
+    # 監査役側の result.json が起案役に上書きされていない。
+    assert "must survive" in (round_dir / "result.json").read_text(encoding="utf-8")
+
+
+def test_propose_next_instruction_returns_1_on_proposer_failure(tmp_path):
+    """ADR-014決定8: 起案役の呼び出しが失敗（exit 2/3）したら戻り値1
+    （HALT_NEEDS_HUMAN相当）。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(script_dir, "exit 3\n")
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 1
+
+
+def test_propose_next_instruction_returns_2_on_no_further_action(tmp_path):
+    """ADR-014決定8: 1行目がNO_FURTHER_ACTIONなら戻り値2（DONE相当）。
+    これは失敗ではなく正常な判断であり、戻り値1と区別される。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(
+        script_dir,
+        'printf "NO_FURTHER_ACTION\\n本来の目的は達成済み。\\n" > "$3/next_instruction.md"\n',
+    )
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 2
+
+
+def test_propose_next_instruction_no_further_action_must_be_exact_first_line(tmp_path):
+    """NO_FURTHER_ACTIONが1行目に完全一致でなければマーカーとみなさない
+    （通常のinstructionとして戻り値0）。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(
+        script_dir,
+        'echo "NO_FURTHER_ACTIONではない。作業を続けよ。" > "$3/next_instruction.md"\n',
+    )
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 0
+
+
+# --- wait_for_quit_only() のテスト（ADR-011決定8の1キー承認を維持すること） ---
+
+
+def _run_wait_for_quit_only(keys: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; wait_for_quit_only "テスト理由"', "_", str(SCRIPT)],
+        input=keys,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_wait_for_quit_only_accepts_q(tmp_path):
+    """q の1キーで正常に抜ける（1キー入力という形式が保たれている）。"""
+    result = _run_wait_for_quit_only("q")
+    assert result.returncode == 0
+
+
+def test_wait_for_quit_only_rejects_c(tmp_path):
+    """c は受け付けない。ADR-014決定8が要求する「c を選べない」状態が、
+    起案役の失敗時・NO_FURTHER_ACTION時に共通で使われるこの関数で成立する。"""
+    result = _run_wait_for_quit_only("cq")
+    assert result.returncode == 0
+    assert "q のみ入力できます" in result.stdout
+
+
+# --- 停止条件・呼び出し位置の構造テスト -------------------------------------
+#
+# 以下はスクリプト本文に対する構造（静的）テストである。review_loop.shの
+# main()は実行役・監査役の実claude呼び出しを含み、ループ本体を丸ごとpytestで
+# 動かすことはできない（本ファイル冒頭のdocstring参照）。そのため「main()内の
+# 呼び出し位置・変数の使われ方」については、関数単体テストでは届かない範囲を
+# ソース本文の検査で補う。
+
+SCRIPT_TEXT = SCRIPT.read_text(encoding="utf-8")
+
+
+def test_original_instruction_file_is_never_reassigned_in_loop():
+    """ADR-014決定1: ORIGINAL_INSTRUCTION_FILEへの代入はループ開始前の1箇所
+    だけであり、ラウンドごとに上書きされない。"""
+    assignments = [line for line in SCRIPT_TEXT.splitlines()
+                   if line.strip().startswith("ORIGINAL_INSTRUCTION_FILE=")]
+    assert len(assignments) == 1
+
+
+def test_proposer_receives_original_not_current_instruction():
+    """ADR-014決定1: 起案役の呼び出しに渡すのはORIGINAL_INSTRUCTION_FILEで
+    あって、毎ラウンド上書きされるCURRENT_INSTRUCTION_FILEではない。"""
+    call_lines = [line for line in SCRIPT_TEXT.splitlines()
+                  if "propose_next_instruction " in line and "$ORIGINAL_INSTRUCTION_FILE" in line]
+    assert len(call_lines) == 1
+    assert "$CURRENT_INSTRUCTION_FILE" not in call_lines[0]
+
+
+def test_proposer_is_not_called_for_done_or_halt_verdicts():
+    """ADR-014決定6: VERDICTがDONE／HALT_NEEDS_HUMANのラウンドでは起案役を
+    呼ばない。該当分岐がexit 0で終わり、起案役の呼び出しより前に位置する。"""
+    lines = SCRIPT_TEXT.splitlines()
+    halt_branch = next(i for i, line in enumerate(lines)
+                       if '"$VERDICT" = "HALT_NEEDS_HUMAN"' in line and "if " in line)
+    propose_call = next(i for i, line in enumerate(lines)
+                        if "propose_next_instruction " in line and "$ORIGINAL_INSTRUCTION_FILE" in line)
+    assert halt_branch < propose_call
+    # 分岐内で exit 0 に到達し、起案役の呼び出しへ流れ落ちない。
+    assert any("exit 0" in line for line in lines[halt_branch:propose_call])
+
+
+def test_stop_condition_order_is_unchanged():
+    """ADR-014決定7: 停止条件3つのifの評価順は変更しない（実装は先送り）。
+    exit 10 → exit 11 → exit 12 の順のまま。"""
+    order = [line.strip() for line in SCRIPT_TEXT.splitlines()
+             if line.strip().startswith("exit 1") and line.strip() in ("exit 10", "exit 11", "exit 12")]
+    assert order == ["exit 10", "exit 11", "exit 12"]
+
+
+def test_build_next_instruction_is_fully_removed():
+    """ADR-014決定3: build_next_instruction()は廃止した。呼ばれない関数が
+    残っていないこと（定義・呼び出しが無く、経緯を説明するコメントのみ）。"""
+    assert "build_next_instruction()" not in SCRIPT_TEXT.replace(
+        "旧 build_next_instruction()", "").replace(
+        "build_next_instruction()による", "").replace(
+        "build_next_instruction()へのフォールバック", "")
+    code_lines = [line for line in SCRIPT_TEXT.splitlines()
+                  if "build_next_instruction" in line and not line.strip().startswith("#")]
+    assert code_lines == []
