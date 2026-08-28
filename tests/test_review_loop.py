@@ -87,17 +87,24 @@ def test_passes_branch_check_on_non_main_branch(tmp_path):
 PROPOSER_STUB_HEADER = "#!/usr/bin/env bash\nset -euo pipefail\n"
 
 
+# Issue #225: propose_next_instruction()は起案役へ実行役の許可ツール一覧も
+# 渡す。テスト全体で使う固定値（review_loop.shのEXECUTOR_ALLOWED既定値と
+# 同じ文字列である必要はないが、テストの可読性のため揃えてある）。
+EXECUTOR_ALLOWED_FOR_TEST = "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)"
+
+
 def _install_proposer_stub(script_dir: Path, body: str) -> None:
     """SCRIPT_DIR差し替え用の偽 review_proposer.sh を置く。
 
-    本物と同じ引数（original-instruction / review.md / output-dir）を受け取り、
-    argvを argv.txt に記録する。bodyで終了コードや出力を制御する。
+    本物と同じ引数（original-instruction / review.md / output-dir /
+    executor-allowed-tools）を受け取り、argvを argv.txt に記録する。
+    bodyで終了コードや出力を制御する。
     """
     stub = script_dir / "review_proposer.sh"
     stub.write_text(
         PROPOSER_STUB_HEADER
         + 'mkdir -p "$3"\n'
-        + 'printf "%s\\n" "$1" "$2" "$3" > "$3/argv.txt"\n'
+        + 'printf "%s\\n" "$1" "$2" "$3" "$4" > "$3/argv.txt"\n'
         + body,
         encoding="utf-8",
     )
@@ -105,11 +112,12 @@ def _install_proposer_stub(script_dir: Path, body: str) -> None:
 
 
 def _run_propose_next_instruction(script_dir: Path, original: Path, review_md: Path,
-                                  round_dir: Path) -> subprocess.CompletedProcess:
+                                  round_dir: Path,
+                                  executor_allowed: str = EXECUTOR_ALLOWED_FOR_TEST) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", "-c",
-         'source "$1"; SCRIPT_DIR="$2"; propose_next_instruction "$3" "$4" "$5"',
-         "_", str(SCRIPT), str(script_dir), str(original), str(review_md), str(round_dir)],
+         'source "$1"; SCRIPT_DIR="$2"; propose_next_instruction "$3" "$4" "$5" "$6"',
+         "_", str(SCRIPT), str(script_dir), str(original), str(review_md), str(round_dir), executor_allowed],
         capture_output=True,
         text=True,
     )
@@ -140,6 +148,20 @@ def test_propose_next_instruction_passes_original_instruction(tmp_path):
     argv = (round_dir / "proposer" / "argv.txt").read_text(encoding="utf-8").splitlines()
     assert argv[0] == str(original)
     assert argv[1] == str(review_md)
+
+
+def test_propose_next_instruction_passes_executor_allowed(tmp_path):
+    """Issue #225: 起案役へ渡される第4引数は実行役の許可ツール一覧
+    （EXECUTOR_ALLOWED）である。"""
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(script_dir, 'echo "次の指示。" > "$3/next_instruction.md"\n')
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir,
+                                            executor_allowed=EXECUTOR_ALLOWED_FOR_TEST)
+
+    assert result.returncode == 0
+    argv = (round_dir / "proposer" / "argv.txt").read_text(encoding="utf-8").splitlines()
+    assert argv[3] == EXECUTOR_ALLOWED_FOR_TEST
 
 
 def test_propose_next_instruction_uses_proposer_subdir(tmp_path):
@@ -253,6 +275,15 @@ def test_proposer_receives_original_not_current_instruction():
                   if "propose_next_instruction " in line and "$ORIGINAL_INSTRUCTION_FILE" in line]
     assert len(call_lines) == 1
     assert "$CURRENT_INSTRUCTION_FILE" not in call_lines[0]
+
+
+def test_proposer_call_site_passes_executor_allowed():
+    """Issue #225: review_loop.shがpropose_next_instruction()を呼ぶ箇所で、
+    実行役の許可ツール一覧（$EXECUTOR_ALLOWED）を渡していること。"""
+    call_lines = [line for line in SCRIPT_TEXT.splitlines()
+                  if "propose_next_instruction " in line and "$ORIGINAL_INSTRUCTION_FILE" in line]
+    assert len(call_lines) == 1
+    assert "$EXECUTOR_ALLOWED" in call_lines[0]
 
 
 def test_proposer_is_not_called_for_done_or_halt_verdicts():

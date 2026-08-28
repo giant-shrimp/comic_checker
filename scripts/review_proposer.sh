@@ -7,7 +7,15 @@
 # をファイルに残す」ことだけを行う。
 #
 # 使い方:
-#   ./scripts/review_proposer.sh <original-instruction-file> <review-md-file> <output-dir>
+#   ./scripts/review_proposer.sh <original-instruction-file> <review-md-file> <output-dir> [executor-allowed-tools]
+#
+# 第4引数 executor-allowed-tools は省略可（Issue #225）。実行役の
+# --allowedTools にそのまま渡すのと同じカンマ区切り文字列（例:
+# "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)"）を渡すと、
+# プロンプトの{{EXECUTOR_ALLOWED}}へ埋め込まれ、起案役が実行役の権限を
+# 踏まえたinstructionを書けるようになる。review_loop.sh経由の呼び出しでは
+# 常にEXECUTOR_ALLOWEDが渡される。省略時（review_proposer.shを単体で試す
+# 場合など）はEXECUTOR_ALLOWED_UNKNOWN_TEXTを使う。
 #
 # 出力（すべて <output-dir> 配下）:
 #   prompt.txt           実際に投入したプロンプト全文
@@ -46,15 +54,24 @@ CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-300}"
 # しており、プロンプトとスクリプトの両方でこの文言を一貫させる。
 NO_FURTHER_ACTION_MARKER="NO_FURTHER_ACTION"
 
+# Issue #225: executor-allowed-toolsが省略された場合（review_proposer.shを
+# review_loop.shを介さず単体で試す場合など）に{{EXECUTOR_ALLOWED}}へ埋め込む
+# 文言。空文字列のまま埋め込むとプロンプト上で「一覧が空＝何も使えない」と
+# 「一覧が渡されていない」を区別できなくなるため、明示的な文言にする。
+EXECUTOR_ALLOWED_UNKNOWN_TEXT="（不明。呼び出し元から実行役の許可ツール一覧が渡されていません）"
+
 usage() {
   cat >&2 <<'USAGE'
-usage: ./scripts/review_proposer.sh <original-instruction-file> <review-md-file> <output-dir>
+usage: ./scripts/review_proposer.sh <original-instruction-file> <review-md-file> <output-dir> [executor-allowed-tools]
 
   original-instruction-file  1ラウンド目のinstructionファイル（テキストファイル、事前に存在すること）
   review-md-file              直近ラウンドのreview.md（テキストファイル、事前に存在すること）
   output-dir                  出力先ディレクトリ（無ければ作成する）
+  executor-allowed-tools      省略可。実行役の--allowedToolsと同じカンマ区切り
+                              文字列（例: "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)"）。
+                              省略時はEXECUTOR_ALLOWED_UNKNOWN_TEXTを使う
 
-引数はちょうど3個。
+引数は3個または4個。
 USAGE
   exit 64
 }
@@ -64,16 +81,18 @@ die() {
   exit 1
 }
 
-# プレースホルダ {{ORIGINAL_INSTRUCTION}} / {{REVIEW}} を対応ファイルの中身で
-# 置換し、prompt_file へ書き出す。review_audit.shのrender_prompt()と同じ理由
+# プレースホルダ {{ORIGINAL_INSTRUCTION}} / {{REVIEW}} / {{EXECUTOR_ALLOWED}}
+# を置換し、prompt_file へ書き出す。review_audit.shのrender_prompt()と同じ理由
 # （sedの区切り文字と衝突しないよう、Pythonで単純文字列置換する。元のinstruction・
-# review.mdの中身に任意の文字が含まれうるため）。
+# review.mdの中身に任意の文字が含まれうるため）。executor_allowedはファイル
+# パスではなく文字列そのもの（ORIGINAL_INSTRUCTION/REVIEWと違いファイルの中身を
+# 読まない。Issue #225）。
 render_prompt() {
-  local template="$1" original_instruction_file="$2" review_file="$3" prompt_file="$4"
-  python3 - "$template" "$original_instruction_file" "$review_file" "$prompt_file" <<'PY'
+  local template="$1" original_instruction_file="$2" review_file="$3" executor_allowed="$4" prompt_file="$5"
+  python3 - "$template" "$original_instruction_file" "$review_file" "$executor_allowed" "$prompt_file" <<'PY'
 import sys
 
-template_path, original_path, review_path, out_path = sys.argv[1:5]
+template_path, original_path, review_path, executor_allowed, out_path = sys.argv[1:6]
 
 with open(template_path, encoding="utf-8") as f:
     text = f.read()
@@ -84,6 +103,7 @@ with open(review_path, encoding="utf-8") as f:
 
 text = text.replace("{{ORIGINAL_INSTRUCTION}}", original_text)
 text = text.replace("{{REVIEW}}", review_text)
+text = text.replace("{{EXECUTOR_ALLOWED}}", executor_allowed)
 
 with open(out_path, "w", encoding="utf-8") as f:
     f.write(text)
@@ -149,9 +169,10 @@ review_proposer_process_result() {
 }
 
 main() {
-  [ "$#" -eq 3 ] || usage
+  { [ "$#" -eq 3 ] || [ "$#" -eq 4 ]; } || usage
 
   local original_instruction_file="$1" review_file="$2" output_dir="$3"
+  local executor_allowed="${4:-$EXECUTOR_ALLOWED_UNKNOWN_TEXT}"
 
   command -v jq >/dev/null || die "jq が必要です（brew install jq / apt install jq）"
   command -v python3 >/dev/null || die "python3 が必要です"
@@ -171,7 +192,7 @@ main() {
   cd "$REPO_ROOT"
 
   render_prompt "$SCRIPT_DIR/review_proposer_prompt.md" "$original_instruction_file" "$review_file" \
-    "${output_dir}/prompt.txt"
+    "$executor_allowed" "${output_dir}/prompt.txt"
 
   timeout "$CLAUDE_TIMEOUT" claude -p \
     --model sonnet \
