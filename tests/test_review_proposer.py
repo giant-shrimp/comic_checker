@@ -45,10 +45,11 @@ def _run_process_result(output_dir: Path) -> subprocess.CompletedProcess:
     )
 
 
-def _run_render_prompt(template: Path, original: Path, review: Path, out_file: Path) -> subprocess.CompletedProcess:
+def _run_render_prompt(template: Path, original: Path, review: Path, executor_allowed: str,
+                        out_file: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", "-c", 'source "$1"; render_prompt "$2" "$3" "$4" "$5"',
-         "_", str(SCRIPT), str(template), str(original), str(review), str(out_file)],
+        ["bash", "-c", 'source "$1"; render_prompt "$2" "$3" "$4" "$5" "$6"',
+         "_", str(SCRIPT), str(template), str(original), str(review), executor_allowed, str(out_file)],
         capture_output=True,
         text=True,
     )
@@ -56,11 +57,12 @@ def _run_render_prompt(template: Path, original: Path, review: Path, out_file: P
 
 # --- render_prompt() のテスト ----------------------------------------------
 
-def test_render_prompt_substitutes_both_placeholders(tmp_path):
-    """{{ORIGINAL_INSTRUCTION}}・{{REVIEW}}の両方が対応ファイルの中身に置換される。"""
+def test_render_prompt_substitutes_all_three_placeholders(tmp_path):
+    """{{ORIGINAL_INSTRUCTION}}・{{REVIEW}}・{{EXECUTOR_ALLOWED}}の3つすべてが
+    対応する値に置換される（Issue #225）。"""
     template = tmp_path / "template.md"
     template.write_text(
-        "元の指示:\n{{ORIGINAL_INSTRUCTION}}\n\n監査結果:\n{{REVIEW}}\n",
+        "元の指示:\n{{ORIGINAL_INSTRUCTION}}\n\n監査結果:\n{{REVIEW}}\n\nツール:\n{{EXECUTOR_ALLOWED}}\n",
         encoding="utf-8",
     )
     original = tmp_path / "original.md"
@@ -69,40 +71,45 @@ def test_render_prompt_substitutes_both_placeholders(tmp_path):
     review.write_text("VERDICT: APPROVE_CONTINUE\n\nCONTRADICTIONS:\n- なし\n", encoding="utf-8")
     out_file = tmp_path / "prompt.txt"
 
-    result = _run_render_prompt(template, original, review, out_file)
+    result = _run_render_prompt(template, original, review,
+                                 "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)", out_file)
 
     assert result.returncode == 0
     content = out_file.read_text(encoding="utf-8")
     assert "{{ORIGINAL_INSTRUCTION}}" not in content
     assert "{{REVIEW}}" not in content
+    assert "{{EXECUTOR_ALLOWED}}" not in content
     assert "§3-Cの記述を更新せよ。" in content
     assert "VERDICT: APPROVE_CONTINUE" in content
+    assert "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)" in content
 
 
 def test_render_prompt_does_not_cross_contaminate_placeholders(tmp_path):
-    """ORIGINAL_INSTRUCTIONの中身がREVIEW側に、REVIEW側の中身がORIGINAL側に
-    混入しない（置換の対応関係が正しいこと）。"""
+    """ORIGINAL_INSTRUCTION・REVIEW・EXECUTOR_ALLOWEDの中身が互いに混入
+    しない（置換の対応関係が正しいこと。Issue #225で3つに拡張）。"""
     template = tmp_path / "template.md"
-    template.write_text("A:{{ORIGINAL_INSTRUCTION}}/B:{{REVIEW}}", encoding="utf-8")
+    template.write_text("A:{{ORIGINAL_INSTRUCTION}}/B:{{REVIEW}}/C:{{EXECUTOR_ALLOWED}}", encoding="utf-8")
     original = tmp_path / "original.md"
     original.write_text("ORIGINAL_MARKER", encoding="utf-8")
     review = tmp_path / "review.md"
     review.write_text("REVIEW_MARKER", encoding="utf-8")
     out_file = tmp_path / "prompt.txt"
 
-    result = _run_render_prompt(template, original, review, out_file)
+    result = _run_render_prompt(template, original, review, "EXECUTOR_ALLOWED_MARKER", out_file)
 
     assert result.returncode == 0
     content = out_file.read_text(encoding="utf-8")
-    assert content == "A:ORIGINAL_MARKER/B:REVIEW_MARKER"
+    assert content == "A:ORIGINAL_MARKER/B:REVIEW_MARKER/C:EXECUTOR_ALLOWED_MARKER"
 
 
-def test_real_prompt_template_has_both_placeholders():
+def test_real_prompt_template_has_all_placeholders():
     """実際にscripts/review_proposer_prompt.mdを使う場合の回帰確認:
-    2つのプレースホルダが実ファイルにリテラルで存在すること。"""
+    3つのプレースホルダが実ファイルにリテラルで存在すること（Issue #225で
+    {{EXECUTOR_ALLOWED}}を追加）。"""
     content = PROMPT_TEMPLATE.read_text(encoding="utf-8")
     assert "{{ORIGINAL_INSTRUCTION}}" in content
     assert "{{REVIEW}}" in content
+    assert "{{EXECUTOR_ALLOWED}}" in content
     assert "NO_FURTHER_ACTION" in content
 
 
@@ -202,3 +209,26 @@ def test_running_as_script_with_no_args_shows_usage(tmp_path):
     result = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True)
     assert result.returncode == 64
     assert "usage:" in result.stderr
+
+
+def test_running_as_script_with_five_args_shows_usage(tmp_path):
+    """引数が5個（4個の上限を超える）ならusageが表示されexit 64になる
+    （Issue #225で3個必須から3個または4個へ変わったことの確認）。"""
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "a", "b", "c", "d", "e"], capture_output=True, text=True
+    )
+    assert result.returncode == 64
+    assert "usage:" in result.stderr
+
+
+def test_running_as_script_with_four_args_passes_arg_count_check(tmp_path):
+    """引数4個（executor-allowed-tools込み）はusageエラーにならない
+    （実在しないoriginal-instruction-fileで止まるため、64ではなく1になる。
+    Issue #225）。"""
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "/no/such/original.md", "/no/such/review.md",
+         str(tmp_path), "Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 64
+    assert "usage:" not in result.stderr
