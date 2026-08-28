@@ -122,6 +122,26 @@ def test_verdict_done_returns_exit_0(tmp_path):
     assert (tmp_path / "verdict.txt").read_text(encoding="utf-8").strip() == "DONE"
 
 
+def test_empty_result_field_returns_exit_3(tmp_path):
+    """(10) resultフィールドが空文字列("")のときはexit 0にならず、
+    「VERDICTを抽出できない」分岐（exit 3）へ入り、verdict.txtも作られない。
+
+    jqの `//` は空文字列をnull/falseと区別せず真値として扱うため、
+    `jq -r '.result // empty' > review.md` は .result="" のとき review.md を
+    1バイト（改行のみ）にする。review_audit.sh はこの review.md を
+    `[ ! -s ]` のようなファイルサイズ判定ではなく、`head -n1` で1行目を
+    取り出して VERDICT 正規表現に掛ける方式で検査しているため、
+    1行目が空文字列 → 正規表現に一致せず → exit 3 という意図した分岐へ入る。
+    review_proposer.sh の同名回帰テスト（tests/test_review_proposer.py の
+    test_empty_result_field_does_not_exit_normally）と対になる、
+    「問題ないと判定した箇所」を実行で裏付けるためのテスト。"""
+    _write_result_json(tmp_path, result="")
+    result = _run_process_result(tmp_path)
+    assert result.returncode == 3
+    assert result.returncode != 0
+    assert not (tmp_path / "verdict.txt").exists()
+
+
 def test_verdict_line_present_but_not_on_first_line_returns_exit_3(tmp_path):
     """(9) `VERDICT: APPROVE_CONTINUE`という行自体は存在するが1行目ではなく
     3行目にあるならexit 3（1行目限定が外れていないことを確認する）。
