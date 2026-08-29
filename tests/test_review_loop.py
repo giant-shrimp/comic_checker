@@ -531,3 +531,83 @@ def test_preserve_work_tree_state_only_called_in_executor_error_branch():
     call_lines = [line for line in SCRIPT_TEXT.splitlines()
                   if "preserve_work_tree_state " in line and not line.strip().startswith("#")]
     assert len(call_lines) == 1
+
+
+# --- drain_stray_input() のテスト（Issue #232、段1） ------------------------
+#
+# docs/ai_loop_state/typeahead_mitigation_options_2026-08-29.md選択肢Bの
+# 実装。既存テストと同じく、subprocess.run(..., input=...)でパイプ経由の
+# 標準入力を渡す。245行目・439行目への組み込み（段2）はまだ行っていない
+# ため、ここではdrain_stray_input()単体の振る舞いのみを検証する。
+
+def _run_drain_stray_input(stdin_text: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; drain_stray_input', "_", str(SCRIPT)],
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_drain_stray_input_detects_and_warns(tmp_path):
+    """先行入力がある場合：警告がstdoutに現れ、戻り値が「破棄した」（0）
+    を示す。"""
+    result = _run_drain_stray_input("echo $?")
+
+    assert result.returncode == 0
+    assert "先行入力" in result.stdout
+    assert "7バイト" in result.stdout
+
+
+def test_drain_stray_input_no_input_returns_1(tmp_path):
+    """先行入力が無い場合：警告が現れず、戻り値が「破棄していない」（1）
+    を示す。"""
+    result = _run_drain_stray_input("")
+
+    assert result.returncode == 1
+    assert "先行入力" not in result.stdout
+
+
+def test_drain_stray_input_eof_guard(tmp_path):
+    """空の標準入力（EOF）の場合：read -t 0はEOFでも「読める」と判定する
+    既知の挙動があるため、それだけで誤って警告が出ないことを確認する
+    （空ガードの検証）。test_drain_stray_input_no_input_returns_1と同じ
+    入力だが、意図（EOF自体をread -t 0が readable と誤判定しないか）を
+    明示するため独立したテストにしてある。"""
+    result = _run_drain_stray_input("")
+
+    assert "先行入力" not in result.stdout
+    assert "内容:" not in result.stdout
+
+
+def test_drain_stray_input_preserves_spaces(tmp_path):
+    """先行入力中の空白がbufから失われない
+    （IFS=を指定していないと read -n 1 が空白を読み落とす、という実測
+    確認済みの挙動に対する回帰テスト）。"""
+    result = _run_drain_stray_input("echo $?")
+
+    assert result.returncode == 0
+    assert "7バイト" in result.stdout  # 空白を含めて7バイト（IFSの罠で6になっていないか）
+
+
+def test_drain_stray_input_escapes_control_characters(tmp_path):
+    """制御文字を含む先行入力を渡した場合、そのまま端末へ出力されない
+    （raw byteが混入せず、od -c相当の表記に変換されていること）。"""
+    result = _run_drain_stray_input("\x1b\x01")
+
+    assert result.returncode == 0
+    assert "\x1b" not in result.stdout
+    assert "\x01" not in result.stdout
+    assert "033" in result.stdout
+    assert "001" in result.stdout
+
+
+# --- 構造テスト: 段2への組み込みがまだ行われていないことの確認 -------------
+
+def test_drain_stray_input_not_yet_wired_into_prompts():
+    """Issue #232 段1: drain_stray_input()は新設のみで、既存の245行目・
+    439行目相当のreadの前にはまだ組み込んでいない（段2は別タスク）。"""
+    call_lines = [line for line in SCRIPT_TEXT.splitlines()
+                  if "drain_stray_input" in line and not line.strip().startswith("#")
+                  and "drain_stray_input()" not in line]
+    assert call_lines == []
