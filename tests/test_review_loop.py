@@ -19,6 +19,7 @@ import fcntl
 import json
 import os
 import pty
+import re
 import subprocess
 import time
 import tty
@@ -554,6 +555,122 @@ def test_preserve_work_tree_state_only_called_in_executor_error_branch():
     call_lines = [line for line in SCRIPT_TEXT.splitlines()
                   if "preserve_work_tree_state " in line and not line.strip().startswith("#")]
     assert len(call_lines) == 1
+
+
+# --- write_diff_evidence() のテスト（Issue #231 / ADR-015 案D） ------------
+#
+# 監査役へ渡す diff.txt を生成する関数。git diff だけでは未追跡ファイル
+# （新規作成物）が証拠から抜け落ちるため、git status --porcelain の出力を
+# 冒頭節として連結する。preserve_work_tree_state() と同じく実 git 副作用を
+# 持つため、_init_repo() の一時ローカルリポジトリを流用する。
+#
+# 見出し文字列は scripts/review_loop.sh の DIFF_EVIDENCE_STATUS_HEADING /
+# DIFF_EVIDENCE_DIFF_HEADING 定数を本文（SCRIPT_TEXT）から取り出して参照する
+# （テスト側にハードコードしない）。
+
+def _diff_evidence_headings() -> tuple:
+    """scripts/review_loop.sh の見出し定数の値を (status見出し, diff見出し) で返す。"""
+    status = re.search(r'DIFF_EVIDENCE_STATUS_HEADING="([^"]*)"', SCRIPT_TEXT).group(1)
+    diff = re.search(r'DIFF_EVIDENCE_DIFF_HEADING="([^"]*)"', SCRIPT_TEXT).group(1)
+    return status, diff
+
+
+def _run_write_diff_evidence(repo_dir: Path, out_file: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; write_diff_evidence "$2"',
+         "_", str(SCRIPT), str(out_file)],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_write_diff_evidence_includes_untracked_file(tmp_path):
+    """(a) 未追跡ファイルのみが存在する状態で実行すると、生成物に
+    `?? <パス>` 行が含まれる（git diff 単独では抜け落ちる証拠が入る）。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    (repo_dir / "brand_new.md").write_text("new content\n", encoding="utf-8")
+    out_file = tmp_path / "diff.txt"
+
+    result = _run_write_diff_evidence(repo_dir, out_file)
+
+    assert result.returncode == 0
+    content = out_file.read_text(encoding="utf-8")
+    assert "?? brand_new.md" in content
+
+
+def test_write_diff_evidence_includes_tracked_change(tmp_path):
+    """(b) 追跡済みファイルの変更がある状態で、生成物に `diff --git` 行が
+    含まれる（従来の git diff 相当の証拠は失われていない）。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    (repo_dir / "placeholder.txt").write_text("changed\n", encoding="utf-8")
+    out_file = tmp_path / "diff.txt"
+
+    result = _run_write_diff_evidence(repo_dir, out_file)
+
+    assert result.returncode == 0
+    content = out_file.read_text(encoding="utf-8")
+    assert "diff --git" in content
+    assert "placeholder.txt" in content
+
+
+def test_write_diff_evidence_status_section_precedes_diff_section(tmp_path):
+    """(c) 未追跡ファイルと追跡済みファイルの変更が同時にある状態で、
+    両方が1ファイル内に含まれ、status 節（`?? ...`）が diff 節
+    （`diff --git ...`）より前にある。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    (repo_dir / "placeholder.txt").write_text("changed\n", encoding="utf-8")
+    (repo_dir / "brand_new.md").write_text("new content\n", encoding="utf-8")
+    out_file = tmp_path / "diff.txt"
+
+    result = _run_write_diff_evidence(repo_dir, out_file)
+
+    assert result.returncode == 0
+    content = out_file.read_text(encoding="utf-8")
+
+    status_heading, diff_heading = _diff_evidence_headings()
+    assert status_heading in content
+    assert diff_heading in content
+    # 2節の順序: status見出し → diff見出し。
+    assert content.index(status_heading) < content.index(diff_heading)
+    # 未追跡ファイルの証拠は status 節の側（diff見出しより前）に出る。
+    assert content.index("?? brand_new.md") < content.index(diff_heading)
+    # 追跡済み変更の diff は diff 節の側（diff見出しより後）に出る。
+    assert content.index("diff --git") > content.index(diff_heading)
+
+
+def test_write_diff_evidence_clean_tree_does_not_fail(tmp_path):
+    """(d) 変更が皆無の状態でも関数は非ゼロ終了しない（ループを止めない）。
+    生成物には2つの見出しだけが残る。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    out_file = tmp_path / "diff.txt"
+
+    result = _run_write_diff_evidence(repo_dir, out_file)
+
+    assert result.returncode == 0
+    content = out_file.read_text(encoding="utf-8")
+    status_heading, diff_heading = _diff_evidence_headings()
+    assert status_heading in content
+    assert diff_heading in content
+    assert "??" not in content
+    assert "diff --git" not in content
+
+
+def test_write_diff_evidence_wired_into_main_loop():
+    """main() の diff.txt 生成が write_diff_evidence() 呼び出しになっており、
+    素の `git diff > "${ROUND_DIR}/diff.txt"` が残っていない。"""
+    lines = [line for line in SCRIPT_TEXT.splitlines()
+             if not line.strip().startswith("#")]
+    assert any('write_diff_evidence "${ROUND_DIR}/diff.txt"' in line for line in lines)
+    assert not any('git diff > "${ROUND_DIR}/diff.txt"' in line for line in lines)
 
 
 # --- drain_stray_input() のテスト（Issue #232、段1＋段2） ------------------
