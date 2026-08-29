@@ -12,7 +12,7 @@
 #   2. instructionを実行役（sonnet, work_loop.settings.jsonを流用）に投入する
 #   3. 実行役の出力（resultフィールド）を report.md に保存する
 #   4. ./scripts/verify.sh を実行し、出力を verify.txt に保存する
-#   5. git diff を diff.txt に保存する
+#   5. git status --porcelain と git diff を diff.txt に保存する（ADR-015 案D）
 #   6. scripts/review_audit.sh diff.txt verify.txt report.md <round-dir> を呼ぶ
 #   7. 起案役（scripts/review_proposer.sh）を呼び、次ラウンドのinstructionを
 #      生成する（ADR-014決定6。監査役の直後、人間の1キー入力より前）。
@@ -84,6 +84,14 @@ LOOP_HOME="${HOME}/comic_checker-agent-notes/review_loop"
 # と同じ文言でなければならない（snapshot()をwork_loop.shから複製しているのと
 # 同じく、意図的な複製である。文言を変えるときは3ファイルすべてを手で追随させること）。
 NO_FURTHER_ACTION_MARKER="NO_FURTHER_ACTION"
+
+# Issue #231 / ADR-015（案D）: write_diff_evidence()がdiff.txtの冒頭に置く
+# 固定見出し。監査役がstatus節とdiff節を機械的に見分けられるようにする。
+# tests/test_review_loop.py もこの2つをソース本文からgrepで取り出して参照する
+# ため、値を変えるときはテスト側の追随は不要（テストが本文から読む）だが、
+# 見出しの存在自体はテストの前提になっている。
+DIFF_EVIDENCE_STATUS_HEADING="=== git status --porcelain ==="
+DIFF_EVIDENCE_DIFF_HEADING="=== git diff ==="
 
 usage() {
   cat >&2 <<'USAGE'
@@ -237,6 +245,47 @@ preserve_work_tree_state() {
 
   echo "  作業ツリーに変更はありません（実行役は何も変更していません）。"
   return 1
+}
+
+# Issue #231 / ADR-015（案D）: 監査役へ渡す diff.txt を生成する。
+#
+# 欠陥A ―― `git diff`（引数なし）は追跡済みファイルのワークツリー変更しか
+# 出力しないため、実行役が新規作成した未追跡ファイルは証拠から抜け落ちる
+# （docs/ai_loop_state/review_loop_trial5_2026-08-29.md「8. 欠陥A」、
+# docs/ai_loop_state/issue231_options_2026-08-29.md、
+# docs/decisions/ADR-015-diff-evidence-untracked-files.md）。
+#
+# 対処: `git status --porcelain` の出力を冒頭節として連結する。監査役は
+# `?? <path>` 行から未追跡ファイルの存在を知り、必要なら実ファイルを Read
+# して報告書と照合できる（監査役へその読み方を明記する review_audit_prompt.md
+# の改訂は ADR-015 案C＝段2。本関数は段1で、渡す情報を増やすだけ）。
+#
+# preserve_work_tree_state() と同型: git を呼ぶ副作用を持つ独立関数にして
+# ある（source して単体テストできるようにするため）。失敗してもループを
+# 止めない（内部の git 呼び出しは `|| true`、関数自体は常に return 0）。
+# 呼び出し元（main()）が既に REPO_ROOT へ cd 済みであることを前提にする
+# （既存の `git diff > "${ROUND_DIR}/diff.txt"` と同じ前提）。
+#
+# 出力（out_file）の構成 ―― 見出しは上の DIFF_EVIDENCE_*_HEADING 定数:
+#   === git status --porcelain ===
+#   <git status --porcelain の出力（空のこともある）>
+#   === git diff ===
+#   <git diff の出力（空のこともある）>
+#
+# 戻り値（$?）: 常に 0。作業ツリーがクリーンでも非ゼロにしない
+#              （既存の `git diff > ... || true` と同じく、ここで
+#               ループを止めるべきではないため）。
+write_diff_evidence() {
+  local out_file="$1"
+
+  {
+    echo "$DIFF_EVIDENCE_STATUS_HEADING"
+    git status --porcelain || true
+    echo "$DIFF_EVIDENCE_DIFF_HEADING"
+    git diff || true
+  } > "$out_file" || true
+
+  return 0
 }
 
 # Issue #232（欠陥B: 承認プロンプトが先行入力を人間の承認として受理して
@@ -411,7 +460,9 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
   jq -r '.result // empty' "${ROUND_DIR}/executor_result.json" > "${ROUND_DIR}/report.md"
 
   ./scripts/verify.sh > "${ROUND_DIR}/verify.txt" 2>&1 || true
-  git diff > "${ROUND_DIR}/diff.txt" || true
+  # Issue #231 / ADR-015（案D）: git diff 単独ではなく git status --porcelain も
+  # 連結し、未追跡ファイル（新規作成物）を監査役の証拠に含める。
+  write_diff_evidence "${ROUND_DIR}/diff.txt" || true
 
   audit_exit=0
   "${SCRIPT_DIR}/review_audit.sh" "${ROUND_DIR}/diff.txt" "${ROUND_DIR}/verify.txt" "${ROUND_DIR}/report.md" "$ROUND_DIR" \
