@@ -197,6 +197,44 @@ check_executor_result() {
   return 0
 }
 
+# Issue #227: 実行役がmax_turnsに到達すると.resultが空になり、報告
+# （report.md）が失われる。それでも作業ツリーに残った変更（成果）だけは
+# 保全する。check_executor_result()はexecutor_result.jsonを読んで判定する
+# だけの純粋な関数（gitを呼ぶ副作用を持たない）であり、その性質を壊さない
+# よう、git diff・git status --porcelainを呼ぶ処理は別関数として切り出す
+# （判断の詳細はPR本文参照）。
+#
+# round_dir/preserved_diff.txt・round_dir/preserved_status.txtへ、呼び出し
+# 時点の作業ツリーの状態を書き出す。既存のdiff.txt（正常系で監査役へ渡す
+# もの）とは意味が異なるため、別名にしてある。git status --porcelainは
+# 新規（未追跡）ファイルを捉えるために別途保存する（git diffには現れない
+# ため）。呼び出し元（main()）が既に REPO_ROOT へ cd 済みであることを前提に
+# する（既存の`git diff > "${ROUND_DIR}/diff.txt"`と同じ前提）。
+#
+# 戻り値（$?）:
+#   0  作業ツリーに変更があった（保全すべき成果が存在した）
+#   1  作業ツリーに変更が無かった（クリーン）
+preserve_work_tree_state() {
+  local round_dir="$1"
+  local diff_file="${round_dir}/preserved_diff.txt"
+  local status_file="${round_dir}/preserved_status.txt"
+
+  git diff > "$diff_file" || true
+  git status --porcelain > "$status_file" || true
+
+  echo "--- 実行役の作業ツリーの状態を保全しました ---"
+  echo "  preserved_diff   : ${diff_file}"
+  echo "  preserved_status : ${status_file}"
+
+  if [ -s "$status_file" ]; then
+    echo "  作業ツリーに変更があります（上記ファイルを確認してください）。"
+    return 0
+  fi
+
+  echo "  作業ツリーに変更はありません（実行役は何も変更していません）。"
+  return 1
+}
+
 # 人間の1キー入力（q のみ）を待つ。ADR-011決定8の「1キーで承認」という形式を
 # 保ったまま、続行できない理由が複数（VERDICTがHALT_NEEDS_HUMAN／DONE、
 # 起案役の呼び出し失敗、NO_FURTHER_ACTION）に増えたため関数へ切り出した。
@@ -294,6 +332,8 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
   # ADR-011決定8の1キー承認をここでも維持する。
   if [ "$executor_check" -eq 1 ]; then
     EXECUTOR_TERMINAL_REASON="$(jq -r '.terminal_reason // "unknown"' "${ROUND_DIR}/executor_result.json")"
+    # Issue #227: 人間が判断する前に、作業ツリーに残った成果を保全する。
+    preserve_work_tree_state "$ROUND_DIR" || true
     wait_for_quit_only "実行役が正常終了しなかった（is_error=true, terminal_reason=${EXECUTOR_TERMINAL_REASON}）"
     echo "review_loop.sh: round ${round} で終了します（実行役 is_error=true）。"
     exit 0
