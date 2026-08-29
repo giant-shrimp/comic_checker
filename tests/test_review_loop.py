@@ -422,3 +422,112 @@ def test_executor_check_call_precedes_report_md_extraction():
     check_call_idx = next(i for i, line in enumerate(lines) if 'check_executor_result "$ROUND_DIR"' in line)
     report_idx = next(i for i, line in enumerate(lines) if 'report.md"' in line and "jq -r '.result" in line)
     assert check_call_idx < report_idx
+
+
+# --- preserve_work_tree_state() のテスト（Issue #227） ----------------------
+#
+# git diff・git status --porcelainという実際のgit副作用を持つ関数のため、
+# _init_repo()（ブランチ検査テストで使っている一時ローカルgitリポジトリの
+# 前例）に倣い、本物のcomic_checkerリポジトリとは無関係な一時リポジトリを
+# 作ってテストする。
+
+def _run_preserve_work_tree_state(repo_dir: Path, round_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; preserve_work_tree_state "$2"',
+         "_", str(SCRIPT), str(round_dir)],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_preserve_work_tree_state_saves_diff_when_dirty(tmp_path):
+    """作業ツリーに変更（追跡済みファイルの変更）がある場合、
+    preserved_diff.txt・preserved_status.txtに反映され、戻り値0になる。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    (repo_dir / "placeholder.txt").write_text("changed\n", encoding="utf-8")
+    round_dir = tmp_path / "round_1"
+    round_dir.mkdir()
+
+    result = _run_preserve_work_tree_state(repo_dir, round_dir)
+
+    assert result.returncode == 0
+    diff_content = (round_dir / "preserved_diff.txt").read_text(encoding="utf-8")
+    assert "placeholder.txt" in diff_content
+    status_content = (round_dir / "preserved_status.txt").read_text(encoding="utf-8")
+    assert "placeholder.txt" in status_content
+
+
+def test_preserve_work_tree_state_reports_clean_tree(tmp_path):
+    """作業ツリーに変更が無い場合も、その旨が画面出力から分かる
+    （戻り値1、保存されるファイルは両方とも空）。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    round_dir = tmp_path / "round_1"
+    round_dir.mkdir()
+
+    result = _run_preserve_work_tree_state(repo_dir, round_dir)
+
+    assert result.returncode == 1
+    assert "変更はありません" in result.stdout
+    assert (round_dir / "preserved_diff.txt").read_text(encoding="utf-8") == ""
+    assert (round_dir / "preserved_status.txt").read_text(encoding="utf-8") == ""
+
+
+def test_preserve_work_tree_state_captures_untracked_files(tmp_path):
+    """新規（未追跡）ファイルはgit diffには現れないが、preserved_status.txt
+    には現れる（未追跡ファイルの成果を見落とさないことの確認）。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    (repo_dir / "new_file.txt").write_text("new\n", encoding="utf-8")
+    round_dir = tmp_path / "round_1"
+    round_dir.mkdir()
+
+    result = _run_preserve_work_tree_state(repo_dir, round_dir)
+
+    assert result.returncode == 0
+    diff_content = (round_dir / "preserved_diff.txt").read_text(encoding="utf-8")
+    assert "new_file.txt" not in diff_content
+    status_content = (round_dir / "preserved_status.txt").read_text(encoding="utf-8")
+    assert "new_file.txt" in status_content
+
+
+def test_preserve_work_tree_state_prints_file_paths(tmp_path):
+    """保存したファイルのパスが画面出力（stdout）に含まれる。"""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _init_repo(repo_dir, "fix/some-topic")
+    round_dir = tmp_path / "round_1"
+    round_dir.mkdir()
+
+    result = _run_preserve_work_tree_state(repo_dir, round_dir)
+
+    assert str(round_dir / "preserved_diff.txt") in result.stdout
+    assert str(round_dir / "preserved_status.txt") in result.stdout
+
+
+# --- main()内の呼び出し位置の構造テスト -------------------------------------
+
+def test_preserve_work_tree_state_called_before_wait_for_quit_only_on_executor_error():
+    """Issue #227: is_error=true分岐でpreserve_work_tree_state()が
+    wait_for_quit_only()より前に呼ばれる（人間が判断する前に成果を保全する）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    branch_idx = next(i for i, line in enumerate(lines)
+                      if '"$executor_check" -eq 1' in line)
+    end_idx = next(i for i in range(branch_idx, len(lines)) if lines[i].strip() == "fi")
+    branch_body = lines[branch_idx:end_idx]
+    preserve_idx = next(i for i, line in enumerate(branch_body) if "preserve_work_tree_state" in line)
+    wait_idx = next(i for i, line in enumerate(branch_body) if "wait_for_quit_only" in line)
+    assert preserve_idx < wait_idx
+
+
+def test_preserve_work_tree_state_only_called_in_executor_error_branch():
+    """Issue #227: preserve_work_tree_state()の呼び出しは1箇所のみ。
+    is_error=false（executor_check==0、正常系）では呼ばれない。"""
+    call_lines = [line for line in SCRIPT_TEXT.splitlines()
+                  if "preserve_work_tree_state " in line and not line.strip().startswith("#")]
+    assert len(call_lines) == 1
