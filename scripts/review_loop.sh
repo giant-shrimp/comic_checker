@@ -69,6 +69,10 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 MAX_ROUNDS="${MAX_ROUNDS:-10}"
 EXECUTOR_MAX_TURNS="${EXECUTOR_MAX_TURNS:-20}"
 CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-300}"
+# Issue #232: drain_stray_input()が1バイトを読むごとに待つ上限秒数。
+# 診断調査（docs/ai_loop_state/review_loop_trial5_2026-08-29.md「8. 検出
+# した欠陥」）で使った値を踏襲している。
+STDIN_DRAIN_TIMEOUT="${STDIN_DRAIN_TIMEOUT:-0.05}"
 # 実行役に許可するツール。work_loop.shのALLOWEDを参考にしたが、GitHub Issueは
 # 扱わない（instructionはファイルで直接渡す）ため gh issue view を、
 # diffはこのスクリプト自身がstep5で取るため git diff をそれぞれ外している。
@@ -233,6 +237,50 @@ preserve_work_tree_state() {
 
   echo "  作業ツリーに変更はありません（実行役は何も変更していません）。"
   return 1
+}
+
+# Issue #232（欠陥B: 承認プロンプトが先行入力を人間の承認として受理して
+# しまう）への対処 段1。docs/ai_loop_state/typeahead_mitigation_options_
+# 2026-08-29.md選択肢Bを実装する。承認プロンプトの直前に呼び出し、標準
+# 入力バッファに残留しているバイト（先行入力／type-ahead）を検出して
+# 警告し、破棄する。
+#
+# read -t 0 は入力ストリームがEOF（パイプが閉じている等）の場合にも
+# 「読める」と判定してしまう既知の挙動があるため（本関数の変異テストで
+# 実測確認済み）、実際に読み出せた内容が空でない場合にのみ警告する
+# （空ガード）。EOFのみの場合は1バイトも読み出せず buf が空のまま残る。
+#
+# ループ内で IFS= を指定するのは、既定のIFSのままだと read -n 1 で読んだ
+# 1文字が空白のとき変数へ空文字列が代入されてしまい（bashの実測確認済みの
+# 挙動）、先行入力中の空白がbufから失われるため。
+#
+# ファイルへの書き出し・git操作等の副作用は持たない（呼び出し元にも
+# まだ組み込んでいない。段2で245行目・439行目のreadの直前に組み込む）。
+#
+# 戻り値（$?）:
+#   0  先行入力を検出し、破棄した（警告を表示済み）
+#   1  先行入力は無かった（EOFのみだった場合を含む）
+drain_stray_input() {
+  local buf="" ch
+
+  if read -t 0; then
+    while IFS= read -t "$STDIN_DRAIN_TIMEOUT" -n 1 -r ch; do
+      buf+="$ch"
+    done
+  fi
+
+  if [ -z "$buf" ]; then
+    return 1
+  fi
+
+  # od -An -c は制御文字を \n や 033（8進）のような表記に変換するため、
+  # 破棄した内容をそのまま端末へ出力しても制御文字が実行されない
+  # （エスケープシーケンス等がそのまま流れ込まない）。
+  local escaped
+  escaped="$(printf '%s' "$buf" | od -An -c)"
+  echo "review_loop.sh: 先行入力（${#buf}バイト）を検出したため破棄しました。内容:${escaped}"
+
+  return 0
 }
 
 # 人間の1キー入力（q のみ）を待つ。ADR-011決定8の「1キーで承認」という形式を
