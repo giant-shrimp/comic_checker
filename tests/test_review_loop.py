@@ -15,10 +15,21 @@ review_audit.shのようにsourceして関数単体を呼ぶことはできな�
 （main上では検査で止まり、main以外の場合も存在しないinstruction-fileの
 チェックで止まるようにテストしている）。
 """
+import fcntl
 import json
+import os
+import pty
 import subprocess
+import time
+import tty
 
 from pathlib import Path
+
+# pty を使うテスト（実端末での type-ahead ドレイン挙動の検証）は POSIX 前提。
+# このリポジトリの開発・テストは WSL Ubuntu で行い（CLAUDE.md「環境の分離」）、
+# verify.sh 自体も .venv/bin/activate を source する POSIX 専用スクリプトなので、
+# pty は常に利用できる。他の既存テストが subprocess+bash+od 等を前提にしている
+# のと同じ前提。
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "review_loop.sh"
 
@@ -224,6 +235,14 @@ def test_propose_next_instruction_no_further_action_must_be_exact_first_line(tmp
 
 
 # --- wait_for_quit_only() のテスト（ADR-011決定8の1キー承認を維持すること） ---
+#
+# Issue #232 段2: このプロンプトの while ループ先頭で drain_stray_input() を
+# 呼ぶようにした。以下のテストはパイプ経由（input=）で入力を渡すため、
+# drain_stray_input() の端末判定ガード（[ -t 0 ]）が働いて drain は no-op に
+# なる。つまり「段2の組み込み後も、パイプで渡した q／c がそのまま
+# wait_for_quit_only() 自身の read に届く」ことをこの2件が担保する
+# （端末での type-ahead ドレイン挙動そのものは _run_drain_stray_input_on_tty
+# を使う下の節で検証する）。
 
 
 def _run_wait_for_quit_only(keys: str) -> subprocess.CompletedProcess:
@@ -236,14 +255,18 @@ def _run_wait_for_quit_only(keys: str) -> subprocess.CompletedProcess:
 
 
 def test_wait_for_quit_only_accepts_q(tmp_path):
-    """q の1キーで正常に抜ける（1キー入力という形式が保たれている）。"""
+    """q の1キーで正常に抜ける（1キー入力という形式が保たれている）。
+    Issue #232 段2の組み込み後も、パイプ入力の q は drain_stray_input() の
+    端末判定ガードを素通りして read に届く（rc 0）。"""
     result = _run_wait_for_quit_only("q")
     assert result.returncode == 0
 
 
 def test_wait_for_quit_only_rejects_c(tmp_path):
     """c は受け付けない。ADR-014決定8が要求する「c を選べない」状態が、
-    起案役の失敗時・NO_FURTHER_ACTION時に共通で使われるこの関数で成立する。"""
+    起案役の失敗時・NO_FURTHER_ACTION時に共通で使われるこの関数で成立する。
+    段2でループ先頭に drain_stray_input() を足した後も、c→再表示→q の
+    流れが保たれる（パイプ入力なので drain は no-op）。"""
     result = _run_wait_for_quit_only("cq")
     assert result.returncode == 0
     assert "q のみ入力できます" in result.stdout
@@ -533,14 +556,23 @@ def test_preserve_work_tree_state_only_called_in_executor_error_branch():
     assert len(call_lines) == 1
 
 
-# --- drain_stray_input() のテスト（Issue #232、段1） ------------------------
+# --- drain_stray_input() のテスト（Issue #232、段1＋段2） ------------------
 #
 # docs/ai_loop_state/typeahead_mitigation_options_2026-08-29.md選択肢Bの
-# 実装。既存テストと同じく、subprocess.run(..., input=...)でパイプ経由の
-# 標準入力を渡す。245行目・439行目への組み込み（段2）はまだ行っていない
-# ため、ここではdrain_stray_input()単体の振る舞いのみを検証する。
+# 実装。段2で端末判定ガード（[ -t 0 ]）を追加し、承認プロンプト2箇所へ
+# 組み込んだ。
+#
+# 検証は2系統に分かれる:
+#   - 非端末（パイプ）系: subprocess.run(..., input=...)。ガードが働いて
+#     drain が no-op になること（＝パイプで渡した正当な入力を捨てないこと）
+#     を検証する。CIも非端末なので、この系統が段2の主眼。
+#   - 端末（pty）系: _run_drain_stray_input_on_tty。[ -t 0 ] を満たす実 pty を
+#     stdin にして、type-ahead の検出・警告・空白保持・制御文字エスケープを
+#     検証する。段1でパイプ経由で見ていた挙動は、ガード追加後はこちらでしか
+#     再現できない（パイプでは drain が即 return する）。
 
 def _run_drain_stray_input(stdin_text: str) -> subprocess.CompletedProcess:
+    """非端末（パイプ）の標準入力で drain_stray_input() を実行する。"""
     return subprocess.run(
         ["bash", "-c", 'source "$1"; drain_stray_input', "_", str(SCRIPT)],
         input=stdin_text,
@@ -549,65 +581,221 @@ def _run_drain_stray_input(stdin_text: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_drain_stray_input_detects_and_warns(tmp_path):
-    """先行入力がある場合：警告がstdoutに現れ、戻り値が「破棄した」（0）
-    を示す。"""
+def _run_drain_stray_input_on_tty(preload: bytes) -> tuple:
+    """実 pty を標準入力にして drain_stray_input() を実行する。
+
+    preload を子プロセス起動前に master 側へ書き込み、先行入力（type-ahead）
+    が端末バッファに残っている状況を再現する。pty を raw モードにするのは、
+    canonical モードだと改行が来るまで read() にバイトが渡らず
+    「echo $?」（改行なし）を read -t 0 が readable と判定しないため。
+    (returncode, stdout) を返す。
+    """
+    master, slave = pty.openpty()
+    tty.setraw(slave)
+    os.write(master, preload)
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", 'source "$1"; drain_stray_input', "_", str(SCRIPT)],
+            stdin=slave, capture_output=True, text=True, timeout=15,
+        )
+    finally:
+        os.close(slave)
+        os.close(master)
+    return proc.returncode, proc.stdout
+
+
+# --- 非端末（パイプ）系: 段2の端末判定ガード -------------------------------
+
+def test_drain_stray_input_noop_when_stdin_not_a_tty(tmp_path):
+    """段2の端末判定ガード: 標準入力が端末でない場合は、そこにバイトが
+    あっても（"echo $?" を渡しても）何もせず「破棄していない」（1）を返す。
+    これが承認プロンプトへパイプで渡した正当な入力（"q"／"c"）を守る。"""
     result = _run_drain_stray_input("echo $?")
 
-    assert result.returncode == 0
-    assert "先行入力" in result.stdout
-    assert "7バイト" in result.stdout
+    assert result.returncode == 1
+    assert "先行入力" not in result.stdout
+    assert "内容:" not in result.stdout
 
 
 def test_drain_stray_input_no_input_returns_1(tmp_path):
-    """先行入力が無い場合：警告が現れず、戻り値が「破棄していない」（1）
-    を示す。"""
+    """先行入力が無い（空のパイプ）場合：警告が現れず、戻り値が
+    「破棄していない」（1）を示す。段2以降はまず端末判定ガードで return 1
+    するため、read -t 0 には到達しない。"""
     result = _run_drain_stray_input("")
 
     assert result.returncode == 1
     assert "先行入力" not in result.stdout
 
 
-def test_drain_stray_input_eof_guard(tmp_path):
-    """空の標準入力（EOF）の場合：read -t 0はEOFでも「読める」と判定する
-    既知の挙動があるため、それだけで誤って警告が出ないことを確認する
-    （空ガードの検証）。test_drain_stray_input_no_input_returns_1と同じ
-    入力だが、意図（EOF自体をread -t 0が readable と誤判定しないか）を
-    明示するため独立したテストにしてある。"""
+def test_drain_stray_input_silent_for_non_tty_eof(tmp_path):
+    """空の標準入力（EOF）でも誤って警告が出ない。段1では read -t 0 が
+    EOFを readable と誤判定する挙動に対する空ガードの検証だったが、段2で
+    端末判定ガードが read -t 0 より前に入ったため、非端末EOFはそこで
+    止まる。いずれにせよ「非端末では黙って何もしない」ことの回帰テスト。"""
     result = _run_drain_stray_input("")
 
     assert "先行入力" not in result.stdout
     assert "内容:" not in result.stdout
 
 
-def test_drain_stray_input_preserves_spaces(tmp_path):
+# --- 端末（pty）系: type-ahead の検出・整形 ------------------------------
+
+def test_drain_stray_input_detects_and_warns_on_tty(tmp_path):
+    """実端末に先行入力がある場合：警告がstdoutに現れ、戻り値が
+    「破棄した」（0）を示す。"""
+    rc, out = _run_drain_stray_input_on_tty(b"echo $?")
+
+    assert rc == 0
+    assert "先行入力" in out
+    assert "7バイト" in out
+
+
+def test_drain_stray_input_preserves_spaces_on_tty(tmp_path):
     """先行入力中の空白がbufから失われない
     （IFS=を指定していないと read -n 1 が空白を読み落とす、という実測
-    確認済みの挙動に対する回帰テスト）。"""
-    result = _run_drain_stray_input("echo $?")
+    確認済みの挙動に対する回帰テスト）。空白を含めて7バイト。"""
+    rc, out = _run_drain_stray_input_on_tty(b"echo $?")
 
-    assert result.returncode == 0
-    assert "7バイト" in result.stdout  # 空白を含めて7バイト（IFSの罠で6になっていないか）
+    assert rc == 0
+    assert "7バイト" in out  # IFSの罠で6になっていないか
 
 
-def test_drain_stray_input_escapes_control_characters(tmp_path):
+def test_drain_stray_input_escapes_control_characters_on_tty(tmp_path):
     """制御文字を含む先行入力を渡した場合、そのまま端末へ出力されない
     （raw byteが混入せず、od -c相当の表記に変換されていること）。"""
-    result = _run_drain_stray_input("\x1b\x01")
+    rc, out = _run_drain_stray_input_on_tty(b"\x1b\x01")
 
-    assert result.returncode == 0
-    assert "\x1b" not in result.stdout
-    assert "\x01" not in result.stdout
-    assert "033" in result.stdout
-    assert "001" in result.stdout
+    assert rc == 0
+    assert "\x1b" not in out
+    assert "\x01" not in out
+    assert "033" in out
+    assert "001" in out
 
 
-# --- 構造テスト: 段2への組み込みがまだ行われていないことの確認 -------------
+def test_drain_stray_input_empty_guard_on_tty(tmp_path):
+    """端末でも、読み出せた内容が実質空（改行のみ）なら警告しない
+    （空ガード [ -z "$buf" ]）。IFS= かつ read -n 1 は改行1文字を
+    空文字列として読むため buf は空のまま。戻り値は「破棄していない」（1）。"""
+    rc, out = _run_drain_stray_input_on_tty(b"\n")
 
-def test_drain_stray_input_not_yet_wired_into_prompts():
-    """Issue #232 段1: drain_stray_input()は新設のみで、既存の245行目・
-    439行目相当のreadの前にはまだ組み込んでいない（段2は別タスク）。"""
+    assert rc == 1
+    assert "先行入力" not in out
+
+
+# --- 構造テスト: 段2の組み込みと端末判定ガード ---------------------------
+
+def test_drain_stray_input_is_wired_into_both_prompts():
+    """Issue #232 段2: drain_stray_input()の呼び出しが承認プロンプト2箇所
+    （wait_for_quit_only内・main内の[c/q]）に入っている。コメント行と
+    定義行は除く。"""
     call_lines = [line for line in SCRIPT_TEXT.splitlines()
                   if "drain_stray_input" in line and not line.strip().startswith("#")
                   and "drain_stray_input()" not in line]
-    assert call_lines == []
+    assert len(call_lines) == 2
+    assert all("drain_stray_input || true" in line for line in call_lines)
+
+
+def test_drain_stray_input_wired_before_wait_for_quit_only_read():
+    """段2: wait_for_quit_only() の while ループ内で、read -p より前に
+    drain_stray_input() を呼ぶ（片方の呼び出しを消すと落ちる）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    fn_idx = next(i for i, l in enumerate(lines) if l.startswith("wait_for_quit_only()"))
+    while_idx = next(i for i in range(fn_idx, len(lines)) if "while true; do" in lines[i])
+    read_idx = next(i for i in range(while_idx, len(lines))
+                    if 'read -n 1 -r -p "${reason}' in lines[i])
+    body = lines[while_idx + 1:read_idx]
+    assert any("drain_stray_input" in l for l in body)
+
+
+def test_drain_stray_input_wired_before_continue_prompt_read():
+    """段2: main() の [c=続行 / q=終了] プロンプトでも、read -p より前に
+    drain_stray_input() を呼ぶ（片方の呼び出しを消すと落ちる）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    read_idx = next(i for i, l in enumerate(lines)
+                    if 'read -n 1 -r -p "この指示で次ラウンドへ進みますか' in l)
+    while_idx = max(i for i in range(read_idx) if "while true; do" in lines[i])
+    body = lines[while_idx + 1:read_idx]
+    assert any("drain_stray_input" in l for l in body)
+
+
+def test_drain_stray_input_has_tty_guard():
+    """段2: drain_stray_input() は read -t 0 より前に「標準入力が端末で
+    なければ return 1」する端末判定ガードを持つ（このガードを外すと
+    パイプ入力系のテストが落ちる）。"""
+    lines = SCRIPT_TEXT.splitlines()
+    fn_start = next(i for i, l in enumerate(lines) if l.startswith("drain_stray_input()"))
+    guard_idxs = [i for i in range(fn_start, len(lines)) if "! -t 0" in lines[i]]
+    read_t0_idxs = [i for i in range(fn_start, len(lines)) if "read -t 0" in lines[i]]
+    assert guard_idxs, "drain_stray_input() に端末判定ガード（[ ! -t 0 ]）が無い"
+    assert read_t0_idxs
+    guard_idx, read_t0_idx = guard_idxs[0], read_t0_idxs[0]
+    assert guard_idx < read_t0_idx
+    # ガード直下が return 1 であること。
+    assert any("return 1" in lines[i] for i in range(guard_idx, guard_idx + 3))
+
+
+def test_continue_prompt_still_accepts_c_and_q():
+    """段2の組み込み後も、[c=続行 / q=終了] の case が c) と q) の両方を
+    引き続き解釈する（drain_stray_input を足しただけで分岐は不変）。
+
+    ※ この分岐は main() 内にあり、main() は実行役・監査役の実 claude 呼び出し
+    を含むため、c/q の受理を pytest で動的に実行して確認することはできない
+    （本ファイル冒頭 docstring）。ここでは case 分岐が壊れていないことの
+    静的確認に留める。動的検証が可能なのは wait_for_quit_only()（下記
+    pty テスト）まで。"""
+    lines = SCRIPT_TEXT.splitlines()
+    case_idx = next(i for i, l in enumerate(lines) if 'case "$KEY" in' in l)
+    esac_idx = next(i for i in range(case_idx, len(lines)) if lines[i].strip() == "esac")
+    body = "\n".join(lines[case_idx:esac_idx])
+    assert "\n      c)" in "\n" + body
+    assert "\n      q)" in "\n" + body
+
+
+# --- pty 統合テスト: 段2の組み込みが type-ahead を実際に処理する ----------
+
+def test_wait_for_quit_only_drains_typeahead_then_accepts_q_on_tty(tmp_path):
+    """Issue #232 の再現シナリオ: ループ起動直後に人間が `echo $?`+Enter を
+    打ち込んで先行入力として残った状態で wait_for_quit_only() に入る。
+    段2の組み込みにより、先行入力は承認として受理されず破棄・警告され、
+    あらためて表示されたプロンプトで人間が押した q が受理される（rc 0）。"""
+    master, slave = pty.openpty()
+    tty.setraw(slave)
+    os.write(master, b"echo $?\n")  # 起動直後に残った type-ahead
+    proc = subprocess.Popen(
+        ["bash", "-c", 'source "$1"; wait_for_quit_only "テスト理由"', "_", str(SCRIPT)],
+        stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    os.close(slave)
+    try:
+        # 子の stdout を非ブロッキングにして、プロンプト再表示を待ってから q を
+        # 送る（固定 sleep に頼らず、drain が先行入力を食べ終えたことを出力で
+        # 確認する）。
+        flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+        fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        acc = b""
+        deadline = time.time() + 10
+        while b"[q]: " not in acc and time.time() < deadline:
+            try:
+                chunk = proc.stdout.read()
+            except (BlockingIOError, TypeError):
+                chunk = None
+            if chunk:
+                acc += chunk
+            else:
+                time.sleep(0.02)
+        os.write(master, b"q")
+        fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags)
+        rest = proc.stdout.read()
+        if rest:
+            acc += rest
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        os.close(master)
+
+    out = acc.decode()
+    assert "先行入力" in out          # 先行入力を破棄・警告した
+    assert "7バイト" in out           # echo $? の7バイト（改行は空文字として消費）
+    assert proc.returncode == 0       # 再表示後の q が受理された
