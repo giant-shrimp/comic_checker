@@ -956,3 +956,40 @@ def test_wait_for_quit_only_drains_typeahead_then_accepts_q_on_tty(tmp_path):
     assert "先行入力" in out          # 先行入力を破棄・警告した
     assert "7バイト" in out           # echo $? の7バイト（改行は空文字として消費）
     assert proc.returncode == 0       # 再表示後の q が受理された
+
+
+# --- 実行不能コマンドの扱いの常設（ADR-016 案C / Issue #241） --------------
+#
+# ADR-016（docs/decisions/ADR-016-executor-allowed-pytest.md）の案C は、
+# 実行役が実行できないコマンド（シェルスクリプトの直接実行・python -c 等）を
+# 試みず報告に記載するだけにとどめるよう instruction 側で明示すると決めた。
+# 6 回目試走で停止したのは round_1 のため、round_1 用の instruction 雛形
+# （docs/ai_loop_state/instruction_template.md）と round_2 以降の起案役
+# プロンプト（scripts/review_proposer_prompt.md）の両方に常設する。
+#
+# 文面の正本は docs/ai_loop_state/executor_command_constraints.md に置き、
+# 転記先 2 ファイルに正本全文が含まれることをここで固定する（正本ファイルを
+# 単一の情報源とし、テスト側に文面をハードコードしない）。SCRIPT の解決に
+# 使っているリポジトリルート（Path(__file__).resolve().parent.parent）を流用する。
+
+_REPO_ROOT = SCRIPT.parent.parent
+_CONSTRAINTS_CANON = _REPO_ROOT / "docs" / "ai_loop_state" / "executor_command_constraints.md"
+_PROPOSER_PROMPT = _REPO_ROOT / "scripts" / "review_proposer_prompt.md"
+_INSTRUCTION_TEMPLATE = _REPO_ROOT / "docs" / "ai_loop_state" / "instruction_template.md"
+
+
+def _constraints_canon_text() -> str:
+    """正本ファイルの全文から前後の空白を除いた文字列。"""
+    return _CONSTRAINTS_CANON.read_text(encoding="utf-8").strip()
+
+
+def test_proposer_prompt_embeds_command_constraints():
+    """ADR-016 案C / Issue #241: 起案役プロンプト（round_2 以降）に、実行
+    不能コマンドの扱いの正本文面が全文そのまま部分文字列として含まれる。"""
+    assert _constraints_canon_text() in _PROPOSER_PROMPT.read_text(encoding="utf-8")
+
+
+def test_instruction_template_embeds_command_constraints():
+    """ADR-016 案C / Issue #241: round_1 用 instruction 雛形に、実行不能
+    コマンドの扱いの正本文面が全文そのまま部分文字列として含まれる。"""
+    assert _constraints_canon_text() in _INSTRUCTION_TEMPLATE.read_text(encoding="utf-8")
