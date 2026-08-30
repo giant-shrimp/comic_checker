@@ -1,4 +1,6 @@
+import ast
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2930,6 +2932,31 @@ def test_callers_that_skip_api_get_do_not_wait():
     with patch_sleep:
         pass  # `_api_get`を呼ばなければ待機は1度も起きない
     assert sleeps == []
+
+
+def test_api_get_has_no_statement_after_the_retry_loop():
+    """Issue #121: `_api_get`の`for`ループより後ろに文を置かない。
+
+    ループ内に`break`が無く、最後の反復では`attempt < API_MAX_ATTEMPTS - 1`が偽に
+    なるため`continue`も発火しない。したがって最後の反復は必ず例外送出か`return`で
+    終わり、ループが正常終了して外側の行へ抜ける経路は存在しない。ループ後に置いた
+    文（かつて在った`response.raise_for_status()`）は到達不能なデッドコードになる。
+    再発を防ぐため、関数本体の最後の文が`for`ループそのものであることを検証する。
+
+    行番号もソース文字列もハードコードせず、関数名で`_api_get`の定義を探索する。
+    """
+    source = Path(wikipedia_client.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    func = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_api_get"
+    )
+    assert isinstance(func.body[-1], ast.For), (
+        "_api_get の for ループより後ろに文がある。"
+        "ループ後の文は到達不能なので置かないこと（Issue #121）"
+    )
 
 # --- Issue #62: 定数を期待値と入力の両方に使うと、定数を変えてもテストが落ちない ---------
 #
