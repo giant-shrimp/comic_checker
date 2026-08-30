@@ -76,7 +76,7 @@ STDIN_DRAIN_TIMEOUT="${STDIN_DRAIN_TIMEOUT:-0.05}"
 # 実行役に許可するツール。work_loop.shのALLOWEDを参考にしたが、GitHub Issueは
 # 扱わない（instructionはファイルで直接渡す）ため gh issue view を、
 # diffはこのスクリプト自身がstep5で取るため git diff をそれぞれ外している。
-EXECUTOR_ALLOWED="Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh)"
+EXECUTOR_ALLOWED="Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh),Bash(.venv/bin/python -m pytest*)"
 LOOP_HOME="${HOME}/comic_checker-agent-notes/review_loop"
 
 # ADR-014決定8: 起案役が「本来の目的は達成済みで次にやることが無い」と判断した
