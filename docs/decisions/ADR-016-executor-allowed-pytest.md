@@ -1,7 +1,9 @@
 # ADR-016: review_loop.sh の実行役が成果物を自己検証できない問題への対処（案A＋案C）
 
 - 日付：2026-08-30
-- 状態：採用（ただし「決定」節 A-2 の実現方法は要決定。「未決定として明示する事項」節）
+- 状態：採用（起草時は「決定」節 A-2 の実現方法を要決定として残したが、
+  2026-08-30 に**方法2**で確定した。詳細は「決定」節 A-2 と
+  「A-2 決定後の追記（2026-08-30）」節）
 - supersede は発生しない（`docs/decisions/ADR-011-review-loop-design.md`・
   `docs/decisions/ADR-014-proposer-design.md` の決定はいずれも有効なまま。
   詳細は「既存 ADR との関係」節）
@@ -105,11 +107,57 @@ Issue #241 の対処方針は「案A（`EXECUTOR_ALLOWED` に pytest 実行を�
   起動すると、`python -m pytest` は「許可はされるが実行時に
   `No module named pytest` で失敗する」。
 
-### 未検証
+### 方法2 の許可パターンの実測（2026-08-30 追記）
+
+A-2 = 方法2 の実装候補となる許可文字列で、パイプを含む複合式の可否を
+測定した。導出条件は上記「導出条件」と同じ（`claude -p --model sonnet
+--max-turns 3 --settings scripts/work_loop.settings.json
+--output-format json`、判定は `executor_result.json` の
+`permission_denials` の有無）。許可文字列のみ次に差し替えた。
+
+```
+Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh),Bash(.venv/bin/python -m pytest*)
+```
+
+| コマンド | 結果 |
+|---|---|
+| `.venv/bin/python -m pytest tests/... -q` | 許可 |
+| `.venv/bin/python -m pytest tests/... -q \| tail -20` | 許可 |
+| `.venv/bin/python -m pytest tests/... -q 2>&1 \| tail -20` | 許可 |
+| `.venv/bin/python -m pytest -q && echo done` | 許可 |
+| `python -m pytest --version` | 拒否 |
+| `.venv/bin/python -c "print(1)"` | 拒否 |
+
+この実測から言えること:
+
+- `Bash(.venv/bin/python -m pytest*)` の `*` は `.venv/bin/python -m pytest`
+  への前方一致で、引数・リダイレクト（`2>&1`）・`| tail`・`&& echo` の
+  付随を問わず許可される。
+- **パイプ `|` を挟んだ複合式は拒否されない**。`echo`（上記「実測から
+  言えること」）と同様、`tail` も Claude Code の組み込み安全コマンドとして
+  個別に許可されるため、「pytest 要素（許可）＋ tail 要素（組み込み安全）」
+  で式全体が許可される。
+- `python -m pytest ...`（`.venv/bin/` 前置なし）は A-1 の許可パターンに
+  一致せず拒否される。実行役は `.venv/bin/python -m pytest` の形に
+  統一する必要がある（案C で明示）。
+- pytest 以外の `.venv/bin/python -c ...` は一致せず拒否。方法2 でも
+  pytest 実行のみに絞られる。
+- 許可された 4 件は、実測を行った一時ディレクトリに `.venv` が無いため
+  実行時に exit 127 で失敗した。これは**権限ゲートの許可／拒否判定とは
+  別軸**である。ゲートは cwd 非依存でコマンド文字列を評価しており、
+  `permission_denials` が空であることが「許可された」ことの根拠である。
+  `review_loop.sh` の実行役はリポジトリルートを cwd として起動されるため、
+  本番では `.venv/bin/python` は解決する。
+
+### 未検証（一部は 2026-08-30 に解消）
 
 - パイプ `|` を挟んだ複合式（例: `python -m pytest ... | tail -40`）の
   可否は測定していない。`tail` が組み込み安全扱いなら許可、そうでなければ
   式全体拒否と予想されるが、**未検証**。
+  - **2026-08-30 解消**: 上記「方法2 の許可パターンの実測」で
+    `.venv/bin/python -m pytest tests/... -q | tail -20` および
+    `... 2>&1 | tail -20` がいずれも許可されることを実測で確認した。
+    パイプを挟んでも式全体は拒否されない。
 
 ## 決定
 
@@ -118,18 +166,29 @@ Issue #241 への対処として、**案A と案C を併用する**。ただし�
 
 ### A-1: `EXECUTOR_ALLOWED` に pytest 実行の許可を追加する
 
-`scripts/review_loop.sh:79` の `EXECUTOR_ALLOWED` に `Bash(python -m pytest*)`
-相当を加える。実測のとおり、これにより `python -m pytest ...`（引数・
-`&& echo` / `; echo` の付随を含む）が実行役に許可される。
-具体的な文字列（`python -m pytest*` のみか、`.venv/bin/python -m pytest*`
-も並べるか）は A-2 の結論に依存するため、ここでは確定しない。
+`scripts/review_loop.sh:79` の `EXECUTOR_ALLOWED` に pytest 実行の許可を
+1 パターン加える。実測のとおり、これにより pytest 実行（引数・
+`&& echo` / `; echo` / `| tail` の付随を含む）が実行役に許可される。
 
-### A-2: pytest が実行可能な Python を実行役に届ける（実現方法は要決定）
+**加える正確な文字列（2026-08-30 に確定）**: `Bash(.venv/bin/python -m pytest*)`。
+既存の `Bash(./scripts/verify.sh)` は残す。すなわち `EXECUTOR_ALLOWED` は
+
+```
+Read,Edit,Write,Glob,Grep,Bash(./scripts/verify.sh),Bash(.venv/bin/python -m pytest*)
+```
+
+となる。`Bash(python -m pytest*)`（`.venv/bin/` 前置なし）は加えない。
+理由は A-2 の決定（方法2）と「A-2 決定後の追記（2026-08-30）」節に記す。
+
+### A-2: pytest が実行可能な Python を実行役に届ける（2026-08-30 に方法2 で確定）
 
 実測により、`review_loop.sh` を activate なしで起動した場合、実行役の
 `python` はシステム Python で pytest 非導入であり、A-1 の許可パターン追加
 だけでは実行時に失敗する。pytest を届ける方法として少なくとも次がある。
-**どれを採るかは本 ADR では決定しない（「要決定」）。**
+**起草時はどれを採るかを要決定として残したが、2026-08-30 に方法2 を
+採用した**（決定の根拠・方法1／方法3 を採らなかった理由は
+「A-2 決定後の追記（2026-08-30）」節）。以下の方法1〜3 の記述は、後日
+再検討する際の判断材料として残す。
 
 - **方法1: `review_loop.sh` 側で仮想環境を activate してから `claude -p`
   を呼ぶ**（`verify.sh:7` と同じ `source .venv/bin/activate`）。
@@ -141,6 +200,7 @@ Issue #241 への対処として、**案A と案C を併用する**。ただし�
     実装時に確認する必要がある。仮想環境が無い環境では activate が失敗
     するため、その場合の扱い（落とすか、フォールバックか）を決める必要が
     ある。
+  - **採否**: 採らなかった（「A-2 決定後の追記（2026-08-30）」節）。
 - **方法2: `EXECUTOR_ALLOWED` に `Bash(.venv/bin/python -m pytest*)` を
   別パターンとして追加する**。
   - 利点: `review_loop.sh` の `claude -p` 起動前後の環境に依存しない。
@@ -152,14 +212,63 @@ Issue #241 への対処として、**案A と案C を併用する**。ただし�
 - **方法3: 方法1 と方法2 の両方**。
   - 利点: どちらの書き方でも通る。最も堅牢。
   - 欠点: 対処が二重で保守点が増える。許可範囲が最も広い。
+  - **採否**: 採らなかった（「A-2 決定後の追記（2026-08-30）」節）。
+
+#### A-2 決定後の追記（2026-08-30）
+
+**方法2 を採用する。方法1・方法3 は採らない。**
+
+根拠:
+
+- **方法2 は `review_loop.sh` の `EXECUTOR_ALLOWED` 1 行（`:79`）の変更で
+  済み、`review_loop.sh` を起動した元シェルの環境に依存しない。**
+  段階1 の実測（「方法2 の許可パターンの実測」節）で、許可文字列
+  `...,Bash(./scripts/verify.sh),Bash(.venv/bin/python -m pytest*)` の下で
+  `.venv/bin/python -m pytest ...` が引数・`| tail`・`2>&1 | tail`・
+  `&& echo done` の付随を問わず許可されることを確認した。
+- **方法1 は timeout 経由の子プロセスへの環境継承が未検証**であり、
+  `review_loop.sh` は `timeout "$CLAUDE_TIMEOUT" claude -p ...`
+  （`:425`）の形で実行役を起動している。`source .venv/bin/activate`
+  した環境がこの `timeout` 経由の子へ確実に渡るかは実測しておらず、
+  方法1 を採ると実装時に追加の実測が必要になる。方法2 にはこの不確実性
+  が無い。
+- **`.venv` のハードコードは新たな前提の導入にあたらない。**
+  `scripts/verify.sh:7` が既に `source "$REPO_ROOT/.venv/bin/activate"` で
+  同じ前提（仮想環境が `.venv` にある）を置いている。方法2 の
+  `Bash(.venv/bin/python -m pytest*)` はこの既存前提の範囲内である。
+- **方法2 の欠点（実行役が `python -m pytest` と書くと拒否される）は
+  案C の instruction 明示で補う。** 段階1 実測で `python -m pytest --version`
+  は拒否された。案C に「pytest は `.venv/bin/python -m pytest` の形で
+  書く」ことを明記して塞ぐ（案C の節を参照）。
+- A-1 で加える許可パターンは `Bash(.venv/bin/python -m pytest*)` の
+  **1 つだけ**とし、`Bash(python -m pytest*)` は加えない。したがって
+  方法2 の欠点として挙げた「許可文字列に pytest 起動系が 2 つ並ぶ」は
+  実際には発生しない。
+- 方法3（両方）は、方法1 の環境継承の不確実性を抱えたまま許可範囲を
+  最大化するもので、方法2 単独で足りる以上、採る利点が無い。
 
 ### C: instruction 側で実行不能コマンドの扱いを明示する
 
 instruction に、実行役が実行できないコマンド——シェルスクリプトの直接実行
-（`bash foo.sh` / `./foo.sh`。実測 #6 で拒否）、`python -c ...`（実測 #5 で
-拒否）、`chmod`、`git diff` など——を**試みず、報告に記載するだけにとどめ、
-言い換え再試行をしない**ことを明記する。検証は監査役・人間に委ねる。
+（`bash foo.sh` / `./foo.sh`。「実測」節（`python -m pytest*` 条件）の #6 で
+拒否）、`python -c ...`（同 #5 で拒否）、`chmod`、`git diff` など——を
+**試みず、報告に記載するだけにとどめ、言い換え再試行をしない**ことを
+明記する。検証は監査役・人間に委ねる。
 テンプレート化（instruction 雛形への常設）の要否は別途判断する。
+
+**pytest の書き方（A-2 = 方法2 の確定を反映、2026-08-30 追記）**:
+
+- pytest は必ず `.venv/bin/python -m pytest ...` の形で書く。
+  段階1 実測（「方法2 の許可パターンの実測」節）で、この形は引数・
+  リダイレクト・`| tail`・`&& echo` の付随を問わず許可されることを
+  確認した。
+- `python -m pytest ...`（`.venv/bin/` 前置なし）は A-1 の許可パターンに
+  一致せず**拒否される**（段階1 実測で `python -m pytest --version` が
+  拒否）。実行役がこの形を書いてしまった場合は、言い換え再試行をせず
+  報告に記載するだけにとどめる。
+- パイプ `| tail` を付けても式全体は拒否されない（段階1 実測で確認）。
+  出力を絞る必要があれば `.venv/bin/python -m pytest ... -q 2>&1 | tail -20`
+  のように書いてよい。
 
 ## 却下した案
 
@@ -247,12 +356,17 @@ ERRORS.md の Issue #14 の事故を根拠に却下する。同項の記録に�
 
 ## 未決定として明示する事項
 
-- **A-2 の実現方法（方法1／方法2／方法3）。要決定。** 本 ADR は
-  「案A＋案C の併用」と「案A は許可パターン追加だけでは機能しない」ことを
-  決めるにとどめ、pytest を実行役へ届ける具体手段は実装前に別途決める。
-- A-1 で `EXECUTOR_ALLOWED` に加える正確な文字列。A-2 の結論に依存する。
+解消済み（2026-08-30）:
+
+- ~~**A-2 の実現方法（方法1／方法2／方法3）。**~~ → **方法2 で確定。**
+  「決定」節 A-2 の「A-2 決定後の追記（2026-08-30）」を参照。
+- ~~A-1 で `EXECUTOR_ALLOWED` に加える正確な文字列。~~ →
+  **`Bash(.venv/bin/python -m pytest*)` の 1 パターンで確定。** A-1 を参照。
+- ~~パイプ `|` を挟んだ複合式の可否。~~ → **許可されることを実測で確認。**
+  「実測」節「方法2 の許可パターンの実測」を参照。
+
+残る未決定事項:
+
 - 案C の文面を instruction 雛形に常設するか、タスクごとに書くか。
-- パイプ `|` を挟んだ複合式の可否（実測「未検証」）。案C の文面や
-  instruction で `| tail` 等を使わせる可能性があるなら、実装前に測定する。
 - `scripts/review_loop.sh`・instruction・テストの具体的な変更内容。本 ADR は
   方針決定のみで、`scripts/` の変更は実装タスクで行う。
