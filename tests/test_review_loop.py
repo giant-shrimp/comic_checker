@@ -673,6 +673,46 @@ def test_write_diff_evidence_wired_into_main_loop():
     assert not any('git diff > "${ROUND_DIR}/diff.txt"' in line for line in lines)
 
 
+# --- EXECUTOR_ALLOWED の許可パターン（ADR-016 A-1 / Issue #241） -----------
+#
+# ADR-016（docs/decisions/ADR-016-executor-allowed-pytest.md）の A-1 は、
+# 実行役が新設スクリプト／テストを実行できず自己検証できないままターンを
+# 空費する Issue #241 への対処として、EXECUTOR_ALLOWED に .venv 経由の
+# pytest 実行を 1 パターン追加すると決めた。A-2 = 方法2 の決定により、
+# 許可するのは .venv/bin/python 経由のみで、Bash(python -m pytest*)
+# （.venv/bin/ 前置なし）は加えない。
+#
+# 許可文字列全体はテスト側にハードコードせず、scripts/review_loop.sh 本文の
+# EXECUTOR_ALLOWED 代入行から読み出してカンマ分割した要素集合を検証する
+# （_diff_evidence_headings() と同じく、スクリプト本文を単一の情報源とする）。
+
+def _executor_allowed_elements() -> set:
+    """scripts/review_loop.sh の EXECUTOR_ALLOWED 既定値をカンマ分割した集合。"""
+    m = re.search(r'^EXECUTOR_ALLOWED="([^"]*)"', SCRIPT_TEXT, re.MULTILINE)
+    assert m is not None, "EXECUTOR_ALLOWED の代入行が見つからない"
+    return set(m.group(1).split(","))
+
+
+def test_executor_allowed_includes_venv_pytest():
+    """ADR-016 A-1 / Issue #241: 実行役の許可に .venv 経由の pytest 実行
+    `Bash(.venv/bin/python -m pytest*)` が含まれる（成果物の自己検証を
+    可能にする）。"""
+    assert "Bash(.venv/bin/python -m pytest*)" in _executor_allowed_elements()
+
+
+def test_executor_allowed_keeps_verify_sh():
+    """ADR-016 A-1: 既存の `Bash(./scripts/verify.sh)` は残す（A-1 は要素の
+    追加のみで、既存要素の変更・削除はしないと決めた）。Issue #241。"""
+    assert "Bash(./scripts/verify.sh)" in _executor_allowed_elements()
+
+
+def test_executor_allowed_excludes_bare_python_pytest():
+    """ADR-016 A-2 = 方法2 / Issue #241: `.venv/bin/` 前置なしの
+    `Bash(python -m pytest*)` は許可しない（システム Python には pytest が
+    無く、方法2 は .venv 経由の 1 パターンのみと決めた）。"""
+    assert "Bash(python -m pytest*)" not in _executor_allowed_elements()
+
+
 # --- drain_stray_input() のテスト（Issue #232、段1＋段2） ------------------
 #
 # docs/ai_loop_state/typeahead_mitigation_options_2026-08-29.md選択肢Bの
