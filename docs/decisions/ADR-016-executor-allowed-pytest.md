@@ -364,9 +364,17 @@ ERRORS.md の Issue #14 の事故を根拠に却下する。同項の記録に�
   **`Bash(.venv/bin/python -m pytest*)` の 1 パターンで確定。** A-1 を参照。
 - ~~パイプ `|` を挟んだ複合式の可否。~~ → **許可されることを実測で確認。**
   「実測」節「方法2 の許可パターンの実測」を参照。
+- ~~案C の文面を instruction 雛形に常設するか、タスクごとに書くか。~~ →
+  **両方に常設する**ことに決めた（round_1 は
+  `docs/ai_loop_state/instruction_template.md`、round_2 以降は
+  `scripts/review_proposer_prompt.md`）。6 回目試走で停止したのは round_1
+  であり、起案役プロンプトへの追記だけでは当該事象を防げないことが、両方に
+  常設する理由である。文面の正本を
+  `docs/ai_loop_state/executor_command_constraints.md` に置き、転記先 2
+  ファイルに正本全文が含まれることをテストで固定する。実行時の読み込みは
+  行わず、`scripts/review_proposer.sh` は変更しない。
 
 残る未決定事項:
 
-- 案C の文面を instruction 雛形に常設するか、タスクごとに書くか。
 - `scripts/review_loop.sh`・instruction・テストの具体的な変更内容。本 ADR は
   方針決定のみで、`scripts/` の変更は実装タスクで行う。
