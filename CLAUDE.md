@@ -124,3 +124,8 @@ AI Loop（`scripts/work_loop.sh`）の検証で分かったことなど、過去
 - リポジトリ内のあらゆるファイル（コード・ドキュメント・コミットメッセージ・PR本文・
   Issue本文・コード内コメント）に個人名を記載しない。役割を指す必要がある場合は
   「ユーザ」と書く
+- コミットメッセージに AI 帰属のトレーラを付けない。`Co-Authored-By: Claude ...`、
+  `Claude-Session: ...`、`Generated with Claude ...` など、AI が作成したことを示す行は
+  本文・トレーラのいずれにも含めない。誤って付与した場合は push 前に
+  `git commit --amend` で除去する。push 済みであれば、共有していない feature ブランチに
+  限り `git push --force-with-lease` で修正してよい。
