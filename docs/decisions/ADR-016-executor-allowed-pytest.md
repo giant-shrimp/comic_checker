@@ -374,7 +374,25 @@ ERRORS.md の Issue #14 の事故を根拠に却下する。同項の記録に�
   ファイルに正本全文が含まれることをテストで固定する。実行時の読み込みは
   行わず、`scripts/review_proposer.sh` は変更しない。
 
+解消済み（2026-08-31）:
+
+- ~~`scripts/review_loop.sh`・instruction・テストの具体的な変更内容。~~ →
+  **実装完了。** A-1 は PR #245（`EXECUTOR_ALLOWED` への
+  `Bash(.venv/bin/python -m pytest*)` 追加＋テスト 3 件）、案C は PR #246
+  （正本 `docs/ai_loop_state/executor_command_constraints.md` の新設と
+  転記先 2 ファイルへの反映＋テスト 2 件）で実装した。
+- ~~本 ADR の対処に識別力があるか（`permission_denials` を実際に減らすか）。~~
+  → **7 回目試走（セッション `20260831-002025`）で実測により確認された。**
+  6 回目試走の実行役は `permission_denials` 8 件・`subtype=error_max_turns`
+  で停止したのに対し、7 回目は round_1・round_2 とも `permission_denials`
+  が空配列・`subtype=success` で正常終了した。実測値と導出コマンドは
+  `docs/ai_loop_state/review_loop_trial7_2026-08-31.md` に記録した。
+
 残る未決定事項:
 
-- `scripts/review_loop.sh`・instruction・テストの具体的な変更内容。本 ADR は
-  方針決定のみで、`scripts/` の変更は実装タスクで行う。
+- 「残る制約」節に記した `bash foo.sh` / `./foo.sh` の拒否は本 ADR では
+  解消しない。案C による運用上の補いが十分かどうかは未検証である。新規
+  シェルスクリプトを作るタスクでの試走は行っていない。
+- `EXECUTOR_MAX_TURNS` の既定値 20 が適切かは本 ADR の範囲外である。7 回目
+  試走の round_1 は `num_turns=20` で上限と一致しており余裕が無い。別 Issue
+  で扱う。
