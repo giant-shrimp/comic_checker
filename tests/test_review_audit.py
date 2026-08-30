@@ -13,11 +13,14 @@ claudeは実際には呼ばない。偽のresult.jsonをfixtureとして用意�
 より`main`は実行されず、関数だけが呼ばれる。
 """
 import json
+import re
 import subprocess
 
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "review_audit.sh"
+PROMPT = Path(__file__).resolve().parent.parent / "scripts" / "review_audit_prompt.md"
+REVIEW_LOOP = Path(__file__).resolve().parent.parent / "scripts" / "review_loop.sh"
 
 
 def _write_result_json(output_dir: Path, *, result: str, is_error: bool = False,
@@ -165,3 +168,93 @@ def test_verdict_line_present_but_not_on_first_line_returns_exit_3(tmp_path):
     result = _run_process_result(tmp_path)
     assert result.returncode == 3
     assert not (tmp_path / "verdict.txt").exists()
+
+
+# --- review_audit_prompt.md の diff 節ガイド（Issue #231 / ADR-015 案C＝段2） ---
+#
+# 段1（案D）で review_loop.sh の write_diff_evidence() が diff.txt を2節構成
+# （=== git status --porcelain === / === git diff ===）で書くようになった。
+# 段2では、その読み方と照合手順を監査役プロンプト（review_audit_prompt.md）に
+# 明記した。以下はプロンプト本文に必要な要素が含まれることの静的な確認である。
+#
+# 限界: これらは文字列の存在確認に留まる。監査役は opus の LLM であり、
+# 追記した手順に実際に従って未追跡ファイルを Read し照合するか、という
+# 実挙動は pytest では検証できない（ADR-015「識別力は未検証（宣言）」）。
+
+def _diff_evidence_headings() -> tuple:
+    """scripts/review_loop.sh の DIFF_EVIDENCE_*_HEADING 定数の値を
+    (status見出し, diff見出し) で返す。見出し文字列をテスト側に
+    ハードコードせず、段1のソースと一致していることを保証する。"""
+    text = REVIEW_LOOP.read_text(encoding="utf-8")
+    status = re.search(r'DIFF_EVIDENCE_STATUS_HEADING="([^"]*)"', text).group(1)
+    diff = re.search(r'DIFF_EVIDENCE_DIFF_HEADING="([^"]*)"', text).group(1)
+    return status, diff
+
+
+def test_prompt_references_both_diff_evidence_headings():
+    """段2: プロンプト本文に、段1の見出し定数（=== git status --porcelain ===
+    と === git diff ===）と一字一句一致する文字列が両方含まれる。
+
+    限界: 見出しが「書かれている」ことしか確認できない。監査役が実際に
+    2節を読み分けるかは検証対象外。"""
+    prompt = PROMPT.read_text(encoding="utf-8")
+    status_heading, diff_heading = _diff_evidence_headings()
+    assert status_heading in prompt
+    assert diff_heading in prompt
+
+
+def test_prompt_instructs_reading_untracked_files():
+    """段2: プロンプトが「?? 行の未追跡ファイルは Read して報告書と照合せよ」
+    という趣旨を含む（`??` と `Read` の両方に言及している）。
+
+    限界: 文字列の存在確認のみ。監査役がこの手順に従うかは pytest では
+    検証できない（ADR-015「識別力は未検証」）。"""
+    prompt = PROMPT.read_text(encoding="utf-8")
+    assert "??" in prompt
+    assert "Read" in prompt
+    # 「未追跡」への言及もあること（?? が何を指すかの説明がある）。
+    assert "未追跡" in prompt
+
+
+def test_prompt_warns_empty_diff_section_is_not_no_change():
+    """段2: プロンプトが「git diff 節が空でも変更が無いとは限らない、
+    status 節を先に読め」という趣旨を含む。
+
+    限界: 文字列の存在確認のみ。"""
+    prompt = PROMPT.read_text(encoding="utf-8")
+    status_heading, _ = _diff_evidence_headings()
+    assert "空でも" in prompt or "空であっても" in prompt
+    # status 節を先に読む旨の指示。
+    assert status_heading in prompt
+
+
+def test_prompt_notes_auditor_cannot_run_git():
+    """段2: プロンプトが「監査役は Bash が deny で git を自分で実行できない」
+    旨を明記している（だから diff.txt の内容に頼る必要がある、という前提）。
+
+    限界: 文字列の存在確認のみ。"""
+    prompt = PROMPT.read_text(encoding="utf-8")
+    assert "Bash" in prompt and "deny" in prompt
+
+
+def test_prompt_guide_is_addition_not_rewrite():
+    """段2: 既存の節（## diff / ## 検証コマンド / ## 作業者の報告書 /
+    ## 出力形式）と VERDICT の4値・CONTRADICTIONS・FOLLOWUPS の指示は
+    そのまま残っている（追記のみで書き換えていない）。"""
+    prompt = PROMPT.read_text(encoding="utf-8")
+    for marker in (
+        "## diff",
+        "## 検証コマンド（./scripts/verify.sh）の実出力",
+        "## 作業者の報告書",
+        "## 出力形式（必ずこの形式で出力すること）",
+        "APPROVE_CONTINUE",
+        "REVISE",
+        "HALT_NEEDS_HUMAN",
+        "DONE",
+        "CONTRADICTIONS:",
+        "FOLLOWUPS:",
+        "{{DIFF}}",
+        "{{VERIFY}}",
+        "{{REPORT}}",
+    ):
+        assert marker in prompt
