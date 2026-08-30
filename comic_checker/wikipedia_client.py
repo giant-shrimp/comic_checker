@@ -921,8 +921,6 @@ def _api_get(params):
             continue
         response.raise_for_status()
         return response.json()
-    # 上限まで429が続いた場合。最後の応答をそのまま投げて、呼び出し側に判断を委ねる。
-    response.raise_for_status()
 
 
 # exintro=true (段落見出しの手前まで)だけでは、連載状況が最初の段落ではなく最初の
