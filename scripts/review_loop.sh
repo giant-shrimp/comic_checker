@@ -67,8 +67,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 MAX_ROUNDS="${MAX_ROUNDS:-10}"
-EXECUTOR_MAX_TURNS="${EXECUTOR_MAX_TURNS:-20}"
-CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-300}"
+# 実測（過去12セッション・実行結果16件）: 4件が21ターンで打ち切られ、
+# 完了した実行の最大は27ターンだった。最大観測値の約1.5倍を既定値とする。
+EXECUTOR_MAX_TURNS="${EXECUTOR_MAX_TURNS:-40}"
+# 実測（同16件）: 所要時間の最大は352秒で旧既定300秒を超過していた。
+# 最大観測値の約2.5倍を既定値とする。
+CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-900}"
 # Issue #232: drain_stray_input()が1バイトを読むごとに待つ上限秒数。
 # 診断調査（docs/ai_loop_state/review_loop_trial5_2026-08-29.md「8. 検出
 # した欠陥」）で使った値を踏襲している。
