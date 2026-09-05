@@ -27,12 +27,19 @@
         引数のファイルを走査する。
     ... | scripts/check_no_personal_info.py
         引数が無ければ標準入力を走査する（ラベルは `<stdin>`）。
+    scripts/check_no_personal_info.py --help
+        使用法を表示する（終了コード 0）。
 
     ヒットした行は `パス:行番号:行の内容` の形式で標準出力へ出す。
-    ヒットが 1 件以上なら終了コード 1、0 件なら 0。
+
+終了コード（Issue #257 観測2の解消。既存の 0/1 の意味は変えていない）:
+    0   ヒット 0 件（正常終了）。`--help` もここに含める
+    1   ヒット 1 件以上（検出）
+    2   利用者側の誤り（存在しないパス・読み取り不可・不正な引数）
 
 `scripts/verify.sh` への組み込みは本 Issue の範囲外（Issue #251「スコープ外」参照）。
 """
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -125,12 +132,36 @@ def scan_stdin(stream=None):
     return list(iter_hits("<stdin>", stream.read().splitlines()))
 
 
+def _build_parser():
+    parser = argparse.ArgumentParser(
+        description="個人情報・絶対パスの走査を行う CLI。",
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        metavar="PATH",
+        help="走査するファイル。省略時は標準入力を読む。",
+    )
+    return parser
+
+
 def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
+    # argparse は --help を自前で処理し、使用法を表示して終了コード 0 で
+    # 終了する。不正なオプション・引数の場合は使用法をエラーとして標準
+    # エラーへ出し、終了コード 2 で終了する（いずれも argparse の既定挙動）。
+    args = _build_parser().parse_args(argv)
+
     hits = []
-    if argv:
-        for path in argv:
-            hits.extend(scan_path(path))
+    if args.paths:
+        for path in args.paths:
+            try:
+                hits.extend(scan_path(path))
+            except OSError as exc:
+                # Issue #257 観測2: 存在しないパス・読み取り不可を「利用者側の
+                # 誤り」として終了コード2に分離し、無捕捉例外のトレースバックは
+                # 出さない。ヒットの有無（終了コード1）とは独立した経路にする。
+                print(f"{path}: 読み込めませんでした（{exc}）", file=sys.stderr)
+                return 2
     else:
         hits.extend(scan_stdin())
 
