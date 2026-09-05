@@ -73,6 +73,10 @@ EXECUTOR_MAX_TURNS="${EXECUTOR_MAX_TURNS:-40}"
 # 実測（同16件）: 所要時間の最大は352秒で旧既定300秒を超過していた。
 # 最大観測値の約2.5倍を既定値とする。
 CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-900}"
+# Issue #261: 子スクリプト（review_audit.sh・review_proposer.sh、各既定300秒）は
+# 別プロセスとして起動されるため、export しない限りここで解決した900秒は伝わらず、
+# 子はそれぞれ自分の既定300秒で動いてしまう。export してこの不一致を解消する。
+export CLAUDE_TIMEOUT
 # Issue #232: drain_stray_input()が1バイトを読むごとに待つ上限秒数。
 # 診断調査（docs/ai_loop_state/review_loop_trial5_2026-08-29.md「8. 検出
 # した欠陥」）で使った値を踏襲している。
