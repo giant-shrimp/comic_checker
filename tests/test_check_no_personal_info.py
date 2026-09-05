@@ -214,6 +214,38 @@ def test_cli_scans_multiple_files(tmp_path):
     )
 
 
+# --- CLI の終了コード体系（Issue #257 観測2の解消） ------------------------
+
+def test_cli_help_exits_zero_and_shows_usage():
+    # --help は argparse の既定挙動どおり終了コード0で使用法を表示する。
+    proc = run_cli(["--help"])
+    assert proc.returncode == 0
+    assert "usage" in proc.stdout.lower()
+
+
+def test_cli_nonexistent_path_exits_two_with_no_stdout_hits():
+    # 存在しないパス（架空のファイル名）は利用者側の誤りとして終了コード2。
+    # ヒットが無いのと区別するため、標準出力にヒット行を一切出さない。
+    proc = run_cli(["no_such_file_for_test.txt"])
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+
+
+def test_cli_nonexistent_path_does_not_print_traceback():
+    # 無捕捉例外によるトレースバックを出さず、1行のエラーメッセージのみ。
+    proc = run_cli(["no_such_file_for_test.txt"])
+    assert "Traceback" not in proc.stderr
+    assert proc.stderr.count("\n") == 1
+
+
+def test_cli_hit_still_exits_one(tmp_path):
+    # ヒットありは従来どおり終了コード1のまま（既存の意味の維持確認、架空データ）。
+    target = tmp_path / "sample.txt"
+    target.write_text("clean\nテスト花子様より\n", encoding="utf-8")
+    proc = run_cli([str(target)])
+    assert proc.returncode == 1
+
+
 # --- 検出パターン定数の公開 ----------------------------------------------
 
 def test_detection_patterns_tuple_exposes_each_constant():
