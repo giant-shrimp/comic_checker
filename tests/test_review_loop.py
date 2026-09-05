@@ -235,6 +235,51 @@ def test_propose_next_instruction_no_further_action_must_be_exact_first_line(tmp
     assert result.returncode == 0
 
 
+# --- CLAUDE_TIMEOUT の子への伝播（Issue #261） -------------------------------
+#
+# review_loop.sh は子スクリプト（review_audit.sh・review_proposer.sh、各既定
+# 300秒）を素の実行（sourceではない）で起動するため、export しない限り親の
+# 既定900秒は子へ伝わらない。ここでは起案役スタブに CLAUDE_TIMEOUT を書き
+# 出させ、実際に受け取った値を検証する（export の有無を文字列一致で見るの
+# ではなく、挙動として確認する）。
+
+
+def test_propose_next_instruction_exports_default_claude_timeout_to_child(tmp_path, monkeypatch):
+    """環境変数を与えずに親を起動したとき、子（起案役）は親の既定値900を
+    受け取る。"""
+    monkeypatch.delenv("CLAUDE_TIMEOUT", raising=False)
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(
+        script_dir,
+        'echo "次の指示。" > "$3/next_instruction.md"\n'
+        'echo "$CLAUDE_TIMEOUT" > "$3/claude_timeout.txt"\n',
+    )
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 0
+    claude_timeout = (round_dir / "proposer" / "claude_timeout.txt").read_text(encoding="utf-8").strip()
+    assert claude_timeout == "900"
+
+
+def test_propose_next_instruction_forwards_explicit_claude_timeout_to_child(tmp_path, monkeypatch):
+    """環境変数で明示指定して親を起動したとき、子はその値を受け取る
+    （既存挙動の維持確認。架空の値123を使う）。"""
+    monkeypatch.setenv("CLAUDE_TIMEOUT", "123")
+    script_dir, original, review_md, round_dir = _setup_round(tmp_path)
+    _install_proposer_stub(
+        script_dir,
+        'echo "次の指示。" > "$3/next_instruction.md"\n'
+        'echo "$CLAUDE_TIMEOUT" > "$3/claude_timeout.txt"\n',
+    )
+
+    result = _run_propose_next_instruction(script_dir, original, review_md, round_dir)
+
+    assert result.returncode == 0
+    claude_timeout = (round_dir / "proposer" / "claude_timeout.txt").read_text(encoding="utf-8").strip()
+    assert claude_timeout == "123"
+
+
 # --- wait_for_quit_only() のテスト（ADR-011決定8の1キー承認を維持すること） ---
 #
 # Issue #232 段2: このプロンプトの while ループ先頭で drain_stray_input() を
