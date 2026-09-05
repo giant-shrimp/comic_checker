@@ -158,6 +158,20 @@ def test_hunk_header_pattern_requires_two_symbols_at_line_start():
     assert hits_for([line]) == [line]
 
 
+def test_hunk_header_pattern_requires_line_number_ranges_and_closing_symbols():
+    # 行頭が記号2つだけで、行番号範囲・閉じの記号を伴わない非ハンクヘッダ行は
+    # 抑止対象にならず、末尾の敬称形が検出される（架空データ）。
+    line = "@@ 架空次郎様より"
+    assert hits_for([line]) == [line]
+
+
+def test_hunk_header_pattern_still_skips_well_formed_hunk_header():
+    # 行番号範囲2組・閉じの記号2つを備えた正規のハンクヘッダ形は、
+    # 厳格化後も従来どおり抑止対象のまま（既存の意図の維持確認、架空データ）。
+    line = "@@ -3,2 +3,4 @@ def notify(fake.reviewer@example.invalid):"
+    assert hits_for([line]) == []
+
+
 # --- CLI としての振る舞い ---------------------------------------------------
 
 def test_cli_exit_1_and_output_format_on_hit(tmp_path):

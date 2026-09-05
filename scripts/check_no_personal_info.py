@@ -85,7 +85,9 @@ DETECTION_PATTERNS = (
 # 区切り記号（アットマーク）を 2 つ並べて始まる行 = `git diff` のハンクヘッダ。
 # ハンクヘッダの末尾にはセクション見出しが付き、そこに敬称やメール形が紛れ得る
 # ため、行ごとスキップする（誤検出の抑止 2）。
-HUNK_HEADER_PATTERN = re.compile(r"^@@")
+# 行番号範囲2組と閉じの記号2つまで要求し、単に記号2つで始まるだけの非ハンクヘッダ行を
+# 誤ってスキップしないようにする。
+HUNK_HEADER_PATTERN = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@")
 
 
 def _honorific_hit(line):
