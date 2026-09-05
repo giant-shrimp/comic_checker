@@ -184,7 +184,7 @@ def test_cli_exit_1_and_output_format_on_hit(tmp_path):
     )
     proc = run_cli([str(target)])
     assert proc.returncode == 1
-    assert proc.stdout == f"{target}:2:path is /home/exampleuser/x\n"
+    assert proc.stdout == f"{target.name}:2:path is /home/exampleuser/x\n"
 
 
 def test_cli_exit_0_on_clean_file(tmp_path):
@@ -209,8 +209,8 @@ def test_cli_scans_multiple_files(tmp_path):
     proc = run_cli([str(a), str(b)])
     assert proc.returncode == 1
     assert proc.stdout == (
-        f"{a}:2:/home/exampleuser/a\n"
-        f"{b}:2:テスト花子様\n"
+        f"{a.name}:2:/home/exampleuser/a\n"
+        f"{b.name}:2:テスト花子様\n"
     )
 
 
@@ -244,6 +244,67 @@ def test_cli_hit_still_exits_one(tmp_path):
     target.write_text("clean\nテスト花子様より\n", encoding="utf-8")
     proc = run_cli([str(target)])
     assert proc.returncode == 1
+
+
+# --- CLI の出力パス（Issue #257 観測3の解消） ------------------------------
+
+def test_cli_output_path_has_no_directory_name(tmp_path):
+    # 絶対パスを渡しても、出力にはディレクトリ名が含まれずファイル名のみになる。
+    target_dir = tmp_path / "架空ディレクトリ"
+    target_dir.mkdir()
+    target = target_dir / "sample.txt"
+    target.write_text("clean\nテスト花子様より\n", encoding="utf-8")
+    proc = run_cli([str(target)])
+    assert proc.returncode == 1
+    assert proc.stdout == "sample.txt:2:テスト花子様より\n"
+    assert str(target_dir) not in proc.stdout
+
+
+def test_cli_same_basename_in_different_dirs_gets_numbered(tmp_path):
+    # 異なるディレクトリの同名ファイルは #N（入力順の1始まり）で区別される。
+    dir1 = tmp_path / "dir1"
+    dir2 = tmp_path / "dir2"
+    dir1.mkdir()
+    dir2.mkdir()
+    a = dir1 / "dup.txt"
+    b = dir2 / "dup.txt"
+    a.write_text("clean\nテスト花子様より（1つ目）\n", encoding="utf-8")
+    b.write_text("clean\nテスト花子様より（2つ目）\n", encoding="utf-8")
+    proc = run_cli([str(a), str(b)])
+    assert proc.returncode == 1
+    assert proc.stdout == (
+        "dup.txt#1:2:テスト花子様より（1つ目）\n"
+        "dup.txt#2:2:テスト花子様より（2つ目）\n"
+    )
+
+
+def test_cli_no_identifier_when_no_collision(tmp_path):
+    # basename が衝突しない場合は識別子を付けない（架空データ）。
+    dir1 = tmp_path / "dir1"
+    dir2 = tmp_path / "dir2"
+    dir1.mkdir()
+    dir2.mkdir()
+    a = dir1 / "alpha.txt"
+    b = dir2 / "beta.txt"
+    a.write_text("clean\nテスト花子様より\n", encoding="utf-8")
+    b.write_text("clean\n見積もりは someone@example.test に送る\n", encoding="utf-8")
+    proc = run_cli([str(a), str(b)])
+    assert proc.returncode == 1
+    assert "#" not in proc.stdout
+    assert proc.stdout == (
+        "alpha.txt:2:テスト花子様より\n"
+        "beta.txt:2:見積もりは someone@example.test に送る\n"
+    )
+
+
+def test_cli_read_error_message_has_no_directory_name(tmp_path):
+    # 存在しないパスの標準エラーメッセージにもディレクトリ名を含めない。
+    target_dir = tmp_path / "架空ディレクトリ"
+    target = target_dir / "no_such_file.txt"
+    proc = run_cli([str(target)])
+    assert proc.returncode == 2
+    assert "no_such_file.txt" in proc.stderr
+    assert str(target_dir) not in proc.stderr
 
 
 # --- 検出パターン定数の公開 ----------------------------------------------

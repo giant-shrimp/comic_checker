@@ -30,7 +30,9 @@
     scripts/check_no_personal_info.py --help
         使用法を表示する（終了コード 0）。
 
-    ヒットした行は `パス:行番号:行の内容` の形式で標準出力へ出す。
+    ヒットした行は `ファイル名:行番号:行の内容` の形式で標準出力へ出す（Issue #257
+    観測3の解消。ディレクトリ名は含めない）。異なる入力パスが同じファイル名を
+    持つ場合に限り、`ファイル名#N`（N は入力順の1始まり番号）で区別する。
 
 終了コード（Issue #257 観測2の解消。既存の 0/1 の意味は変えていない）:
     0   ヒット 0 件（正常終了）。`--help` もここに含める
@@ -40,6 +42,7 @@
 `scripts/verify.sh` への組み込みは本 Issue の範囲外（Issue #251「スコープ外」参照）。
 """
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -145,6 +148,16 @@ def _build_parser():
     return parser
 
 
+def _error_reason(exc):
+    """OSError からファイル名を含まない理由文字列だけを取り出す。
+
+    `str(exc)` はエラー発生時に渡した引数（パス）をそのまま含むため、
+    絶対パスで渡された場合に観測3と同じ漏洩経路になる。`strerror`
+    （OS のエラー文字列。ファイル名を含まない）だけを使う。
+    """
+    return exc.strerror if getattr(exc, "strerror", None) else exc.__class__.__name__
+
+
 def main(argv=None):
     # argparse は --help を自前で処理し、使用法を表示して終了コード 0 で
     # 終了する。不正なオプション・引数の場合は使用法をエラーとして標準
@@ -160,13 +173,33 @@ def main(argv=None):
                 # Issue #257 観測2: 存在しないパス・読み取り不可を「利用者側の
                 # 誤り」として終了コード2に分離し、無捕捉例外のトレースバックは
                 # 出さない。ヒットの有無（終了コード1）とは独立した経路にする。
-                print(f"{path}: 読み込めませんでした（{exc}）", file=sys.stderr)
+                # メッセージは basename のみ（観測3: ディレクトリ名を含めない）。
+                print(
+                    f"{os.path.basename(path)}: 読み込めませんでした（{_error_reason(exc)}）",
+                    file=sys.stderr,
+                )
                 return 2
     else:
         hits.extend(scan_stdin())
 
+    # Issue #257 観測3: 出力パスは basename のみにする。ただし2つ以上の
+    # 異なる入力パスが同じ basename を持つ場合に限り、該当する行だけへ
+    # 入力順（args.paths内の1始まりの位置）の識別子 `#N` を付け、区別
+    # できるようにする。ディレクトリ名・パス断片は識別子に含めない。
+    # 衝突が無ければ基準どおり basename のみ（識別子は付かない）。
+    order_index = {p: i + 1 for i, p in enumerate(args.paths)}
+    basename_of = {}
+    groups = {}
+    for path, _lineno, _line in hits:
+        b = path if path == "<stdin>" else os.path.basename(path)
+        basename_of[path] = b
+        groups.setdefault(b, set()).add(path)
+    collided = {b for b, paths in groups.items() if len(paths) > 1}
+
     for path, lineno, line in hits:
-        print(f"{path}:{lineno}:{line}")
+        b = basename_of[path]
+        display_path = f"{b}#{order_index.get(path, '?')}" if b in collided else b
+        print(f"{display_path}:{lineno}:{line}")
 
     return 1 if hits else 0
 
