@@ -217,6 +217,32 @@ check_executor_result() {
   return 0
 }
 
+# Issue #267: 適用されたCLAUDE_TIMEOUTの値をラウンド成果物へ書き出す。claude
+# 呼び出しの前に呼ぶことで、タイムアウトで強制終了された場合でもこのファイル
+# だけは残る。claudeを呼ばずにこの関数だけを試せるよう、独立した関数にして
+# ある（check_executor_result()と同じ流儀。review_audit.sh・review_proposer.sh
+# のwrite_claude_timeout_marker()と同名・同シグネチャで揃えてある）。
+write_claude_timeout_marker() {
+  local output_dir="$1"
+  echo "$CLAUDE_TIMEOUT" > "${output_dir}/claude_timeout.txt"
+}
+
+# Issue #267: 実行役の所要時間要約。既存の ${ROUND_DIR}/metrics.json は監査役
+# （review_audit.sh、output_dir=ROUND_DIR）が書くため、実行役の要約は衝突しない
+# 別名（executor_metrics.json、executor_result.json/executor_result.errと同じ
+# 接頭辞）にする。executor_result.jsonが空/不正なJSONの場合（timeoutで強制
+# 終了された場合を含む）は書き出さない。claudeを呼ばずにこの関数だけを試せる
+# よう、独立した関数にしてある（check_executor_result()と同じ流儀）。
+write_executor_metrics() {
+  local round_dir="$1"
+  local executor_result="${round_dir}/executor_result.json"
+
+  if [ -s "$executor_result" ] && jq -e . "$executor_result" >/dev/null 2>&1; then
+    jq '{total_cost_usd, num_turns, duration_ms, is_error, terminal_reason, permission_denials}' \
+      "$executor_result" > "${round_dir}/executor_metrics.json"
+  fi
+}
+
 # Issue #227: 実行役がmax_turnsに到達すると.resultが空になり、報告
 # （report.md）が失われる。それでも作業ツリーに残った変更（成果）だけは
 # 保全する。check_executor_result()はexecutor_result.jsonを読んで判定する
@@ -428,6 +454,8 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
 
   cd "$REPO_ROOT"
 
+  write_claude_timeout_marker "$ROUND_DIR"
+
   # プロンプトはargvではなくstdin経由で渡す（review_audit.shと同じ理由。
   # ラウンドが進むほどinstruction＝前ラウンドのreview.mdが長くなりうるため）。
   timeout "$CLAUDE_TIMEOUT" claude -p \
@@ -439,6 +467,8 @@ for ((round = 1; round <= MAX_ROUNDS; round++)); do
     < "${ROUND_DIR}/instruction.md" \
     > "${ROUND_DIR}/executor_result.json" \
     2> "${ROUND_DIR}/executor_result.err" || true
+
+  write_executor_metrics "$ROUND_DIR"
 
   executor_check=0
   check_executor_result "$ROUND_DIR" || executor_check=$?

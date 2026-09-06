@@ -258,3 +258,60 @@ def test_prompt_guide_is_addition_not_rewrite():
         "{{REPORT}}",
     ):
         assert marker in prompt
+
+
+# --- Issue #267: 観測不能性の解消（metrics.jsonのduration_ms・適用値の記録） ---
+#
+# review_loop.sh系の試走成果物には、適用されたCLAUDE_TIMEOUTの値も所要時間も
+# 残らず、事後に「設定したタイムアウトが実際に適用されたか」を検証できない
+# という欠落があった（Issue #267）。ここではその解消を、claudeを実際に呼ばずに
+# 検証する。
+
+def test_metrics_json_includes_duration_ms(tmp_path):
+    """metrics.jsonにduration_msが含まれる（適用されたCLAUDE_TIMEOUTに対して
+    実際にどれだけ時間を要したかを事後に確認するため）。"""
+    (tmp_path / "result.json").write_text(
+        json.dumps(
+            {
+                "is_error": False,
+                "terminal_reason": "completed",
+                "num_turns": 1,
+                "total_cost_usd": 0.01,
+                "duration_ms": 45678,
+                "permission_denials": [],
+                "result": "VERDICT: APPROVE_CONTINUE\n\nCONTRADICTIONS:\n- なし\n",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    result = _run_process_result(tmp_path)
+    assert result.returncode == 0
+    metrics = json.loads((tmp_path / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["duration_ms"] == 45678
+
+
+def _run_write_claude_timeout_marker(output_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; write_claude_timeout_marker "$2"',
+         "_", str(SCRIPT), str(output_dir)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_write_claude_timeout_marker_records_default_value(tmp_path, monkeypatch):
+    """環境変数未指定なら既定値300（review_audit.shのCLAUDE_TIMEOUT既定値）が
+    成果物へ書き出される。"""
+    monkeypatch.delenv("CLAUDE_TIMEOUT", raising=False)
+    result = _run_write_claude_timeout_marker(tmp_path)
+    assert result.returncode == 0
+    assert (tmp_path / "claude_timeout.txt").read_text(encoding="utf-8").strip() == "300"
+
+
+def test_write_claude_timeout_marker_records_explicit_value(tmp_path, monkeypatch):
+    """環境変数で明示指定した値がそのまま書き出される（架空の値123を使う）。"""
+    monkeypatch.setenv("CLAUDE_TIMEOUT", "123")
+    result = _run_write_claude_timeout_marker(tmp_path)
+    assert result.returncode == 0
+    assert (tmp_path / "claude_timeout.txt").read_text(encoding="utf-8").strip() == "123"
