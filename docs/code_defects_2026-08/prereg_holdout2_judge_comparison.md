@@ -131,4 +131,14 @@ holdout2における**出現件数**（単純文字列一致）は、本セッ�
 
 ## 6. 三値ロック
 
-HEAD・md5は、本文書のコミット後に別コミットで追記する。この時点では値を書かない。
+- HEAD: `d5ce2c27292c82cfdf41c78ae75405a77d834856`
+- md5: `64bd7da8f24f2e842564fcf86d676243`
+
+md5は本節追記**前**の内容（HEAD `d5ce2c27292c82cfdf41c78ae75405a77d834856`時点の
+本ファイル）に対する値である。
+
+導出コマンド:
+```
+git rev-parse HEAD
+md5sum docs/code_defects_2026-08/prereg_holdout2_judge_comparison.md
+```
