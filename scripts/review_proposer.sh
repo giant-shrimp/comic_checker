@@ -134,8 +134,10 @@ review_proposer_process_result() {
   is_error="$(jq -r '.is_error // false' "$result_json")"
 
   # is_error/terminal_reason/permission_denials等は、失敗時の診断にも使うため
-  # is_errorの真偽に関わらずここで書き出す（review_audit.shと同じ流儀）。
-  jq '{total_cost_usd, num_turns, is_error, terminal_reason, permission_denials}' \
+  # is_errorの真偽に関わらずここで書き出す（review_audit.shと同じ流儀）。duration_ms
+  # はIssue #267（適用されたCLAUDE_TIMEOUTに対して実際にどれだけ時間を要したかを
+  # 事後に確認するため）。
+  jq '{total_cost_usd, num_turns, duration_ms, is_error, terminal_reason, permission_denials}' \
     "$result_json" > "${output_dir}/metrics.json"
 
   if [ "$is_error" = "true" ]; then
@@ -168,6 +170,15 @@ review_proposer_process_result() {
   return 0
 }
 
+# Issue #267: 適用されたCLAUDE_TIMEOUTの値を成果物へ書き出す。claude呼び出しの
+# 前に呼ぶことで、タイムアウトで強制終了された場合でもこのファイルだけは残る。
+# claudeを呼ばずにこの関数だけを試せるよう、独立した関数にしてある
+# （review_proposer_process_result()と同じ流儀）。
+write_claude_timeout_marker() {
+  local output_dir="$1"
+  echo "$CLAUDE_TIMEOUT" > "${output_dir}/claude_timeout.txt"
+}
+
 main() {
   { [ "$#" -eq 3 ] || [ "$#" -eq 4 ]; } || usage
 
@@ -193,6 +204,8 @@ main() {
 
   render_prompt "$SCRIPT_DIR/review_proposer_prompt.md" "$original_instruction_file" "$review_file" \
     "$executor_allowed" "${output_dir}/prompt.txt"
+
+  write_claude_timeout_marker "$output_dir"
 
   timeout "$CLAUDE_TIMEOUT" claude -p \
     --model sonnet \

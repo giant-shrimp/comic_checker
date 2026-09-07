@@ -111,8 +111,9 @@ review_audit_process_result() {
   is_error="$(jq -r '.is_error // false' "$result_json")"
 
   # is_error/terminal_reason/permission_denials等は、失敗時の診断にも使うため
-  # is_errorの真偽に関わらずここで書き出す。
-  jq '{total_cost_usd, num_turns, is_error, terminal_reason, permission_denials}' \
+  # is_errorの真偽に関わらずここで書き出す。duration_msはIssue #267（適用された
+  # CLAUDE_TIMEOUTに対して実際にどれだけ時間を要したかを事後に確認するため）。
+  jq '{total_cost_usd, num_turns, duration_ms, is_error, terminal_reason, permission_denials}' \
     "$result_json" > "${output_dir}/metrics.json"
 
   if [ "$is_error" = "true" ]; then
@@ -135,6 +136,15 @@ review_audit_process_result() {
   echo "review_audit.sh: review.mdの1行目からVERDICTを抽出できませんでした。" >&2
   echo "  1行目: ${first_line}" >&2
   return 3
+}
+
+# Issue #267: 適用されたCLAUDE_TIMEOUTの値を成果物へ書き出す。claude呼び出しの
+# 前に呼ぶことで、タイムアウトで強制終了された場合でもこのファイルだけは残る。
+# claudeを呼ばずにこの関数だけを試せるよう、独立した関数にしてある
+# （review_audit_process_result()と同じ流儀）。
+write_claude_timeout_marker() {
+  local output_dir="$1"
+  echo "$CLAUDE_TIMEOUT" > "${output_dir}/claude_timeout.txt"
 }
 
 main() {
@@ -163,6 +173,8 @@ main() {
 
   render_prompt "$SCRIPT_DIR/review_audit_prompt.md" "$diff_file" "$verify_file" "$report_file" \
     "${output_dir}/prompt.txt"
+
+  write_claude_timeout_marker "$output_dir"
 
   timeout "$CLAUDE_TIMEOUT" claude -p \
     --model opus \

@@ -1038,3 +1038,87 @@ def test_instruction_template_embeds_command_constraints():
     """ADR-016 案C / Issue #241: round_1 用 instruction 雛形に、実行不能
     コマンドの扱いの正本文面が全文そのまま部分文字列として含まれる。"""
     assert _constraints_canon_text() in _INSTRUCTION_TEMPLATE.read_text(encoding="utf-8")
+
+
+# --- Issue #267: 観測不能性の解消（実行役のduration_ms・適用値の記録） ---------
+#
+# review_loop.sh系の試走成果物には、適用されたCLAUDE_TIMEOUTの値も所要時間も
+# 残らず、事後に「設定したタイムアウトが実際に適用されたか」を検証できない
+# という欠落があった（Issue #267）。write_claude_timeout_marker()・
+# write_executor_metrics()はclaudeを呼ばない独立した関数にしてあるため
+# （check_executor_result()と同じ流儀）、sourceして直接呼び出せる。
+
+def _run_write_claude_timeout_marker(output_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; write_claude_timeout_marker "$2"',
+         "_", str(SCRIPT), str(output_dir)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_write_claude_timeout_marker_records_default_value(tmp_path, monkeypatch):
+    """環境変数未指定なら既定値900（review_loop.shのCLAUDE_TIMEOUT既定値）が
+    成果物へ書き出される。"""
+    monkeypatch.delenv("CLAUDE_TIMEOUT", raising=False)
+    result = _run_write_claude_timeout_marker(tmp_path)
+    assert result.returncode == 0
+    assert (tmp_path / "claude_timeout.txt").read_text(encoding="utf-8").strip() == "900"
+
+
+def test_write_claude_timeout_marker_records_explicit_value(tmp_path, monkeypatch):
+    """環境変数で明示指定した値がそのまま書き出される（架空の値123を使う）。"""
+    monkeypatch.setenv("CLAUDE_TIMEOUT", "123")
+    result = _run_write_claude_timeout_marker(tmp_path)
+    assert result.returncode == 0
+    assert (tmp_path / "claude_timeout.txt").read_text(encoding="utf-8").strip() == "123"
+
+
+def _run_write_executor_metrics(round_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; write_executor_metrics "$2"',
+         "_", str(SCRIPT), str(round_dir)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_write_executor_metrics_includes_duration_ms(tmp_path):
+    """executor_metrics.jsonにduration_msが含まれる（既存の${ROUND_DIR}/
+    metrics.jsonは監査役が書くため、実行役の要約は別名にしてある）。"""
+    (tmp_path / "executor_result.json").write_text(
+        json.dumps(
+            {
+                "is_error": False,
+                "terminal_reason": "completed",
+                "num_turns": 3,
+                "total_cost_usd": 0.02,
+                "duration_ms": 98765,
+                "permission_denials": [],
+                "result": "実行役の報告。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    result = _run_write_executor_metrics(tmp_path)
+    assert result.returncode == 0
+    metrics = json.loads((tmp_path / "executor_metrics.json").read_text(encoding="utf-8"))
+    assert metrics["duration_ms"] == 98765
+
+
+def test_write_executor_metrics_skips_when_executor_result_missing(tmp_path):
+    """executor_result.jsonが無い（timeoutで強制終了され空のまま残った場合等）
+    ときはexecutor_metrics.jsonを書き出さない。"""
+    result = _run_write_executor_metrics(tmp_path)
+    assert result.returncode == 0
+    assert not (tmp_path / "executor_metrics.json").exists()
+
+
+def test_write_executor_metrics_skips_when_executor_result_invalid_json(tmp_path):
+    """executor_result.jsonが不正なJSON（timeoutで書き込み途中に打ち切られた
+    場合を想定）のときもexecutor_metrics.jsonを書き出さない。"""
+    (tmp_path / "executor_result.json").write_text('{"broken":', encoding="utf-8")
+    result = _run_write_executor_metrics(tmp_path)
+    assert result.returncode == 0
+    assert not (tmp_path / "executor_metrics.json").exists()
