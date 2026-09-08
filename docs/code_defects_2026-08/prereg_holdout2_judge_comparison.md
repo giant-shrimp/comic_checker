@@ -37,7 +37,9 @@ Issue #180の完了条件（`prereg_corpus_expansion_holdout2.md` 5節）のう�
 既存160件（holdout99+regression61）に対し現行`judge()`ロジックをオフライン再現
 （`_judge_extract()` → `STATUS_UNKNOWN`時のみ`_judge_via_infobox()`、
 `_has_ongoing_signal()`・`_is_novel_primary()`によるveto込み）した実測分布は
-以下のとおり（導出コマンドは4節参照）。
+以下のとおり（導出: `docs/code_defects_2026-08/baseline160_judge_distribution.py`。
+4節はholdout2に対する今後の測定手順であり、この既存160件分布の導出手順とは
+別物のため、追補にあたりスクリプトとして切り出した）。
 
 | カテゴリ | 既存160件での件数 | 割合 |
 |---|---|---|
@@ -131,14 +133,35 @@ holdout2における**出現件数**（単純文字列一致）は、本セッ�
 
 ## 6. 三値ロック
 
+### 初回ロック（追補前）
+
 - HEAD: `d5ce2c27292c82cfdf41c78ae75405a77d834856`
 - md5: `64bd7da8f24f2e842564fcf86d676243`
 
 md5は本節追記**前**の内容（HEAD `d5ce2c27292c82cfdf41c78ae75405a77d834856`時点の
-本ファイル）に対する値である。
+本ファイル）に対する値である。**この初回ロックの値は削除・変更しない。**
 
-導出コマンド:
+### 追補後のロック
+
+理由: 初回ロックはHEAD・md5の2値のみであり、本プロジェクトの三値ロックの慣習
+（HEAD hash + 文書のmd5sum + git log hash。`docs/holdout_pool_2026-08/README.md`
+「4. プール実体はリポジトリ内に置く」節が定義）のうち3値目（本文書自身のgit log
+hash）が欠けていた。あわせて3(a)の根拠数値（完結88・連載中56・判定不能16）を
+第三者が再現するための導出スクリプトが存在しない不足も判明したため、
+`docs/code_defects_2026-08/baseline160_judge_distribution.py`を追加し、
+本節を追補する。
+
+- 初回ロック確定コミットのgit log hash: `208a90a8e83ad454d589af8cc3bf285a9006c973`
+- 追補後の本文書のmd5: 本節の内容が確定した直後に別コミットで追記する
+  （自己参照を避けるため、この時点では値を書かない）
+
+導出コマンド（初回ロックの2値）:
 ```
 git rev-parse HEAD
 md5sum docs/code_defects_2026-08/prereg_holdout2_judge_comparison.md
+```
+
+導出コマンド（追補後のロックの3値目）:
+```
+git log -1 --format=%H -- docs/code_defects_2026-08/prereg_holdout2_judge_comparison.md
 ```
