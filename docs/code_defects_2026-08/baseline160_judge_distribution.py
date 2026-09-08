@@ -9,6 +9,13 @@ wikitextフィールドをそのまま_judge_extract()・_judge_via_infobox()へ
 （verification_procedure.md「厳禁」節が指すサブ関数個別呼び出しのシミュレーション
 ではなく、judge()本体のveto層（_has_ongoing_signal・_is_novel_primary）を
 含めて再現する）。comic_checker/本体は一切変更しない。
+
+本スクリプトはjudge()本体を呼ばず、_judge_extract・_judge_via_infoboxとveto層を
+組み合わせて同経路を再現している。この再現がjudge()本体と等価であることを、
+docs/regression_corpus_2026-08/step98_judge_harness.pyのrun_judge_with_snapshot()
+（_pick_article・_fetch_wikitextのみ差し替えてjudge()本体を呼ぶ）による160件の
+再算出と突合して確認した。突合結果: 集計値（完結88・連載中56・判定不能16）が
+一致し、記事単位でも不一致0件。確認時点のコミット: 4ef614e。
 """
 import json
 import sys
