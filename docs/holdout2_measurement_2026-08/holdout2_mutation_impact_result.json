@@ -1,0 +1,39 @@
+{
+  "excluded_matched_title_none": [
+    "被虐のノエル"
+  ],
+  "results": {
+    "配信終了": {
+      "word": "配信終了",
+      "target_attr": "COMPLETED_WEAK_RE",
+      "pattern_before": "連載(?:が|を)?終了(?:した)?|連載された|連載され、|まで[^。、]{0,20}?連載(?:された)?|打ち切(?:り|られ)|配信された",
+      "pattern_after": "連載(?:が|を)?終了(?:した)?|連載された|連載され、|まで[^。、]{0,20}?連載(?:された)?|打ち切(?:り|られ)|配信された|配信終了",
+      "sanity_check_before_no_match": true,
+      "sanity_check_after_matches": true,
+      "impact_count": 0,
+      "transition_class_counts": {},
+      "changed_titles": []
+    },
+    "連載されており": {
+      "word": "連載されており",
+      "target_attr": "ONGOING_RE",
+      "pattern_before": "連載中(?!から|は|に|作品|の[0-9０-９]|だっ|であっ|断|、)|連載されている|発行されている",
+      "pattern_after": "連載中(?!から|は|に|作品|の[0-9０-９]|だっ|であっ|断|、)|連載されている|発行されている|連載されており",
+      "sanity_check_before_no_match": true,
+      "sanity_check_after_matches": true,
+      "impact_count": 1,
+      "transition_class_counts": {
+        "E_missed→A_correct": 1
+      },
+      "changed_titles": [
+        {
+          "title": "大人にゃ恋の仕方がわからねぇ!",
+          "before_status": "判定不能",
+          "after_status": "連載中",
+          "expected_status": "連載中",
+          "transition_class": "E_missed→A_correct"
+        }
+      ]
+    }
+  }
+}

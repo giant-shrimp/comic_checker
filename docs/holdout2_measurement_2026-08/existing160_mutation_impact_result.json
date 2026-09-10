@@ -1,0 +1,26 @@
+{
+  "配信終了": {
+    "word": "配信終了",
+    "target_attr": "COMPLETED_WEAK_RE",
+    "impact_count": 1,
+    "changed": [
+      {
+        "title": "亡装遺体ネクロマン",
+        "before": "判定不能",
+        "after": "完結"
+      }
+    ]
+  },
+  "連載されており": {
+    "word": "連載されており",
+    "target_attr": "ONGOING_RE",
+    "impact_count": 1,
+    "changed": [
+      {
+        "title": "ヤリチン☆ビッチ部",
+        "before": "判定不能",
+        "after": "連載中"
+      }
+    ]
+  }
+}
