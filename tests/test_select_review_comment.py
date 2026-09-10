@@ -29,7 +29,7 @@ def _comment(login: str, body: str) -> dict:
 
 
 def test_finds_by_run_id_primary_path():
-    """(a) run_idを含むコメントがあれば、それを1次経路で採用する。"""
+    """(a) run_idを含むコメントがあれば、それを採用する。"""
     comments = [
         _comment("someone", "無関係なコメント"),
         _comment("other-bot[bot]", f"**Claude finished** —— [View job](https://github.com/o/r/actions/runs/{RUN_ID})\n\n---\n本文"),
@@ -37,7 +37,7 @@ def test_finds_by_run_id_primary_path():
     result = _run(comments)
     assert result.returncode == 0
     assert "本文" in result.stdout
-    assert "1次経路" in result.stderr
+    assert "一致でコメントを特定しました" in result.stderr
 
 
 def test_fails_closed_when_neither_matches():
@@ -53,9 +53,9 @@ def test_fails_closed_when_neither_matches():
 
 
 def test_run_id_match_takes_priority_over_bot_name():
-    """(d) 両方の経路で候補があっても、1次経路(run_id一致)が優先される。
+    """(d) 複数のコメント候補があっても、run_id一致するものが選ばれる。
 
-    bot名一致のコメントは別のrunの残骸である可能性があるため、
+    bot名が一致するだけのコメントは別のrunの残骸である可能性があるため、
     このrun固有のrun_id一致を優先する設計を固定する。
     """
     comments = [
@@ -65,7 +65,7 @@ def test_run_id_match_takes_priority_over_bot_name():
     result = _run(comments)
     assert result.returncode == 0
     assert "今回のrunの本文" in result.stdout
-    assert "1次経路" in result.stderr
+    assert "一致でコメントを特定しました" in result.stderr
 
 
 def test_multiple_run_id_matches_takes_last():
@@ -124,3 +124,46 @@ def test_no_suffix_author_without_run_id_match_fails_closed():
     result = _run(comments)
     assert result.returncode == 2
     assert result.stdout == ""
+
+
+# --- ここから実データによる検証（Issue #93） -------------------------------
+#
+# 出所: ~/comic_checker-agent-notes/pr90_comments.json・pr92_comments.json
+# （過去の claude-review.yml 実測時に `gh pr view --json comments` で取得した
+# 実データ。リポジトリ外の作業ディレクトリにあり、このリポジトリの
+# バージョン管理対象ではない）。
+#
+# 個人名（GitHubアカウント名）除去について: 元データの body にはアカウント名への
+# メンションと、URLパス中のアカウント名が含まれていたため、それぞれ
+# `@USERNAME` / `github.com/OWNER/REPO` のプレースホルダに置換した。
+# author.login の値（"github-actions"）は GitHub Actionsの投稿者名であり
+# 個人名ではないため、そのまま使用している。
+#
+# 事前登録: 手順1の実測（19件の実データ pr*_comments.json 全件、および
+# 現行の `gh pr view <n> --json comments` の出力）で、author.login の値は
+# 例外なく "github-actions"（末尾に "[bot]" が付かない）だった。
+# `scripts/select_review_comment.sh` の2次経路は
+# `.author.login == "github-actions[bot]"` という完全一致条件のため、
+# 実データはこの条件に一致しないと予測した
+# （予測テキストのmd5: 7ca0ca59a2027b1de4952acdc7119b2e、
+# 記録時HEAD: 531fb53d566108122b0654e3ddb4b926a5f73477）。
+
+_REAL_BODY_PR90 = (
+    "**Claude finished @USERNAME's task in 4m 39s** —— "
+    "[View job](https://github.com/OWNER/REPO/actions/runs/31155912534)\n\n"
+    "---\n### レビュー完了\n\n"
+    "- [x] PR差分の取得（`.github/workflows/claude-review.yml` +143/-115）"
+)
+
+
+def test_real_data_run_id_mismatch_fails_closed():
+    """実運用の`gh pr view --json comments`出力（author.loginにサフィックスが
+    付かない形式）を含む実データ(pr90由来)で、run_id不一致時にfail-closedする
+    ことを固定する。2次経路の不発を示す目的はADR-019の削除により失効したが、
+    実データ入力に対する被覆としてこのテストを残す。
+    """
+    comments = [_comment("github-actions", _REAL_BODY_PR90)]
+    result = _run(comments)  # RUN_ID="123456789" は実データに含まれない
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "特定できませんでした" in result.stderr
