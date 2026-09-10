@@ -1,0 +1,739 @@
+{
+  "total": 119,
+  "excluded_matched_title_none": [
+    "被虐のノエル"
+  ],
+  "status_distribution": {
+    "連載中": 22,
+    "完結": 84,
+    "判定不能": 13
+  },
+  "match_count": 102,
+  "match_rate": 0.8571428571428571,
+  "confusion_matrix": {
+    "連載中|連載中": 15,
+    "完結|完結": 83,
+    "判定不能|完結": 7,
+    "判定不能|連載中": 2,
+    "連載中|完結": 4,
+    "連載中|判定不能": 3,
+    "判定不能|判定不能": 4,
+    "完結|連載中": 1
+  },
+  "records": [
+    {
+      "title": "チチチチ",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "ちいさいひと 青葉児童相談所物語",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "Theチェリー・プロジェクト",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "東山道転墜異聞",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "僕の呪いの吸血姫",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "盟約のリヴァイアサン",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "MEAN 遥かなる歌",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "Half&half",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "月に吠えらんねえ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "S線上のテナ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "15歳、今日から同棲はじめます。",
+      "judge_status": "判定不能",
+      "expected_status": "連載中",
+      "match": false
+    },
+    {
+      "title": "ポピーザぱフォーマー",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "みそララ",
+      "judge_status": "連載中",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "CHARON",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "EDEN 〜It's an Endless World!〜",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "飴色紅茶館歓談",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "清村くんと杉小路くんと",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ループ7回目の悪役令嬢は、元敵国で自由気ままな花嫁生活を満喫する",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "俺たちのフィールド",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "大人にゃ恋の仕方がわからねぇ!",
+      "judge_status": "判定不能",
+      "expected_status": "連載中",
+      "match": false
+    },
+    {
+      "title": "新新宿駅企画課 あるぷすひろば",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "プリティフェイス",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "まんがかぞく",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "BAKUDAN",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "齢5000年の草食ドラゴン、いわれなき邪竜認定",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "世界の終わりに柴犬と",
+      "judge_status": "連載中",
+      "expected_status": "判定不能",
+      "match": false
+    },
+    {
+      "title": "月の夜 星の朝",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "蟲と眼球シリーズ",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "ハツカネズミの時間",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "魔女と野獣",
+      "judge_status": "連載中",
+      "expected_status": "判定不能",
+      "match": false
+    },
+    {
+      "title": "ぬるめた",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "ORANGE (能田達規の漫画)",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ササエルの中には誰もいない",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "アイドライジング!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ベリーベリー",
+      "judge_status": "判定不能",
+      "expected_status": "判定不能",
+      "match": true
+    },
+    {
+      "title": "戦う!セバスチャン",
+      "judge_status": "完結",
+      "expected_status": "連載中",
+      "match": false
+    },
+    {
+      "title": "女神の鬼",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "超犬リープ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "お前ら全員めんどくさい!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "Magico",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "異形人おに若丸",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "地政学ボーイズ 〜国がサラリーマンになって働く会社〜",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "えすぴー都 見参!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ラブ・ウィッチ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "彼女のカレラ My Favorite Carrera",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "賢い犬リリエンタール",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "SHIORI EXPERIENCE ジミなわたしとヘンなおじさん",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "外見至上主義",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "キャンディポップナイトメア",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "フルアヘッド!ココ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "りびんぐゲーム",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "アゴなしゲンとオレ物語",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ウェディング・ライセンス",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ボンボン坂高校演劇部",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "土下座で頼んでみた",
+      "judge_status": "連載中",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "わたるがぴゅん!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "生理ちゃん",
+      "judge_status": "連載中",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "ひぐらしのなく頃に 巡",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "はるみねーしょん",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "地獄ようちえん",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "鉄娘な3姉妹",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ファイアパンチ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "外道坊",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "可愛いたぬきも楽じゃない",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "おれと一乃のゲーム同好会活動日誌",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "世紀末★ダーリン",
+      "judge_status": "判定不能",
+      "expected_status": "判定不能",
+      "match": true
+    },
+    {
+      "title": "四十七大戦",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ギリシャ神話劇場 神々と人々の日々",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ステルス交境曲",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "女子小学生はじめましたP!",
+      "judge_status": "連載中",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "トカゲの王",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "煙と蜜",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "ことはの王子様",
+      "judge_status": "判定不能",
+      "expected_status": "判定不能",
+      "match": true
+    },
+    {
+      "title": "アーサーGARAGE",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "思春期ビターチェンジ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "紫電改のマキ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "さつきばれっ!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "花は咲くか",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "虹をよぶ拳",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ダーリンは70歳",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "チョコレート・クリスマス",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "GIRL FRIENDS",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ゆりてつ 私立百合ヶ咲女子高鉄道部",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "おたんこナース",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "食キング",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ごきチャ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "アイドルのあかほん",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "いつか、眠りにつく日",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "海皇紀",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ぷいぷい!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "わ!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ブライトの憂鬱",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "レース鳩0777",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ショショリカ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "夢みる太陽",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "マテリアルゴースト",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "砂の栄冠",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "魔砲使い黒姫",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "Rust Blaster",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "異国色恋浪漫譚",
+      "judge_status": "判定不能",
+      "expected_status": "完結",
+      "match": false
+    },
+    {
+      "title": "源君物語",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "スーパーショートコミックス",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "モンキーピーク",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "3D甲子園 プラコン大作",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "グリードパケット∞",
+      "judge_status": "連載中",
+      "expected_status": "判定不能",
+      "match": false
+    },
+    {
+      "title": "ねこようかい",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "SとM",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "らくてんパパ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "くじびき勇者さま",
+      "judge_status": "判定不能",
+      "expected_status": "判定不能",
+      "match": true
+    },
+    {
+      "title": "ニチアサ以外はやってます!",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "デビルマンG",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "天堂家物語",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "ゴロロ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "モリモリッ!ばんちょー!!キヨハラくん",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ヴァンピアーズ",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "ローカル女子の遠吠え",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    },
+    {
+      "title": "ハムスターの研究レポート",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "今日も一日",
+      "judge_status": "完結",
+      "expected_status": "完結",
+      "match": true
+    },
+    {
+      "title": "戦国小町苦労譚",
+      "judge_status": "連載中",
+      "expected_status": "連載中",
+      "match": true
+    }
+  ]
+}
