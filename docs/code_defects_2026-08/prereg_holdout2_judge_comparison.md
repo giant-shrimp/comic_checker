@@ -1,0 +1,170 @@
+# holdout2 judge()照合 事前登録
+
+Issue: #180（完了条件項目4・5）
+起草日: 2026-09-07
+
+## 1. 目的
+
+Issue #180の完了条件（`prereg_corpus_expansion_holdout2.md` 5節）のうち、未達だった
+以下2項目を満たすための予測を、`judge()`実行前に固定する。
+
+- 項目4: 現行`judge()`の出力と自動ラベルの照合結果が記録されている
+- 項目5: 4(a)(b)(c)の予測と実測の対比が記録されている
+
+`prereg_corpus_expansion_holdout2.md` 4節（4(a)分布・4(b)正解率・4(c)自動ラベル精度）は
+既に予測が登録済みであり、本文書はこれを差し替えない。本文書が補うのは次の2点のみ。
+
+1. `judge()`実行・照合の**測定手順**（使用するスクリプト・入力・比較方法）が
+   `prereg_corpus_expansion_holdout2.md`には再実行可能な粒度で記述されていないため、
+   これを本文書で定める。
+2. Issue #157が指摘する2語（「配信終了」「連載されており」）について、
+   holdout2での影響件数の予測が既存の事前登録には存在しないため、本文書で追加する。
+
+## 2. 測定対象
+
+- 標本: `docs/holdout2_measurement_2026-08/holdout2_wikitext.json`の`rows`（120件、
+  うち記事あり119件・記事なし1件）
+- 期待ラベル: `docs/holdout2_measurement_2026-08/holdout2_labels_v4.json`の`labels`
+  （v4ラベル。初回`holdout2_labels_auto.json`はスポットチェックで85%基準を下回り
+  9-3縮退手順によりv4へ改訂済み。詳細は`rereg_relabel_v4_result.md`）
+
+## 3. 予測
+
+**以下の値は本文書のコミット後、一切変更しない。**
+
+### 3(a) 判定カテゴリの分布点予測
+
+既存160件（holdout99+regression61）に対し現行`judge()`ロジックをオフライン再現
+（`_judge_extract()` → `STATUS_UNKNOWN`時のみ`_judge_via_infobox()`、
+`_has_ongoing_signal()`・`_is_novel_primary()`によるveto込み）した実測分布は
+以下のとおり（導出: `docs/code_defects_2026-08/baseline160_judge_distribution.py`。
+4節はholdout2に対する今後の測定手順であり、この既存160件分布の導出手順とは
+別物のため、追補にあたりスクリプトとして切り出した）。
+
+| カテゴリ | 既存160件での件数 | 割合 |
+|---|---|---|
+| 完結 | 88 | 55.0% |
+| 連載中 | 56 | 35.0% |
+| 判定不能 | 16 | 10.0% |
+
+`prereg_corpus_expansion_holdout2.md` 4(a)は「各カテゴリ±10ポイント以内」という
+範囲予測を既に登録済みである。本文書はこれを覆さず、その範囲の中心値として
+holdout2の記事あり119件に同じ比率を適用した点予測を追加する。
+
+| カテゴリ | 点予測（119件中） | 割合 |
+|---|---|---|
+| 完結 | 65件 | 54.6% |
+| 連載中 | 42件 | 35.3% |
+| 判定不能 | 12件 | 10.1% |
+
+根拠: 既存160件とholdout2は同一プール・同一抽出条件（`hastemplate`による
+Infobox animanga/Manga絞り込み）から得られており、既存分布をそのまま119件に
+比例配分した値を最も単純な無情報点予測として採用する。
+
+### 3(b) 一致件数の点予測
+
+`prereg_corpus_expansion_holdout2.md` 4(b)は「既存160件での正解率より
+5〜15ポイント低くなる」という範囲予測を既に登録済みである。本文書はこの範囲の
+中央値（10ポイント）を用いて点予測を導出する。
+
+既存の正解率ベースライン: `docs/holdout_measurement_2026-08/step98_b_compare_result.md`
+「バケット内訳」節、A_correct 85/100件（85%）。
+
+**この85%という数値には、同文書冒頭「本測定の限界」に明記された既知の上方バイアス
+（ラベル付与者が判定コードを読んだ後にラベル付けしていること、母数が160件全体では
+なく100件のサブセットであること等）がある。本予測はこの限界を認識した上で、
+利用可能な唯一の既存ベースラインとして援用する。**
+
+点予測: 85% − 10pt = 75%。holdout2記事あり119件に適用すると **89件**（75%×119≈89.25を
+切り捨て）。
+
+根拠: 4(b)の範囲予測をそのまま数値化したもの。新たな根拠の追加は無い。
+
+### 3(c) Issue #157の2語の影響件数点予測
+
+**開示事項（実測前の予測ではない部分）**: 「配信終了」「連載されており」の
+holdout2における**出現件数**（単純文字列一致）は、本セッション内の別タスク
+（Issue #157への訂正コメント作成）で既に実測済みであり、その時点で判明していた
+値は「配信終了」0件・「連載されており」2件だった
+（`docs/holdout2_measurement_2026-08/holdout2_wikitext.json`の`extract`に対する
+文字列検索）。本予測はこの既知の出現件数を前提として立てるものであり、
+出現件数そのものについては「実測前の予測」ではない。ただし**影響件数**
+（対象語を`COMPLETED_WEAK_RE`／`ONGOING_RE`へ仮に追加した場合に、実際に
+`judge()`の出力を変化させる行数。ミューテーションテスト方式、
+`verification_procedure.md`手順3・5と同じ方法）は未測定であり、これは
+実測前の予測である。
+
+| 語 | 出現件数（既知） | 影響件数の点予測 | 根拠 |
+|---|---|---|---|
+| 配信終了 | 0 | **0** | 出現件数が0である以上、どのパターンに追加しても一致する行が存在せず、影響件数は論理的に0を超えない |
+| 連載されており | 2 | **1** | 出現件数2件が影響件数の上限。既存の系統1（「続編」出現12件→影響2件、17%）・系統3「連載され、」（出現9件→影響2件、22%）の実測比率を参考にすると、出現件数が少数（2件）の場合は「0件」または「全件」のいずれかに振れやすいと考えられるため、中間的な値として1件と予測する |
+
+## 4. 測定手順（再実行可能な粒度）
+
+1. `docs/regression_corpus_2026-08/step98_judge_harness.py`の
+   `run_judge_with_snapshot()`を使う（`verification_procedure.md`手順1と同じ）。
+   モンキーパッチするのは`_pick_article`と`_fetch_wikitext`の2関数のみ。
+2. 入力: `docs/holdout2_measurement_2026-08/holdout2_wikitext.json`の`rows`
+   （`input_title`・`matched_title`・`extract`・`url`・`wikitext`を使う）。
+   Wikipediaへの再取得は行わない。
+3. 3(a)(b)の照合: 各行について`run_judge_with_snapshot()`の出力`status`を
+   `docs/holdout2_measurement_2026-08/holdout2_labels_v4.json`の`labels`の
+   同一タイトルの`expected_status`と突き合わせ、一致件数とカテゴリ別分布を集計する。
+4. 3(c)の影響件数測定（ミューテーションテスト方式、`comic_checker/`本体は変更しない）:
+   - 「配信終了」: `wc.COMPLETED_WEAK_RE`を「配信終了」を含む代替パターンへ
+     プロセス内属性差し替えし、120件全件で修正前後の`status`・`evidence`を比較する。
+   - 「連載されており」: `wc.ONGOING_RE`を「連載されており」を含む代替パターンへ
+     同様に差し替え、120件全件で比較する。
+   - 変化した行数を影響件数として記録する。
+5. 期待ラベルとの照合・分類（`verification_procedure.md`手順6と同じ枠組み）:
+   D_error→E_missed／A_correct、A_correct→D_error、E_missed→A_correct、
+   E_missed→別のE_missed／判定不能のまま、の4分類で変化行を分類する。
+
+## 5. 完了条件
+
+本作業（次段）は以下をもって完了とする。予測の的中は完了条件に含めない。
+
+1. 3(a)(b)(c)それぞれについて実測値が記録されている
+2. 予測と実測の差分（ポイント差・件数差）が記録されている
+3. 3(c)の影響件数がIssue #157の後継基準（`prereg_v2_effective_count_basis.md`、
+   最低2件）を満たすか否かが判定されている
+4. Issue #180の完了条件項目4・5として`prereg_corpus_expansion_holdout2.md`から
+   参照できる形で記録されている
+
+## 6. 三値ロック
+
+### 初回ロック（追補前）
+
+- HEAD: `d5ce2c27292c82cfdf41c78ae75405a77d834856`
+- md5: `64bd7da8f24f2e842564fcf86d676243`
+
+md5は本節追記**前**の内容（HEAD `d5ce2c27292c82cfdf41c78ae75405a77d834856`時点の
+本ファイル）に対する値である。**この初回ロックの値は削除・変更しない。**
+
+### 追補後のロック
+
+理由: 初回ロックはHEAD・md5の2値のみであり、本プロジェクトの三値ロックの慣習
+（HEAD hash + 文書のmd5sum + git log hash。`docs/holdout_pool_2026-08/README.md`
+「4. プール実体はリポジトリ内に置く」節が定義）のうち3値目（本文書自身のgit log
+hash）が欠けていた。あわせて3(a)の根拠数値（完結88・連載中56・判定不能16）を
+第三者が再現するための導出スクリプトが存在しない不足も判明したため、
+`docs/code_defects_2026-08/baseline160_judge_distribution.py`を追加し、
+本節を追補する。
+
+- 初回ロック確定コミットのgit log hash: `208a90a8e83ad454d589af8cc3bf285a9006c973`
+- 追補コミット（`docs/code_defects_2026-08/baseline160_judge_distribution.py`追加・
+  本節追補）のHEAD: `a6adcfa6a28a33558ec0b65e523ae257d6d51219`
+- 追補後の本文書のmd5: `91c9462a5393ac737ef9441a78e72392`
+  （この値はHEAD `a6adcfa6a28a33558ec0b65e523ae257d6d51219`時点、すなわち
+  この「追補後のmd5」行自体を追記する**前**の内容に対する値である）
+
+導出コマンド（初回ロックの2値）:
+```
+git rev-parse HEAD
+md5sum docs/code_defects_2026-08/prereg_holdout2_judge_comparison.md
+```
+
+導出コマンド（追補後のロックの3値目）:
+```
+git log -1 --format=%H -- docs/code_defects_2026-08/prereg_holdout2_judge_comparison.md
+```
