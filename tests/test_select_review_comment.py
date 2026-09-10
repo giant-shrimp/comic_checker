@@ -40,18 +40,6 @@ def test_finds_by_run_id_primary_path():
     assert "1次経路" in result.stderr
 
 
-def test_falls_back_to_bot_name_when_no_run_id_match():
-    """(b) run_id一致が無ければ、bot名の最新コメントへフォールバックする。"""
-    comments = [
-        _comment("someone", "無関係なコメント"),
-        _comment("github-actions[bot]", "プレースホルダのまま"),
-    ]
-    result = _run(comments)
-    assert result.returncode == 0
-    assert "プレースホルダのまま" in result.stdout
-    assert "2次経路" in result.stderr
-
-
 def test_fails_closed_when_neither_matches():
     """(c) どちらの経路でも見つからなければ exit 2 で落ちる。"""
     comments = [
@@ -109,64 +97,30 @@ def test_empty_comments_list_fails_closed():
     assert result.returncode == 2
 
 
-# --- ここから実データによる検証（Issue #93） -------------------------------
+# --- ネガティブコントロール（ADR-019、2次経路削除の固定） -------------------
 #
-# 出所: ~/comic_checker-agent-notes/pr90_comments.json・pr92_comments.json
-# （過去の claude-review.yml 実測時に `gh pr view --json comments` で取得した
-# 実データ。リポジトリ外の作業ディレクトリにあり、このリポジトリの
-# バージョン管理対象ではない）。
-#
-# 個人名（GitHubアカウント名）除去について: 元データの body にはアカウント名への
-# メンションと、URLパス中のアカウント名が含まれていたため、それぞれ
-# `@USERNAME` / `github.com/OWNER/REPO` のプレースホルダに置換した。
-# author.login の値（"github-actions"）は GitHub Actionsの投稿者名であり
-# 個人名ではないため、そのまま使用している。
-#
-# 事前登録: 手順1の実測（19件の実データ pr*_comments.json 全件、および
-# 現行の `gh pr view <n> --json comments` の出力）で、author.login の値は
-# 例外なく "github-actions"（末尾に "[bot]" が付かない）だった。
-# `scripts/select_review_comment.sh` の2次経路は
-# `.author.login == "github-actions[bot]"` という完全一致条件のため、
-# 実データはこの条件に一致しないと予測した
-# （予測テキストのmd5: 7ca0ca59a2027b1de4952acdc7119b2e、
-# 記録時HEAD: 531fb53d566108122b0654e3ddb4b926a5f73477）。
-
-_REAL_BODY_PR90 = (
-    "**Claude finished @USERNAME's task in 4m 39s** —— "
-    "[View job](https://github.com/OWNER/REPO/actions/runs/31155912534)\n\n"
-    "---\n### レビュー完了\n\n"
-    "- [x] PR差分の取得（`.github/workflows/claude-review.yml` +143/-115）"
-)
+# 2次経路削除前は、これらの入力（run_id不一致＋"github-actions[bot]"または
+# "github-actions"名のコメント）は2次経路のbot名一致により exit 0 で終了して
+# いた。削除後は run_id一致のみが経路として残るため、いずれも exit 2 に
+# なることをここで固定する。
 
 
-def test_real_data_run_id_mismatch_does_not_fall_back_to_bot_name():
-    """実データ(pr90由来)で1次経路を外すと、2次経路も発火せずfail-closedになる。
-
-    実データの author.login は "github-actions"（"[bot]" 無し）であり、
-    2次経路の条件 ".author.login == \"github-actions[bot]\"" とは
-    完全一致しない。1次経路が拾うはずのrun_id(31155912534)とは異なる
-    RUN_ID を渡すことで1次経路を意図的に外し、2次経路の実効性を確認する。
+def test_bot_suffix_author_without_run_id_match_fails_closed():
+    """author.loginが"github-actions[bot]"でrun_id不一致の場合、exit 2になる。
+    削除前は2次経路により0で終了していたが、削除後は2になることを固定する。
     """
-    comments = [_comment("github-actions", _REAL_BODY_PR90)]
-    result = _run(comments)  # RUN_ID="123456789" は実データに含まれない
+    comments = [_comment("github-actions[bot]", "プレースホルダのまま")]
+    result = _run(comments)
     assert result.returncode == 2
     assert result.stdout == ""
-    assert "特定できませんでした" in result.stderr
 
 
-def test_real_data_multiple_comments_no_bot_suffix_fails_closed():
-    """実データ複数件（いずれも author.login="github-actions"）でも、
-    "[bot]" サフィックスが無いため2次経路の対象が0件になり、fail-closedになる。
+def test_no_suffix_author_without_run_id_match_fails_closed():
+    """author.loginが"github-actions"（サフィックス無し、実運用のgh pr viewの
+    形式）でrun_id不一致の場合も、exit 2になる。削除前は2次経路により0で
+    終了していたが、削除後は2になることを固定する。
     """
-    body_pr92 = (
-        "**Claude encountered an error after 1m 39s** —— "
-        "[View job](https://github.com/OWNER/REPO/actions/runs/31160930257)\n\n"
-        "---\n### レビュー進行中"
-    )
-    comments = [
-        _comment("github-actions", _REAL_BODY_PR90),
-        _comment("github-actions", body_pr92),
-    ]
-    result = _run(comments)  # RUN_ID="123456789" はいずれの実データにも無い
+    comments = [_comment("github-actions", "プレースホルダのまま")]
+    result = _run(comments)
     assert result.returncode == 2
     assert result.stdout == ""
