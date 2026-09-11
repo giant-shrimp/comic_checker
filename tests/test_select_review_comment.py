@@ -28,7 +28,7 @@ def _comment(login: str, body: str) -> dict:
     return {"author": {"login": login}, "body": body}
 
 
-def test_finds_by_run_id_primary_path():
+def test_finds_comment_by_run_id_match():
     """(a) run_idを含むコメントがあれば、それを採用する。"""
     comments = [
         _comment("someone", "無関係なコメント"),
@@ -40,8 +40,8 @@ def test_finds_by_run_id_primary_path():
     assert "一致でコメントを特定しました" in result.stderr
 
 
-def test_fails_closed_when_neither_matches():
-    """(c) どちらの経路でも見つからなければ exit 2 で落ちる。"""
+def test_fails_closed_when_no_run_id_match():
+    """(c) run_id一致が無ければ exit 2 で落ちる。"""
     comments = [
         _comment("someone", "無関係なコメント"),
         _comment("other-bot[bot]", "別のワークフローのコメント"),
@@ -52,7 +52,7 @@ def test_fails_closed_when_neither_matches():
     assert result.stdout == ""
 
 
-def test_run_id_match_takes_priority_over_bot_name():
+def test_selects_run_id_matching_comment_among_candidates():
     """(d) 複数のコメント候補があっても、run_id一致するものが選ばれる。
 
     bot名が一致するだけのコメントは別のrunの残骸である可能性があるため、
@@ -142,9 +142,9 @@ def test_no_suffix_author_without_run_id_match_fails_closed():
 # 事前登録: 手順1の実測（19件の実データ pr*_comments.json 全件、および
 # 現行の `gh pr view <n> --json comments` の出力）で、author.login の値は
 # 例外なく "github-actions"（末尾に "[bot]" が付かない）だった。
-# `scripts/select_review_comment.sh` の2次経路は
-# `.author.login == "github-actions[bot]"` という完全一致条件のため、
-# 実データはこの条件に一致しないと予測した
+# 当時（ADR-019で削除される前）の `scripts/select_review_comment.sh` の
+# 2次経路は `.author.login == "github-actions[bot]"` という完全一致条件
+# だったため、実データはこの条件に一致しないと予測した
 # （予測テキストのmd5: 7ca0ca59a2027b1de4952acdc7119b2e、
 # 記録時HEAD: 531fb53d566108122b0654e3ddb4b926a5f73477）。
 
