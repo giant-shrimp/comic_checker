@@ -2,9 +2,9 @@
   "purpose": "作業98-B 突き合わせ結果（機械分類のみ。カテゴリA/B/Cの最終判断は含まない）",
   "limitations_reference": "docs/holdout_measurement_2026-08/step98_a3_preregistration_addendum.md 追補2「測定結果報告時に添える限界の明記」全5項を必ず参照して解釈すること。ラベルはコード知識を持つAIが付与したため、A_correctの比率は上振れ・D_errorの比率は下振れする方向に偏っている（数値は真の精度ではなく上界）。",
   "inputs": {
-    "labels": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_labels.json",
-    "judge_raw": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_b_judge_raw.json",
-    "raw_material": "/home/nishidalab07/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_raw_material.json"
+    "labels": "~/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_labels.json",
+    "judge_raw": "~/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_b_judge_raw.json",
+    "raw_material": "~/maehata_ws/comic_checker/docs/holdout_measurement_2026-08/step98_a3_raw_material.json"
   },
   "total_rows": 100,
   "bucket_counts": {
