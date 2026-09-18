@@ -21,18 +21,19 @@ step98_b_reporting_plan.md に事前確定した報告項目にそのまま従�
 別の分類軸である。本スクリプト内の変数名は bucket_* / category_* で区別する。
 """
 import json
+import os
 import re
 import sys
 
-REPO_ROOT = "/home/nishidalab07/maehata_ws/comic_checker"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOCS_DIR = f"{REPO_ROOT}/docs/holdout_measurement_2026-08"
 
 LABELS_PATH = f"{DOCS_DIR}/step98_a3_labels.json"
 JUDGE_RAW_PATH = f"{DOCS_DIR}/step98_b_judge_raw.json"
 RAW_MATERIAL_PATH = f"{DOCS_DIR}/step98_a3_raw_material.json"
 
-OUT_JSON_PATH = "/home/nishidalab07/comic_checker-agent-notes/step98_b_compare_result.json"
-OUT_MD_PATH = "/home/nishidalab07/comic_checker-agent-notes/step98_b_compare_result.md"
+OUT_JSON_PATH = os.path.expanduser("~/comic_checker-agent-notes/step98_b_compare_result.json")
+OUT_MD_PATH = os.path.expanduser("~/comic_checker-agent-notes/step98_b_compare_result.md")
 
 V3_HOLES_KNOWN_EXAMPLES = {
     "キャラ者": "#4（年入りinfobox終了系 vs 本文の曖昧な継続示唆）",
