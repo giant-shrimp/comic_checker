@@ -13,16 +13,22 @@
 #   3. 分類表の各行の行範囲（Issue #286 決定1）
 #   4. 分類の内訳件数 A/B/C と合計（Issue #286 決定2）
 #   5. 分類表に対応する行を持たない見出し（Issue #292）
+#   6. 分類表の見出し列とERRORS.mdの見出し実体との完全一致（Issue #281、ADR-025）
 #
 # 検査1・2は統計値のみを見るため、既存見出しへの追記で行範囲がずれても、
 # また見出しが分類表から抜け落ちても検出できなかった（Issue #286・#292）。
-# 検査3〜5はその取りこぼしを埋める。
+# 検査3〜5はその取りこぼしを埋める。検査3〜5は行範囲という同定手段のみに
+# 依存しており、無関係な変更（挿入位置より後ろの記録）まで道連れで検出して
+# しまう。検査6は、行範囲に依存しない同定手段として見出し列自体の一致を見る
+# （ADR-025決定1・決定2）。
 #
 # 使い方:
 #   scripts/check_errors_inventory.sh
 #     引数なし。リポジトリの ERRORS.md と docs/errors_md_inventory.md を見る。
 #     すべて一致 -> 標準出力に OK / 終了コード 0
 #     1つでも食い違う -> 標準エラーに「項目 / 記載値 / 実測値」/ 非ゼロ終了
+#   本ファイルに実行権限は付与していない。`bash scripts/check_errors_inventory.sh`
+#   のように bash 経由で呼び出す運用とする（モードは変更しない）。
 #
 # 環境変数（テスト用。未設定ならリポジトリの実ファイルを見る）:
 #   ERRORS_MD     ... 実測対象のファイルパス
@@ -76,14 +82,18 @@ if [ "$doc_headings" != "$actual_headings" ]; then
   report_mismatch "見出し数(## )" "$doc_headings" "$actual_headings"
 fi
 
-# --- 4. 追加検査（検査3: 行範囲 / 検査4: 内訳件数 / 検査5: 未対応見出し）---
+# --- 4. 追加検査（検査3: 行範囲 / 検査4: 内訳件数 / 検査5: 未対応見出し /
+#        検査6: 見出し列の完全一致）---
 #
-# この3検査は、分類表のパイプ区切り列の取り出し・見出しごとの行範囲の算出・
+# この4検査は、分類表のパイプ区切り列の取り出し・見出しごとの行範囲の算出・
 # 集合比較を伴う。bash で書くと連想配列と awk の組み合わせになり読みにくく、
 # 検査自体の正しさを確かめにくいため python に委ねる（python はリポジトリの
 # 既存の依存であり、新たな依存を増やさない）。呼び出し口である本スクリプトの
 # インタフェース（引数なし実行）と環境変数の扱いは変えない。出力の書式
 # 「項目 / 記載値 / 実測値」と終了コードの規約も検査1・2と同じにする。
+#
+# 検査6は見出し文字列そのものを標準エラーに出さない（ADR-022の運用規約）。
+# 記載値・実測値には文字数のみを出す。
 #
 # 対象外の見出し（失敗記録ではない節）は行番号でハードコードせず、棚卸し文書の
 # 「### 本表の対象外とする見出し」節に列挙された見出し文字列から読み取る。
@@ -118,7 +128,7 @@ for line in inventory_lines:
     no = parts[1].strip()
     if not no[:1].isdigit():
         continue
-    rows.append((no, parts[2].strip(), parts[4].strip()))
+    rows.append((no, parts[2].strip(), parts[3].strip(), parts[4].strip()))
 
 mismatches = []
 
@@ -134,7 +144,7 @@ def first_int(text):
 
 # 検査3: 見出しごとの行範囲
 covered_starts = set()
-for no, cell, _cls in rows:
+for no, cell, _heading_col, _cls in rows:
     matched = RANGE_RE.match(cell)
     if matched is None:
         # 退避先を書いた行（対応する見出しが ERRORS.md に無い）は行範囲を持たない。
@@ -148,7 +158,7 @@ for no, cell, _cls in rows:
 
 # 検査4: 分類の内訳件数（A/B/C と合計）
 actual_counts = {"A": 0, "B": 0, "C": 0}
-for _no, _cell, cls in rows:
+for _no, _cell, _heading_col, cls in rows:
     key = cls.replace("*", "").strip()
     if key in actual_counts:
         actual_counts[key] += 1
@@ -202,6 +212,25 @@ for start in heading_starts:
         "除外一覧に記載なし",
         "分類表に対応する行なし",
     )
+
+# 検査6: 見出し列とERRORS.mdの見出し実体との完全一致（ADR-025）
+# 行範囲を持たない行（退避先の記載等）は突き合わせ先が無いため対象外。
+# 見出し文字列そのものは出さない（ADR-022 の運用規約）。文字数のみを示す。
+for no, cell, heading_col, _cls in rows:
+    matched = RANGE_RE.match(cell)
+    if matched is None:
+        continue
+    start = int(matched.group(1))
+    if start not in spans:
+        # 検査3で既に報告済み（見出し自体が実在しない）のでここでは報告しない。
+        continue
+    actual_heading = errors_lines[start - 1][3:]
+    if heading_col != actual_heading:
+        report(
+            "見出し一致(No.%s)" % no,
+            "%d文字" % len(heading_col),
+            "%d文字" % len(actual_heading),
+        )
 
 for item, doc_value, actual_value in mismatches:
     print("%s / %s / %s" % (item, doc_value, actual_value), file=sys.stderr)

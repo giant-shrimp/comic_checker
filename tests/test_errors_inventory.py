@@ -7,13 +7,16 @@
 更新済みのため、現時点では引数なし実行は「終了コード0で一致するのが正常」。
 以後、この一致が崩れたら落ちる常設のゲートとして機能する。
 
-検査項目は5つ。検査1（総行数）・検査2（見出し数）に加え、Issue #286 決定1・2
-および Issue #292 を受けて次の3検査が追加された。
+検査項目は6つ。検査1（総行数）・検査2（見出し数）に加え、Issue #286 決定1・2
+および Issue #292 を受けて次の3検査が追加され、さらに Issue #281・ADR-025を
+受けて検査6が追加された。
 
 - 検査3: 分類表の各行の行範囲が ERRORS.md の実測と一致するか
 - 検査4: 分類表を集計した A/B/C と合計が「分類の内訳件数」節の記載値と一致するか
 - 検査5: 分類表に対応する行を持たない見出しが、除外一覧に載っているもの以外に
   存在しないか
+- 検査6: 分類表の見出し列が ERRORS.md の見出し実体（`## ` を除いた文字列）と
+  完全一致するか（行範囲を持たない行は対象外）
 
 乖離時の挙動（標準エラーへの記載値・実測値の出力）はフィクスチャ（tmp_path
 に書き出すダミーの ERRORS.md / inventory）で検証し、実リポジトリの値には
@@ -171,6 +174,26 @@ def _real_table_rows():
     return rows
 
 
+def _real_table_rows_with_heading():
+    """実リポジトリの棚卸し文書から、分類表の行（No/行範囲/見出し/分類）を独立に取り出す。
+
+    検査6のテスト専用。既存の _real_table_rows（No/行範囲/分類の3要素）を
+    使う既存テストのアンパック数を変えないため、別関数として用意する。
+    """
+    rows = []
+    for line in INVENTORY_MD.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("|"):
+            continue
+        parts = line.split("|")
+        if len(parts) < 6:
+            continue
+        no = parts[1].strip()
+        if not no[:1].isdigit():
+            continue
+        rows.append((no, parts[2].strip(), parts[3].strip(), parts[4].strip()))
+    return rows
+
+
 def _real_excluded_headings():
     """実リポジトリの棚卸し文書の除外一覧を独立に読み取る（行番号は使わない）。"""
     excluded = set()
@@ -299,6 +322,28 @@ def test_repo_headings_without_table_row_are_all_excluded():
     assert missing == [], missing
 
 
+def test_repo_heading_column_matches_measurement():
+    """検査6の正の対照。実リポジトリで終了コード0になり、かつ行範囲を持つ行の
+    見出し列が ERRORS.md の見出し実体（`## ` を除いた文字列）と完全一致する
+    （テスト側でも独立に算出して突き合わせる）。
+    """
+    proc = _run()
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    spans, errors_lines = _real_heading_spans()
+    checked = 0
+    for no, cell, heading, _cls in _real_table_rows_with_heading():
+        matched = RANGE_RE.match(cell)
+        if matched is None:
+            # 退避先を書いた行は行範囲を持たないため検査6の対象外。
+            continue
+        start = int(matched.group(1))
+        assert start in spans, no
+        actual_heading = errors_lines[start - 1][3:]
+        assert heading == actual_heading, no
+        checked += 1
+    assert checked > 0, "行範囲を持つ行が1件も無いなら検査6が空振りしている"
+
+
 def test_line_range_mismatch_dummy_exits_nonzero(tmp_path):
     """検査3の負の対照。行範囲だけを実測からずらすと、その検査だけが鳴る。"""
     rows = (
@@ -354,6 +399,31 @@ def test_heading_without_table_row_dummy_exits_nonzero(tmp_path):
     assert "未対応見出し(ERRORS.md 6行目)" in proc.stderr, proc.stderr
     assert "行範囲" not in proc.stderr, proc.stderr
     assert "分類内訳" not in proc.stderr, proc.stderr
+    assert "総行数" not in proc.stderr, proc.stderr
+    assert "見出し数" not in proc.stderr, proc.stderr
+
+
+def test_heading_mismatch_dummy_exits_nonzero(tmp_path):
+    """検査6の負の対照。見出し列だけを実測から食い違わせると、その検査だけが鳴る。
+
+    フィクスチャの見出し文字列は架空のもの（"wrong heading"）を使う。
+    """
+    rows = (
+        ("1", "1-2", "first heading", "A"),
+        ("2", "3-5", "wrong heading", "B"),  # 実測は "## second heading"
+    )
+    env = _write_fixture(tmp_path, "5", "2", rows=rows)
+    proc = _run(env)
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert "見出し一致(No.2)" in proc.stderr, proc.stderr
+    # 見出し文字列そのものは出さず、文字数のみを出す（ADR-022 の運用規約）。
+    assert "wrong heading" not in proc.stderr, proc.stderr
+    assert "second heading" not in proc.stderr, proc.stderr
+    assert "13文字" in proc.stderr and "14文字" in proc.stderr, proc.stderr
+    # 他の検査は鳴っていない（落ち方が観測可能に異なる）。
+    assert "行範囲" not in proc.stderr, proc.stderr
+    assert "分類内訳" not in proc.stderr, proc.stderr
+    assert "未対応見出し" not in proc.stderr, proc.stderr
     assert "総行数" not in proc.stderr, proc.stderr
     assert "見出し数" not in proc.stderr, proc.stderr
 
