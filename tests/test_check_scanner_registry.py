@@ -241,3 +241,95 @@ def test_does_not_modify_repo_files():
     _run()
     assert REGISTRY_MD.read_bytes() == before_registry
     assert SCANNER_PY.read_bytes() == before_scanner
+
+
+# --- ADR-027「残る限界」: CI経路がpytestのデフォルト探索という副作用に依存 ---
+#
+# test_repo_registry_matches_current_scan（本ファイル）は、pytestのデフォルト
+# 探索で収集され、scripts/verify.sh の `python -m pytest -q`（対象範囲の限定
+# なし）経由で、PRとmainへのpushのたびに実行されている（ADR-027決定1）。
+# この経路は明示的な設定ではなく、pytest.ini等が無いという既定動作に依存して
+# いるため、将来 testpaths 等が導入されれば無警告で失われうる。
+#
+# 以下の2検査は、この経路が壊れていないことを機械的に確認する。
+#   - scripts/verify.sh の pytest 呼び出しが対象範囲を限定していないこと
+#   - pytest のデフォルト探索が実際に本ファイルの正の対照テストを収集すること
+#
+# いずれも verify.sh 自体は実行しない（再帰的な実行を避けるため）。pytest の
+# 収集はサブプロセスで --collect-only を使う。
+
+TARGET_GATE_NODEID = (
+    "tests/test_check_scanner_registry.py::test_repo_registry_matches_current_scan"
+)
+
+# 対象範囲を制限しない呼び出しとみなす、既知の非制限フラグ（詳細度の変更のみで
+# 収集対象は変えない）。
+_PYTEST_INVOCATION_ALLOWED_FLAGS = {"-q", "--quiet", "-v", "--verbose"}
+
+
+def _extract_verify_sh_pytest_line():
+    """scripts/verify.sh 内の、本体テストを呼ぶ pytest 呼び出し行を1件取り出す。"""
+    text = (REPO_ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
+    matches = [
+        line for line in text.splitlines() if line.strip().startswith("python -m pytest")
+    ]
+    assert len(matches) == 1, "verify.sh内のpytest呼び出し行が1件ではない: %r" % matches
+    return matches[0].strip()
+
+
+def _is_unrestricted_pytest_invocation(line):
+    """pytest呼び出し行が対象範囲を制限していなければTrue。"""
+    import shlex
+
+    tokens = shlex.split(line)
+    assert tokens[:3] == ["python", "-m", "pytest"], tokens
+    remainder = tokens[3:]
+    return all(tok in _PYTEST_INVOCATION_ALLOWED_FLAGS for tok in remainder)
+
+
+def _target_nodeid_collected(cwd):
+    """指定ディレクトリからのpytestデフォルト探索が、対象ノードIDを収集するか。"""
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        capture_output=True,
+        text=True,
+        cwd=str(cwd),
+    )
+    return TARGET_GATE_NODEID in proc.stdout
+
+
+def test_verify_sh_pytest_invocation_unrestricted():
+    """正の対照。scripts/verify.sh のpytest呼び出しが対象範囲を限定していない。"""
+    line = _extract_verify_sh_pytest_line()
+    assert _is_unrestricted_pytest_invocation(line), line
+
+
+def test_pytest_invocation_restriction_detection_dummy():
+    """負の対照。制限付き呼び出しの合成文字列は、無制限判定にならない
+    （_is_unrestricted_pytest_invocation自体の判定能力を確認する）。
+    """
+    assert not _is_unrestricted_pytest_invocation("python -m pytest -q tests/test_foo.py")
+    assert not _is_unrestricted_pytest_invocation("python -m pytest -q -k not_slow")
+    assert not _is_unrestricted_pytest_invocation(
+        "python -m pytest -q --ignore=tests/test_check_scanner_registry.py"
+    )
+
+
+def test_pytest_collects_scan_path_gate_test():
+    """正の対照。実リポジトリでのpytestデフォルト探索が、
+    test_repo_registry_matches_current_scan を実際に収集する。
+    """
+    assert _target_nodeid_collected(REPO_ROOT)
+
+
+def test_pytest_collection_absence_detected_dummy(tmp_path):
+    """負の対照。対象ファイルを含まない一時ディレクトリでは、対象ノードIDが
+    収集結果に現れないことを確認する
+    （_target_nodeid_collected自体の判定能力を確認する。実リポジトリの
+    設定ファイルは作成・変更しない）。
+    """
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_dummy_negative_control.py").write_text(
+        "def test_dummy():\n    assert True\n", encoding="utf-8"
+    )
+    assert not _target_nodeid_collected(tmp_path)
