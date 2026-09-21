@@ -747,21 +747,27 @@
 | scripts/survey_m6a2_corpus.py | 6da13f90f4b57df4 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | scripts/survey_m6a2_corpus.py | ac1f3960fd873326 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 020bc307eaef3986 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | 08623e29a47207c0 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
+| tests/test_check_no_personal_info.py | 0f0a5d714d4870bf | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 14cc5fdf93937108 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 1ba01a6add633300 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 1d8b62dbd95c86ef | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | 1e308c862d32cffd | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 2040169dba5c232e | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 2ce08aec5b1508c7 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 339c51ee34afd27f | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 34bd20fc6a4cbfef | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | 3e8f2d2cf9fa4505 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 47664beb8591d1a4 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 55ddfa6cb84e7f06 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 58491dd1470169e1 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
+| tests/test_check_no_personal_info.py | 6228fc62c47036ad | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 62853539dedc6f5d | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 645ae954382cded1 | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 648c6b2cdd35d02d | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 7a739d0d1173f3da | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_check_no_personal_info.py | 7ba70d1337e94363 | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
+| tests/test_check_no_personal_info.py | 7dae44a1f172a679 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | 831626d9e15bbfad | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 838bf42a293cbe8a | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | 84ade7fcee9e7fe4 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
@@ -776,9 +782,13 @@
 | tests/test_check_no_personal_info.py | 9db396ec0a23eb33 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | aa9a9de4c1c65ded | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | aee643fe752f11a3 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | b93a9f96a85519dc | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
+| tests/test_check_no_personal_info.py | bce33239d1fec284 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | cb2355214a587371 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | cdd95e7e6888bbd9 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | cf933dc7def33305 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | d4c14c64d7248cff | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
+| tests/test_check_no_personal_info.py | d5e30696bacae9a8 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_check_no_personal_info.py | d966199ba3a586a0 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | d9927fd38b1aa9ba | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_check_no_personal_info.py | e1c0d8876f121af0 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |

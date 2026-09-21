@@ -25,12 +25,13 @@ _SPEC.loader.exec_module(checker)
 
 # --- ヘルパ -----------------------------------------------------------------
 
-def run_cli(args, stdin=None):
+def run_cli(args, stdin=None, cwd=None):
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         input=stdin,
         capture_output=True,
         text=True,
+        cwd=cwd,
     )
 
 
@@ -320,3 +321,115 @@ def test_honorific_exclude_pattern_is_importable_and_covers_probe_words():
     # 抑止語彙は独立した定数で、手順1 の一般語をすべて含む。
     for word in ["多様", "模様", "王様", "一様", "態様", "摂氏", "諸君", "宮殿"]:
         assert checker.HONORIFIC_EXCLUDE_PATTERN.search(word), word
+
+
+# --- 差分限定モード（Issue #258、--diff-base）--------------------------------
+
+def _init_repo(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "ci@example.invalid"],
+        cwd=str(tmp_path), check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "ci"], cwd=str(tmp_path), check=True,
+    )
+
+
+def _commit_all(tmp_path, message):
+    subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", message], cwd=str(tmp_path), check=True,
+    )
+
+
+def test_diff_hits_report_original_file_line_numbers_across_multiple_hunks():
+    # 合成した git diff -U0 出力。2つのハンクにまたがってヒットが元ファイル
+    # （新ファイル側）の行番号で報告されることを確認する。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -2,0 +3,2 @@\n"
+        "+plain context line\n"
+        "+/home/exampleuser/project\n"
+        "@@ -9,0 +12,1 @@\n"
+        "+contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [
+        ("sample.txt", 4, "/home/exampleuser/project"),
+        ("sample.txt", 12, "contact: example@example.invalid"),
+    ]
+
+
+def test_diff_hits_do_not_false_positive_from_leading_plus_symbol():
+    # ストリップ前の生の行（先頭+付き）なら EMAIL_PATTERN の local-part 文字
+    # 集合に "+" が含まれるため誤ってヒットしてしまうことを、内部関数で示す。
+    assert checker._line_has_hit("+@example.invalid") is True
+    # 実際のファイル内容（先頭+を除去した後）には local-part が無く、ヒットしない。
+    assert checker._line_has_hit("@example.invalid") is False
+
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+@example.invalid\n"
+    )
+    assert list(checker.iter_diff_hits(diff_text)) == []
+
+
+def test_diff_hits_skip_deleted_lines():
+    # 削除行（- 始まり）に検出パターンが含まれていても走査対象にならない。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -3,1 +3,0 @@\n"
+        "-/home/exampleuser/old-project\n"
+    )
+    assert list(checker.iter_diff_hits(diff_text)) == []
+
+
+def test_cli_diff_base_unresolved_ref_exits_three(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("plain line\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+
+    proc = run_cli(["--diff-base", "refs/heads/does-not-exist"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+    assert "does-not-exist" in proc.stderr
+
+
+def test_cli_diff_base_reports_added_hit_with_original_line_number(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("line one\nline two\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (tmp_path / "sample.txt").write_text(
+        "line one\nline two\ncontact: example@example.invalid\n", encoding="utf-8",
+    )
+    _commit_all(tmp_path, "add a hit")
+
+    proc = run_cli(["--diff-base", base_sha], cwd=str(tmp_path))
+    assert proc.returncode == 1
+    assert proc.stdout == "sample.txt:3:contact: example@example.invalid\n"
+
+
+def test_cli_diff_base_rejects_combination_with_path_args(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("plain line\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+
+    proc = run_cli(["--diff-base", "HEAD", "sample.txt"], cwd=str(tmp_path))
+    assert proc.returncode == 2
+    assert proc.stdout == ""
