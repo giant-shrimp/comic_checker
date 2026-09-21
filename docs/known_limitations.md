@@ -258,7 +258,10 @@ introduced — their measurement date is unknown, and their freshness is not gua
     article has no `巻数` field at all — no date rule can help) and five misses
     (`もし高校野球の…`, `Ef - a fairy tale of the two.`, `ノブナガ・ザ・フール` carry `既刊`
     with no date while being complete; `空の境界` and `俺、つしま` carry recent dates while
-    being complete).
+    being complete). The three dateless-`既刊` misses are the deliberate cost of not taking
+    the rejected alternative (refusing a dateless `既刊` as evidence, Issue #56's B-6) — see
+    the trade-off comment in `comic_checker/wikipedia_client.py`. The other two are a
+    consequence of the threshold not being a clean separator, described above.
   - **Measured 2026-08-11: re-ran the threshold against 3/4/5/6/7/8, kept 5.** 3 detects one
     more (55/59) but at 8.1% false-exclusion (3/37) instead of 2.7%; 6–8 match 5's
     false-exclusion rate but detect strictly less (53, 53, 52 vs 54). 5 dominates 4, 6, 7, 8
