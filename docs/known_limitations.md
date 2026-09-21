@@ -258,14 +258,18 @@ introduced — their measurement date is unknown, and their freshness is not gua
     article has no `巻数` field at all — no date rule can help) and five misses
     (`もし高校野球の…`, `Ef - a fairy tale of the two.`, `ノブナガ・ザ・フール` carry `既刊`
     with no date while being complete; `空の境界` and `俺、つしま` carry recent dates while
-    being complete).
+    being complete). The three dateless-`既刊` misses are the deliberate cost of not taking
+    the rejected alternative (refusing a dateless `既刊` as evidence, Issue #56's B-6) — see
+    the trade-off comment in `comic_checker/wikipedia_client.py`. The other two are a
+    consequence of the threshold not being a clean separator, described above.
   - **Measured 2026-08-11: re-ran the threshold against 3/4/5/6/7/8, kept 5.** 3 detects one
     more (55/59) but at 8.1% false-exclusion (3/37) instead of 2.7%; 6–8 match 5's
     false-exclusion rate but detect strictly less (53, 53, 52 vs 54). 5 dominates 4, 6, 7, 8
     and trades detection for safety against 3, consistent with the project's stated
     preference (a false exclusion is the safe-side failure). The origin of `5` — the 2021|2022
-    year-gap in Issue #53's original 75-row study — lives in this file's own code comment
-    (`comic_checker/wikipedia_client.py:707-721`), and the independent re-calculation above
+    year-gap in Issue #53's original 75-row study — lives in the code comment directly
+    above `CONTINUATION_STALE_YEARS` in `comic_checker/wikipedia_client.py`, and the
+    independent re-calculation above
     reproduces that comment's numbers exactly, confirming the record is accurate and
     reproducible. **This measurement selects and evaluates on the same 96 rows the threshold
     was already tuned against, so "5 is best" here is an overestimate (the holdout-sample
