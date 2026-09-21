@@ -245,7 +245,8 @@ def verify_against_labels(expectation=None):
             "  ゲートを変えたなら scripts/survey_m6d4_infobox.py を再実行して"
             "ラベルと期待値を測り直すこと。\n"
             "  既知のトレードオフ（未検出5件・副作用1件の内訳）は Issue #56 と"
-            "comic_checker/wikipedia_client.py:808-812 のコメントを参照。"
+            "comic_checker/wikipedia_client.py の CONTINUATION_STALE_YEARS "
+            "直上のコメントを参照。"
         )
     print("\n  ✓ Issue #53 の実測値と一致")
 

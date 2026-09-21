@@ -267,8 +267,9 @@ introduced — their measurement date is unknown, and their freshness is not gua
     false-exclusion rate but detect strictly less (53, 53, 52 vs 54). 5 dominates 4, 6, 7, 8
     and trades detection for safety against 3, consistent with the project's stated
     preference (a false exclusion is the safe-side failure). The origin of `5` — the 2021|2022
-    year-gap in Issue #53's original 75-row study — lives in this file's own code comment
-    (`comic_checker/wikipedia_client.py:707-721`), and the independent re-calculation above
+    year-gap in Issue #53's original 75-row study — lives in the code comment directly
+    above `CONTINUATION_STALE_YEARS` in `comic_checker/wikipedia_client.py`, and the
+    independent re-calculation above
     reproduces that comment's numbers exactly, confirming the record is accurate and
     reproducible. **This measurement selects and evaluates on the same 96 rows the threshold
     was already tuned against, so "5 is best" here is an overestimate (the holdout-sample
