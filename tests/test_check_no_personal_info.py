@@ -433,3 +433,53 @@ def test_cli_diff_base_rejects_combination_with_path_args(tmp_path):
     proc = run_cli(["--diff-base", "HEAD", "sample.txt"], cwd=str(tmp_path))
     assert proc.returncode == 2
     assert proc.stdout == ""
+
+
+# --- 追加行の内容が "---"/"+++" で始まる場合の回帰（ハンクヘッダ到達後の誤スキップ）---
+
+def test_diff_hits_detect_added_line_whose_content_starts_with_triple_dash():
+    # 内容が "---" で始まる追加行（Markdownの水平線等）にヒットが含まれる場合、
+    # ファイルヘッダの "---" 行と誤認されずに検出されること。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+--- contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [("sample.txt", 2, "--- contact: example@example.invalid")]
+
+
+def test_diff_hits_detect_added_line_whose_content_starts_with_triple_plus():
+    # 内容が "+++" で始まる追加行（TOML frontmatter区切り等）にヒットが含まれる
+    # 場合、ファイルヘッダの "+++" 行と誤認されずに検出されること（本バグの本体）。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "++++ contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [("sample.txt", 2, "+++ contact: example@example.invalid")]
+
+
+def test_diff_hits_still_skip_genuine_file_header_lines():
+    # ハンクヘッダ到達前の本物のファイルヘッダ（"--- a/..."・"+++ b/..."）は
+    # 引き続き走査対象にならない（上記2件の回帰修正が、この既存の抑止を
+    # 壊していないことの確認）。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+plain line, no hit here\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == []
+    for _path, _lineno, line in hits:
+        assert line not in ("--- a/sample.txt", "+++ b/sample.txt")

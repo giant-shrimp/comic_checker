@@ -194,8 +194,14 @@ def iter_diff_hits(diff_text):
         if hunk_match:
             new_lineno = int(hunk_match.group(1))
             continue
-        if raw_line.startswith("+++") or raw_line.startswith("---"):
-            continue  # ファイルヘッダの2行目・1行目
+        if new_lineno is None and (
+            raw_line.startswith("+++") or raw_line.startswith("---")
+        ):
+            # ファイルヘッダの2行目・1行目。ハンクヘッダ到達前（new_lineno未設定）
+            # にしか現れない。ハンクヘッダ到達後の "+++"/"---" は本文の内容
+            # （Markdownの水平線・frontmatter区切り等）であり、ファイルヘッダでは
+            # ないため、ここでスキップしてはならない。
+            continue
         if raw_line.startswith("\\"):
             continue  # "\ No newline at end of file"
         if raw_line.startswith("+"):
