@@ -46,7 +46,8 @@
     0   ヒット 0 件（正常終了）。`--help` もここに含める
     1   ヒット 1 件以上（検出）
     2   利用者側の誤り（存在しないパス・読み取り不可・不正な引数）
-    3   `--diff-base` の REF を解決できなかった（Issue #258）。スキップせず停止する
+    3   `--diff-base` の REF を解決できなかった、または REF...HEAD の差分を
+        取得できなかった（Issue #258）。スキップせず停止する
 
 `scripts/verify.sh` への組み込みは本 Issue の範囲外（Issue #251「スコープ外」参照）。
 `--diff-base` の CI・フックへの組み込みも本 Issue の範囲外（Issue #258）。
@@ -227,24 +228,37 @@ def _ref_exists(ref):
 
 
 def _git_diff_added_lines(ref):
+    """`git diff` の (終了コード, 標準出力) を返す。
+
+    呼び出し側（`scan_diff_base`）が終了コードを見て、`git diff` 自体が
+    失敗したケース（REFはrev-parseで解決できてもcommit-ishでない場合等。
+    例: REFがblob・treeを指す）を「差分なし」と誤認しないようにする。
+    標準エラーの本文はここでは読み捨てる（絶対パスが混入しうるため、
+    呼び出し側へ転送しない）。
+    """
     result = subprocess.run(
         ["git", "diff", "--no-color", "-U0", f"{ref}...HEAD"],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         text=True,
     )
-    return result.stdout
+    return result.returncode, result.stdout
 
 
 def scan_diff_base(ref):
-    """`--diff-base REF` の実処理。REFが解決できなければ `None` を返す。
+    """`--diff-base REF` の実処理。REFが解決できない、または`git diff`自体が
+    失敗した（例: REFはあるがcommit-ishでない・HEADと共通祖先が無い等）
+    場合は `None` を返す。
 
     呼び出し側（`main`）が `None` を `EXIT_DIFF_BASE_UNRESOLVED` に対応づける。
-    スキップして通過させない（障害2の解決）。
+    `git diff` の失敗を「検出0件」と誤認してスキップ通過させない
+    （障害2の解決。fail-closed方針）。
     """
     if not _ref_exists(ref):
         return None
-    diff_text = _git_diff_added_lines(ref)
+    returncode, diff_text = _git_diff_added_lines(ref)
+    if returncode != 0:
+        return None
     return list(iter_diff_hits(diff_text))
 
 
@@ -293,14 +307,15 @@ def main(argv=None):
         hits = scan_diff_base(args.diff_base)
         if hits is None:
             print(
-                f"{args.diff_base}: 参照を解決できませんでした"
-                "（存在しない参照・浅いクローン等）。走査を実施していません。",
+                f"{args.diff_base}: 参照を解決できなかった、または差分を"
+                "取得できませんでした（存在しない参照・commit-ishでない参照・"
+                "共通祖先の無い履歴等）。走査を実施していません。",
                 file=sys.stderr,
             )
             return EXIT_DIFF_BASE_UNRESOLVED
         for path, lineno, line in hits:
             print(f"{path}:{lineno}:{line}")
-        return 1 if hits else 0
+        return EXIT_HIT if hits else EXIT_OK
 
     hits = []
     if args.paths:
@@ -339,7 +354,7 @@ def main(argv=None):
         display_path = f"{b}#{order_index.get(path, '?')}" if b in collided else b
         print(f"{display_path}:{lineno}:{line}")
 
-    return 1 if hits else 0
+    return EXIT_HIT if hits else EXIT_OK
 
 
 if __name__ == "__main__":

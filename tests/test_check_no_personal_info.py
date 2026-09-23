@@ -483,3 +483,73 @@ def test_diff_hits_still_skip_genuine_file_header_lines():
     assert hits == []
     for _path, _lineno, line in hits:
         assert line not in ("--- a/sample.txt", "+++ b/sample.txt")
+
+
+# --- git diff 自体が失敗した場合の fail-closed（障害2、再発） ------------------
+
+def _repo_with_a_hit_on_head(tmp_path):
+    """base(検出対象なし) -> HEAD(検出対象を1行追加) の2コミットリポジトリを作る。
+
+    戻り値: (main_branch, head_sha)
+    """
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("line one\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+    main_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (tmp_path / "sample.txt").write_text(
+        "line one\ncontact: example@example.invalid\n", encoding="utf-8",
+    )
+    _commit_all(tmp_path, "add a hit")
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return main_branch, head_sha
+
+
+def test_cli_diff_base_ref_is_a_blob_does_not_silently_pass(tmp_path):
+    # REFがblobを指す場合、`git diff REF...HEAD`は終了コード128で失敗する。
+    # 走査器はこれを「検出0件」として素通りせず、専用の終了コード3で停止
+    # しなければならない（障害2のfail-closed方針）。
+    _main_branch, head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    proc = run_cli(["--diff-base", f"{head_sha}:sample.txt"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+
+
+def test_cli_diff_base_ref_is_a_tree_does_not_silently_pass(tmp_path):
+    # REFがtreeを指す場合も同様に、git diff自体の失敗を検出0件と誤認しない。
+    _main_branch, head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    proc = run_cli(["--diff-base", f"{head_sha}^{{tree}}"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+
+
+def test_cli_diff_base_orphan_branch_still_detects_hit(tmp_path):
+    # REFが共通祖先の無い孤立ブランチの場合、現行gitではgit diffは成功し
+    # （フルツリー差分にフォールバックする）、HEAD側の検出対象が素通りせず
+    # 検出されることを固定する（現行git 2.25.1での実測挙動の回帰）。
+    main_branch, _head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    subprocess.run(
+        ["git", "checkout", "-q", "--orphan", "orphan-branch"],
+        cwd=str(tmp_path), check=True,
+    )
+    subprocess.run(
+        ["git", "rm", "-rf", "-q", "."], cwd=str(tmp_path), check=True,
+    )
+    (tmp_path / "other.txt").write_text("unrelated content\n", encoding="utf-8")
+    _commit_all(tmp_path, "orphan")
+    subprocess.run(
+        ["git", "checkout", "-q", main_branch], cwd=str(tmp_path), check=True,
+    )
+
+    proc = run_cli(["--diff-base", "orphan-branch"], cwd=str(tmp_path))
+    assert proc.returncode == 1
+    assert proc.stdout.count("\n") == 1
