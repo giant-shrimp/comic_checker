@@ -532,9 +532,13 @@ def test_cli_diff_base_ref_is_a_tree_does_not_silently_pass(tmp_path):
 
 
 def test_cli_diff_base_orphan_branch_still_detects_hit(tmp_path):
-    # REFが共通祖先の無い孤立ブランチの場合、現行gitではgit diffは成功し
-    # （フルツリー差分にフォールバックする）、HEAD側の検出対象が素通りせず
-    # 検出されることを固定する（現行git 2.25.1での実測挙動の回帰）。
+    # REFが共通祖先の無い孤立ブランチの場合、共通祖先が無いときのgit diff
+    # A...BのA挙動はgitの版により異なりうる（手元のgit 2.25.1では全ツリー
+    # 差分にフォールバックして成功するが、別の版ではエラーになる可能性がある
+    # ―― これは推測であり、本テストでは確認していない）。このテストの
+    # 趣旨は「検出が素通りしないこと」であり、成功して検出される（終了
+    # コード1）・失敗として停止する（終了コード3）のどちらの挙動でも
+    # fail-closedは満たされるため、終了コードは「0でない」ことのみを固定する。
     main_branch, _head_sha = _repo_with_a_hit_on_head(tmp_path)
 
     subprocess.run(
@@ -551,5 +555,8 @@ def test_cli_diff_base_orphan_branch_still_detects_hit(tmp_path):
     )
 
     proc = run_cli(["--diff-base", "orphan-branch"], cwd=str(tmp_path))
-    assert proc.returncode == 1
-    assert proc.stdout.count("\n") == 1
+    assert proc.returncode in (1, 3)
+    if proc.returncode == 1:
+        assert proc.stdout.count("\n") == 1
+    else:
+        assert proc.stdout == ""
