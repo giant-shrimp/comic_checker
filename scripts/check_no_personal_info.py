@@ -27,25 +27,42 @@
         引数のファイルを走査する。
     ... | scripts/check_no_personal_info.py
         引数が無ければ標準入力を走査する（ラベルは `<stdin>`）。
+    scripts/check_no_personal_info.py --diff-base REF
+        REF との差分（`git diff --no-color -U0 REF...HEAD`）で追加された行のみを
+        走査する（Issue #258）。リポジトリのルートで実行すること。PATH 引数とは
+        併用できない。削除行・文脈行・ハンクヘッダ・ファイルヘッダは走査しない。
+        追加行は先頭の `+` を除去してから検出処理に渡し、元ファイル（新ファイル側）
+        の行番号で報告する。出力パスは `git diff` が報告する相対パスをそのまま使う
+        （basenameへの短縮はこのモードでは行わない）。
     scripts/check_no_personal_info.py --help
         使用法を表示する（終了コード 0）。
 
     ヒットした行は `ファイル名:行番号:行の内容` の形式で標準出力へ出す（Issue #257
     観測3の解消。ディレクトリ名は含めない）。異なる入力パスが同じファイル名を
     持つ場合に限り、`ファイル名#N`（N は入力順の1始まり番号）で区別する。
+    （`--diff-base` モードはこの限りでない。上記参照）
 
 終了コード（Issue #257 観測2の解消。既存の 0/1 の意味は変えていない）:
     0   ヒット 0 件（正常終了）。`--help` もここに含める
     1   ヒット 1 件以上（検出）
     2   利用者側の誤り（存在しないパス・読み取り不可・不正な引数）
+    3   `--diff-base` の REF を解決できなかった、または REF...HEAD の差分を
+        取得できなかった（Issue #258）。スキップせず停止する
 
 `scripts/verify.sh` への組み込みは本 Issue の範囲外（Issue #251「スコープ外」参照）。
+`--diff-base` の CI・フックへの組み込みも本 Issue の範囲外（Issue #258）。
 """
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
+
+EXIT_OK = 0
+EXIT_HIT = 1
+EXIT_USAGE_ERROR = 2
+EXIT_DIFF_BASE_UNRESOLVED = 3
 
 # --- 検出パターン（テストからミューテーション対象として import される）-------------
 
@@ -111,17 +128,27 @@ def _honorific_hit(line):
     return False
 
 
+def _line_has_hit(line):
+    """1行に検出パターン（home-path/email/honorific）のいずれかが一致するか。
+
+    `iter_hits`（ファイル・標準入力の走査）と `iter_diff_hits`（Issue #258、
+    差分の追加行のみの走査）が共用する。1行判定の挙動はどちらの経路でも
+    同一でなければならない（`iter_hits` の判定部分をここへ切り出したもの）。
+    """
+    return bool(
+        HOME_PREFIX_PATTERN.search(line)
+        or EMAIL_PATTERN.search(line)
+        or _honorific_hit(line)
+    )
+
+
 def iter_hits(path, lines):
     """`lines` を 1 行ずつ走査し、ヒットした `(path, 行番号, 行の内容)` を返す。"""
     for lineno, raw in enumerate(lines, start=1):
         line = raw.rstrip("\n")
         if HUNK_HEADER_PATTERN.search(line):
             continue
-        if (
-            HOME_PREFIX_PATTERN.search(line)
-            or EMAIL_PATTERN.search(line)
-            or _honorific_hit(line)
-        ):
+        if _line_has_hit(line):
             yield path, lineno, line
 
 
@@ -135,6 +162,106 @@ def scan_stdin(stream=None):
     return list(iter_hits("<stdin>", stream.read().splitlines()))
 
 
+# --- 差分限定モード（Issue #258）--------------------------------------------------
+
+# `git diff --no-color` のファイルヘッダ行。新ファイル側のパス（b/ 以降）を
+# 元ファイルの行番号報告に使う（障害1の解決）。
+_DIFF_FILE_HEADER_RE = re.compile(r"^diff --git a/(?:.+) b/(.+)$")
+
+# `git diff` のハンクヘッダ行。新ファイル側の開始行番号（+c の c）を取り出す。
+# `-U0` 指定時は文脈行が出ないため、以降の `+` 行はこの値から単調増加する。
+_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def iter_diff_hits(diff_text):
+    """`git diff --no-color -U0 REF...HEAD` の出力から、追加行のみを走査する。
+
+    削除行（`-` 始まり）・文脈行・ハンクヘッダ・ファイルヘッダ（`diff --git`・
+    `index`・`---`・`+++`）・「`\\ No newline at end of file`」行は走査しない
+    （障害3の解決：削除行・非追加行を検出対象から外す）。追加行は先頭の `+` を
+    除去してから `_line_has_hit()` に渡す（先頭記号自体が誤検出源にならない
+    ようにする）。行番号はハンクヘッダから追跡した新ファイル側の行番号
+    （障害1の解決：標準入力経由の走査に伴う行番号のズレを避ける）。
+    """
+    current_path = None
+    new_lineno = None
+    for raw_line in diff_text.splitlines():
+        header_match = _DIFF_FILE_HEADER_RE.match(raw_line)
+        if header_match:
+            current_path = header_match.group(1)
+            new_lineno = None
+            continue
+        hunk_match = _DIFF_HUNK_RE.match(raw_line)
+        if hunk_match:
+            new_lineno = int(hunk_match.group(1))
+            continue
+        if new_lineno is None and (
+            raw_line.startswith("+++") or raw_line.startswith("---")
+        ):
+            # ファイルヘッダの2行目・1行目。ハンクヘッダ到達前（new_lineno未設定）
+            # にしか現れない。ハンクヘッダ到達後の "+++"/"---" は本文の内容
+            # （Markdownの水平線・frontmatter区切り等）であり、ファイルヘッダでは
+            # ないため、ここでスキップしてはならない。
+            continue
+        if raw_line.startswith("\\"):
+            continue  # "\ No newline at end of file"
+        if raw_line.startswith("+"):
+            if current_path is None or new_lineno is None:
+                continue  # ハンクヘッダより前に追加行相当の行が来ることは無いが安全側
+            content = raw_line[1:]
+            if _line_has_hit(content):
+                yield current_path, new_lineno, content
+            new_lineno += 1
+        elif raw_line.startswith("-"):
+            continue  # 削除行。新ファイル側に存在しないので行番号は進めない
+        # それ以外（-U0 では通常出現しない文脈行等）は無視する。
+
+
+def _ref_exists(ref):
+    """`ref` が現在のリポジトリで解決できるか（障害2の解決の前段）。"""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", ref],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def _git_diff_added_lines(ref):
+    """`git diff` の (終了コード, 標準出力) を返す。
+
+    呼び出し側（`scan_diff_base`）が終了コードを見て、`git diff` 自体が
+    失敗したケース（REFはrev-parseで解決できてもcommit-ishでない場合等。
+    例: REFがblob・treeを指す）を「差分なし」と誤認しないようにする。
+    標準エラーの本文はここでは読み捨てる（絶対パスが混入しうるため、
+    呼び出し側へ転送しない）。
+    """
+    result = subprocess.run(
+        ["git", "diff", "--no-color", "-U0", f"{ref}...HEAD"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return result.returncode, result.stdout
+
+
+def scan_diff_base(ref):
+    """`--diff-base REF` の実処理。REFが解決できない、または`git diff`自体が
+    失敗した（例: REFはあるがcommit-ishでない・HEADと共通祖先が無い等）
+    場合は `None` を返す。
+
+    呼び出し側（`main`）が `None` を `EXIT_DIFF_BASE_UNRESOLVED` に対応づける。
+    `git diff` の失敗を「検出0件」と誤認してスキップ通過させない
+    （障害2の解決。fail-closed方針）。
+    """
+    if not _ref_exists(ref):
+        return None
+    returncode, diff_text = _git_diff_added_lines(ref)
+    if returncode != 0:
+        return None
+    return list(iter_diff_hits(diff_text))
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(
         description="個人情報・絶対パスの走査を行う CLI。",
@@ -144,6 +271,15 @@ def _build_parser():
         nargs="*",
         metavar="PATH",
         help="走査するファイル。省略時は標準入力を読む。",
+    )
+    parser.add_argument(
+        "--diff-base",
+        metavar="REF",
+        default=None,
+        help=(
+            "REF との差分（git diff --no-color -U0 REF...HEAD）で追加された行のみを"
+            "走査する。PATH 引数とは併用できない。"
+        ),
     )
     return parser
 
@@ -162,7 +298,24 @@ def main(argv=None):
     # argparse は --help を自前で処理し、使用法を表示して終了コード 0 で
     # 終了する。不正なオプション・引数の場合は使用法をエラーとして標準
     # エラーへ出し、終了コード 2 で終了する（いずれも argparse の既定挙動）。
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if args.diff_base is not None:
+        if args.paths:
+            parser.error("--diff-base は PATH 引数と同時に指定できません。")
+        hits = scan_diff_base(args.diff_base)
+        if hits is None:
+            print(
+                f"{args.diff_base}: 参照を解決できなかった、または差分を"
+                "取得できませんでした（存在しない参照・commit-ishでない参照・"
+                "共通祖先の無い履歴等）。走査を実施していません。",
+                file=sys.stderr,
+            )
+            return EXIT_DIFF_BASE_UNRESOLVED
+        for path, lineno, line in hits:
+            print(f"{path}:{lineno}:{line}")
+        return EXIT_HIT if hits else EXIT_OK
 
     hits = []
     if args.paths:
@@ -201,7 +354,7 @@ def main(argv=None):
         display_path = f"{b}#{order_index.get(path, '?')}" if b in collided else b
         print(f"{display_path}:{lineno}:{line}")
 
-    return 1 if hits else 0
+    return EXIT_HIT if hits else EXIT_OK
 
 
 if __name__ == "__main__":

@@ -25,12 +25,13 @@ _SPEC.loader.exec_module(checker)
 
 # --- ヘルパ -----------------------------------------------------------------
 
-def run_cli(args, stdin=None):
+def run_cli(args, stdin=None, cwd=None):
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         input=stdin,
         capture_output=True,
         text=True,
+        cwd=cwd,
     )
 
 
@@ -320,3 +321,242 @@ def test_honorific_exclude_pattern_is_importable_and_covers_probe_words():
     # 抑止語彙は独立した定数で、手順1 の一般語をすべて含む。
     for word in ["多様", "模様", "王様", "一様", "態様", "摂氏", "諸君", "宮殿"]:
         assert checker.HONORIFIC_EXCLUDE_PATTERN.search(word), word
+
+
+# --- 差分限定モード（Issue #258、--diff-base）--------------------------------
+
+def _init_repo(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "ci@example.invalid"],
+        cwd=str(tmp_path), check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "ci"], cwd=str(tmp_path), check=True,
+    )
+
+
+def _commit_all(tmp_path, message):
+    subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", message], cwd=str(tmp_path), check=True,
+    )
+
+
+def test_diff_hits_report_original_file_line_numbers_across_multiple_hunks():
+    # 合成した git diff -U0 出力。2つのハンクにまたがってヒットが元ファイル
+    # （新ファイル側）の行番号で報告されることを確認する。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -2,0 +3,2 @@\n"
+        "+plain context line\n"
+        "+/home/exampleuser/project\n"
+        "@@ -9,0 +12,1 @@\n"
+        "+contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [
+        ("sample.txt", 4, "/home/exampleuser/project"),
+        ("sample.txt", 12, "contact: example@example.invalid"),
+    ]
+
+
+def test_diff_hits_do_not_false_positive_from_leading_plus_symbol():
+    # ストリップ前の生の行（先頭+付き）なら EMAIL_PATTERN の local-part 文字
+    # 集合に "+" が含まれるため誤ってヒットしてしまうことを、内部関数で示す。
+    assert checker._line_has_hit("+@example.invalid") is True
+    # 実際のファイル内容（先頭+を除去した後）には local-part が無く、ヒットしない。
+    assert checker._line_has_hit("@example.invalid") is False
+
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+@example.invalid\n"
+    )
+    assert list(checker.iter_diff_hits(diff_text)) == []
+
+
+def test_diff_hits_skip_deleted_lines():
+    # 削除行（- 始まり）に検出パターンが含まれていても走査対象にならない。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -3,1 +3,0 @@\n"
+        "-/home/exampleuser/old-project\n"
+    )
+    assert list(checker.iter_diff_hits(diff_text)) == []
+
+
+def test_cli_diff_base_unresolved_ref_exits_three(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("plain line\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+
+    proc = run_cli(["--diff-base", "refs/heads/does-not-exist"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+    assert "does-not-exist" in proc.stderr
+
+
+def test_cli_diff_base_reports_added_hit_with_original_line_number(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("line one\nline two\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (tmp_path / "sample.txt").write_text(
+        "line one\nline two\ncontact: example@example.invalid\n", encoding="utf-8",
+    )
+    _commit_all(tmp_path, "add a hit")
+
+    proc = run_cli(["--diff-base", base_sha], cwd=str(tmp_path))
+    assert proc.returncode == 1
+    assert proc.stdout == "sample.txt:3:contact: example@example.invalid\n"
+
+
+def test_cli_diff_base_rejects_combination_with_path_args(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("plain line\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+
+    proc = run_cli(["--diff-base", "HEAD", "sample.txt"], cwd=str(tmp_path))
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+
+
+# --- 追加行の内容が "---"/"+++" で始まる場合の回帰（ハンクヘッダ到達後の誤スキップ）---
+
+def test_diff_hits_detect_added_line_whose_content_starts_with_triple_dash():
+    # 内容が "---" で始まる追加行（Markdownの水平線等）にヒットが含まれる場合、
+    # ファイルヘッダの "---" 行と誤認されずに検出されること。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+--- contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [("sample.txt", 2, "--- contact: example@example.invalid")]
+
+
+def test_diff_hits_detect_added_line_whose_content_starts_with_triple_plus():
+    # 内容が "+++" で始まる追加行（TOML frontmatter区切り等）にヒットが含まれる
+    # 場合、ファイルヘッダの "+++" 行と誤認されずに検出されること（本バグの本体）。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "++++ contact: example@example.invalid\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == [("sample.txt", 2, "+++ contact: example@example.invalid")]
+
+
+def test_diff_hits_still_skip_genuine_file_header_lines():
+    # ハンクヘッダ到達前の本物のファイルヘッダ（"--- a/..."・"+++ b/..."）は
+    # 引き続き走査対象にならない（上記2件の回帰修正が、この既存の抑止を
+    # 壊していないことの確認）。
+    diff_text = (
+        "diff --git a/sample.txt b/sample.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1,0 +2,1 @@\n"
+        "+plain line, no hit here\n"
+    )
+    hits = list(checker.iter_diff_hits(diff_text))
+    assert hits == []
+    for _path, _lineno, line in hits:
+        assert line not in ("--- a/sample.txt", "+++ b/sample.txt")
+
+
+# --- git diff 自体が失敗した場合の fail-closed（障害2、再発） ------------------
+
+def _repo_with_a_hit_on_head(tmp_path):
+    """base(検出対象なし) -> HEAD(検出対象を1行追加) の2コミットリポジトリを作る。
+
+    戻り値: (main_branch, head_sha)
+    """
+    _init_repo(tmp_path)
+    (tmp_path / "sample.txt").write_text("line one\n", encoding="utf-8")
+    _commit_all(tmp_path, "base")
+    main_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (tmp_path / "sample.txt").write_text(
+        "line one\ncontact: example@example.invalid\n", encoding="utf-8",
+    )
+    _commit_all(tmp_path, "add a hit")
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(tmp_path), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return main_branch, head_sha
+
+
+def test_cli_diff_base_ref_is_a_blob_does_not_silently_pass(tmp_path):
+    # REFがblobを指す場合、`git diff REF...HEAD`は終了コード128で失敗する。
+    # 走査器はこれを「検出0件」として素通りせず、専用の終了コード3で停止
+    # しなければならない（障害2のfail-closed方針）。
+    _main_branch, head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    proc = run_cli(["--diff-base", f"{head_sha}:sample.txt"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+
+
+def test_cli_diff_base_ref_is_a_tree_does_not_silently_pass(tmp_path):
+    # REFがtreeを指す場合も同様に、git diff自体の失敗を検出0件と誤認しない。
+    _main_branch, head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    proc = run_cli(["--diff-base", f"{head_sha}^{{tree}}"], cwd=str(tmp_path))
+    assert proc.returncode == 3
+    assert proc.stdout == ""
+
+
+def test_cli_diff_base_orphan_branch_still_detects_hit(tmp_path):
+    # REFが共通祖先の無い孤立ブランチの場合、共通祖先が無いときのgit diff
+    # A...BのA挙動はgitの版により異なりうる（手元のgit 2.25.1では全ツリー
+    # 差分にフォールバックして成功するが、別の版ではエラーになる可能性がある
+    # ―― これは推測であり、本テストでは確認していない）。このテストの
+    # 趣旨は「検出が素通りしないこと」であり、成功して検出される（終了
+    # コード1）・失敗として停止する（終了コード3）のどちらの挙動でも
+    # fail-closedは満たされるため、終了コードは「0でない」ことのみを固定する。
+    main_branch, _head_sha = _repo_with_a_hit_on_head(tmp_path)
+
+    subprocess.run(
+        ["git", "checkout", "-q", "--orphan", "orphan-branch"],
+        cwd=str(tmp_path), check=True,
+    )
+    subprocess.run(
+        ["git", "rm", "-rf", "-q", "."], cwd=str(tmp_path), check=True,
+    )
+    (tmp_path / "other.txt").write_text("unrelated content\n", encoding="utf-8")
+    _commit_all(tmp_path, "orphan")
+    subprocess.run(
+        ["git", "checkout", "-q", main_branch], cwd=str(tmp_path), check=True,
+    )
+
+    proc = run_cli(["--diff-base", "orphan-branch"], cwd=str(tmp_path))
+    assert proc.returncode in (1, 3)
+    if proc.returncode == 1:
+        assert proc.stdout.count("\n") == 1
+    else:
+        assert proc.stdout == ""
