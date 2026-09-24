@@ -70,6 +70,12 @@ introduced — their measurement date is unknown, and their freshness is not gua
   `ARTICLE_RELEVANCE_MARKERS`, `MERGED_COVERAGE_MARKERS`, `CONTINUATION_MARKER`,
   `ONGOING_FIELD_MARKER`, `HIATUS_MARKER`) — this isn't specific to `SPINOFF_MARKERS`.
   Not yet filed as an Issue; draft only.
+- **`ONGOING_RE` deliberately does not include 「掲載されている」.** Adding it was
+  considered (Refs #135) but a real-data example showed it misattributing a
+  spin-off/derivative one-shot's serialization to the main work, flipping a
+  genuinely-completed work to a false `連載中` (Issue #138). Do not add it on the
+  strength of that one example alone — confirm the derivative-work wording against
+  independent real data and pre-register before changing this.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
