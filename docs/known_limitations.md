@@ -69,7 +69,14 @@ introduced — their measurement date is unknown, and their freshness is not gua
   (`MANGA_MARKERS`, `NOVEL_MARKERS`, `DERIVATIVE_WORK_MARKERS`,
   `ARTICLE_RELEVANCE_MARKERS`, `MERGED_COVERAGE_MARKERS`, `CONTINUATION_MARKER`,
   `ONGOING_FIELD_MARKER`, `HIATUS_MARKER`) — this isn't specific to `SPINOFF_MARKERS`.
-  Not yet filed as an Issue; draft only.
+  Tracked as Issue #171; decided to keep as-is (zero real-world harm found across the
+  160-row corpus plus the 60 test fixtures). **The failure direction is not the same
+  for every marker list.** For `SPINOFF_MARKERS`'s exclusion, over-matching drops an
+  unrelated sentence from the scan — the fail-safe direction. For other lists (e.g.
+  `ONGOING_FIELD_MARKER`), over-matching could instead cause a wrong `連載中`
+  assertion — each site needs its own evaluation of which direction an over-match
+  would push the verdict. Before changing this, confirm real-world harm on an
+  independent sample and pre-register the verification.
 - **`ONGOING_RE` deliberately does not include 「掲載されている」.** Adding it was
   considered (Refs #135) but a real-data example showed it misattributing a
   spin-off/derivative one-shot's serialization to the main work, flipping a
