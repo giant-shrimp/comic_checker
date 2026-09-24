@@ -76,6 +76,14 @@ introduced — their measurement date is unknown, and their freshness is not gua
   genuinely-completed work to a false `連載中` (Issue #138). Do not add it on the
   strength of that one example alone — confirm the derivative-work wording against
   independent real data and pre-register before changing this.
+- **Sporadic new-content mentions after an explicit completion sentence are not
+  treated as ongoing.** If the lead text carries an explicit ending statement
+  (caught by `COMPLETED_WEAK_RE`/`COMPLETED_STRONG_RE`), a later mention of
+  sporadic new content does not flip the result to `連載中` — this matches the
+  definition in `README.md` ("### Wikipedia判定（既定の経路）"), not a bug. A
+  candidate rule for the opposite behavior (labelling ruleset v3's R5) exists
+  but rests on a single uncorroborated real-data example across three rule
+  revisions (see ADR-028) — not adopted as an implementation requirement.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
