@@ -397,6 +397,16 @@ introduced — their measurement date is unknown, and their freshness is not gua
   but stating only that fact (as an earlier version of this entry did) reads as if
   coverage were contingent on the data, when it is not: even a labelled row that did
   carry `休載` would not exercise this branch through `--verify`.
+- **`_judge_via_infobox()` only treats an end-field value as an unresolved placeholder
+  when it is nothing but `？`/`?` characters (Issue #156,
+  `prereg_lineage2_infobox_placeholder.md`).** When that narrow condition matches, the
+  function returns `判定不能` immediately and does not fall through to check any later
+  end-field name — the fail-safe direction. **A non-empty value that contains no digit
+  and is neither `連載中` nor `休載`-flagged is still taken as a real end value and can
+  still assert `完結`.** Two such rows exist in the 160-row corpus
+  (holdout99+regression61); whether either is a misjudgment has not been evaluated.
+  Widening the placeholder check to cover this shape needs its own pre-registration —
+  not a mechanical extension of the `？`/`?` condition.
 - **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
   about 7 seconds per input row (Issue #40).** `_api_get()` sleeps before each request and
   retries a 429 up to six times with a `5.0 × attempt` backoff. Before #40 there was no

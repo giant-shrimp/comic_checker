@@ -860,6 +860,18 @@ HIATUS_MARKER = "休載"
 ONGOING_FIELD_MARKER = "連載中"
 
 
+# Issue #156（`prereg_lineage2_infobox_placeholder.md`）: 終了系フィールドの値が
+# 未確定を表すプレースホルダ（「？」「?」のみ）である場合、実際の終了時期の記録
+# ではないため、完結の根拠として採用してはならない。空欄は「記述が無い」ことを
+# 意味するが、プレースホルダは「不明であると明示された」ことを意味し性質が
+# 異なるため、空欄の分岐（`_has_continuation_evidence`による連載中判定）にも
+# 合流させない。
+def _is_placeholder_value(value):
+    """終了系フィールドの値が、前後の空白を除いて「？」「?」の1文字以上の
+    並びだけで構成されているかを判定する。"""
+    return bool(re.fullmatch(r"[？?]+", value.strip()))
+
+
 def _judge_via_infobox(wikitext, today=None):
     """wikitextから本編漫画のインフォボックスを特定し、連載中/完結を判定する。
 
@@ -884,6 +896,10 @@ def _judge_via_infobox(wikitext, today=None):
             # Issue #142: 値自体が「連載中」という直接的な断定であり、休載注記のような
             # 曖昧さを持たない。継続の証拠（Issue #56）を追加で要求せず、ここで直接返す。
             return "連載中", f"インフォボックス: {field_name} = {value}"
+        if _is_placeholder_value(value):
+            # Issue #156: プレースホルダ値は根拠の無い完結断定に直結するため、
+            # 後続の終了系フィールドも見ずに直ちに判定不能で返す。
+            return None, None
         if HIATUS_MARKER in value:
             # 休載注記は「終了」の記録ではない。この値では完結と断定せず、
             # 空欄だった場合と同じ経路（継続の積極的な証拠を要求、Issue #56）へ進む。
