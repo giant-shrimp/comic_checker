@@ -113,5 +113,5 @@ md5sum docs/code_defects_2026-08/prereg_lineage2_infobox_placeholder.md
 - **参考記録**: `./scripts/verify.sh`（453 passed、M6-B-4ゲート値の確認を含む）・
   `bash scripts/check_scanner_registry.sh`（OK）。
 
-行番号・作品名は本文書中には記載していない（Issue #171・ERRORS.mdの教訓に従い、
-定数名・関数名・evidenceの種類を主とした記述に統一した）。
+作品名と値は本文書に記載していない。行の特定は測定結果ファイルの行番号（No.44）
+だけで行った（ERRORS.mdの記載規則に関する記録に従う）。
