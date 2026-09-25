@@ -981,6 +981,26 @@ MAIN_BLOCK_COMPLETED = _manga_infobox_block(
     ]
 )
 
+# Issue #156（`prereg_lineage2_infobox_placeholder.md`）: 終了系フィールドの値が
+# 「？」「?」のみの未確定プレースホルダである場合、根拠の無い完結断定を避ける。
+MAIN_BLOCK_PLACEHOLDER_FULLWIDTH = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2015年1号"),
+        ("終了号", "？"),
+    ]
+)
+
+MAIN_BLOCK_PLACEHOLDER_HALFWIDTH = _manga_infobox_block(
+    [
+        ("作者", "[[某作者]]"),
+        ("出版社", "[[集英社]]"),
+        ("開始号", "2015年1号"),
+        ("終了号", "?"),
+    ]
+)
+
 SPINOFF_BLOCK = _manga_infobox_block(
     [
         ("タイトル", "サンプル外伝"),
@@ -1075,6 +1095,30 @@ def test_judge_via_infobox_gives_up_when_no_end_field_exists_at_all():
     status, evidence = _judge_via_infobox(wikitext)
     assert status is None
     assert evidence is None
+
+
+def test_judge_via_infobox_placeholder_fullwidth_stays_unknown():
+    # Issue #156: 終了号が「？」のみ（全角）の場合、根拠の無い完結断定を避け判定不能。
+    wikitext = MAIN_BLOCK_PLACEHOLDER_FULLWIDTH + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status is None
+    assert evidence is None
+
+
+def test_judge_via_infobox_placeholder_halfwidth_stays_unknown():
+    # Issue #156: 終了号が「?」のみ（半角）の場合も同様に判定不能。
+    wikitext = MAIN_BLOCK_PLACEHOLDER_HALFWIDTH + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status is None
+    assert evidence is None
+
+
+def test_judge_via_infobox_numeric_end_field_still_completed():
+    # Issue #156: 数字を含む通常値は変更前と同じく完結のまま（ネガティブコントロール）。
+    wikitext = MAIN_BLOCK_COMPLETED + "\n\n" + SPINOFF_BLOCK
+    status, evidence = _judge_via_infobox(wikitext)
+    assert status == "完結"
+    assert "終了号 = 2020年30号" in evidence
 
 
 # M-5パターン対応（Issue #41調査、作業62〜63）: 終了系フィールドが非空欄でも、値が
