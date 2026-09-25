@@ -98,7 +98,7 @@ introduced — their measurement date is unknown, and their freshness is not gua
   dangerous one. In the existing 160-row corpus (holdout99+regression61), each item has
   exactly 1 affected row (`docs/holdout_measurement_2026-08/step98_b_compare_result.md`,
   No.64 and No.98) — below `prereg_v2_effective_count_basis.md`'s adoption threshold of 2+
-  affected rows. A third occurrence of 「連載されており」was observed in holdout2, but
+  affected rows. A second occurrence of 「連載されており」was observed in holdout2, but
   holdout2 has already been consumed for evaluation (PR #270) and is kept in reserve as an
   effectiveness-evidence sample rather than spent on adoption decisions (Issue #305), so
   that observation does not count toward the threshold. Changing this requires meeting the
