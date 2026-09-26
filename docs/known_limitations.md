@@ -91,6 +91,19 @@ introduced — their measurement date is unknown, and their freshness is not gua
   candidate rule for the opposite behavior (labelling ruleset v3's R5) exists
   but rests on a single uncorroborated real-data example across three rule
   revisions (see ADR-028) — not adopted as an implementation requirement.
+- **`COMPLETED_WEAK_RE`/`ONGOING_RE` miss two vocabulary items: 「配信終了」and
+  「連載されており」(Issue #305, a #157 leftover).** Neither pattern currently matches
+  these forms, so a row carrying only one of them falls back to `判定不能` rather than a
+  wrong confident answer — the missed vocabulary fails closed on the safe side, not the
+  dangerous one. In the existing 160-row corpus (holdout99+regression61), each item has
+  exactly 1 affected row (`docs/holdout_measurement_2026-08/step98_b_compare_result.md`,
+  No.64 and No.98) — below `prereg_v2_effective_count_basis.md`'s adoption threshold of 2+
+  affected rows. A second occurrence of 「連載されており」was observed in holdout2, but
+  holdout2 has already been consumed for evaluation (PR #270) and is kept in reserve as an
+  effectiveness-evidence sample rather than spent on adoption decisions (Issue #305), so
+  that observation does not count toward the threshold. Changing this requires meeting the
+  threshold on independent real data not drawn from holdout2, with pre-registration before
+  implementation.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
