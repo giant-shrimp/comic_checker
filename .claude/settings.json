@@ -3,7 +3,8 @@
   "_note_editing_this_file": "このファイル自身がdeny対象のため、Claude Codeからは編集できない。変更手順: (1) Claude Code以外のエディタで下の Edit/Write(.claude/settings.json) の2行を消す → (2) Claude Codeで編集する → (3) エディタで2行を戻す。JSONにコメント構文は無いため、この注記は通常のキーとして置いている（// を書くとファイル全体が読めなくなり、deny設定が丸ごと無効化される恐れがあるため）。",
   "_note_notation": "Bashパターンは work_loop.settings.json と同じ「素の形」と「* 付きの形」の2行を並べる書き方に統一している。この記法はIssue #14で実際にブロックされることを確認済み。Edit/Write のパス記法（./ を付けない形）も反証テスト済み。",
   "attribution": {
-    "sessionUrl": false
+    "sessionUrl": false,
+    "pr": ""
   },
   "hooks": {
     "SessionStart": [
