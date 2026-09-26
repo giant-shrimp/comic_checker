@@ -60,8 +60,20 @@ comic_checker の運用では，PRのマージは常に人間がGitHub GUIで行
    ```
    git merge-base --is-ancestor <branch> main
    ```
-   YESの場合のみ `git branch -d <branch>` でローカル削除．
-   NOの場合は削除せず停止し，`git log --oneline main..<branch>` を報告する．
+
+   YESの場合は `git branch -d <branch>` でローカル削除．
+   NOの場合（squash マージ等）は，次を実行する．
+
+   ```
+   gh pr list --state all --head <branch> --json number,state,mergeCommit,headRefOid
+   ```
+
+   次の3条件をすべて確認する．
+   (a) 該当 PR がちょうど1件で，state が MERGED．
+   (b) `git merge-base --is-ancestor <mergeCommit の oid> main` が YES．
+   (c) `git rev-parse <branch>` が headRefOid と一致．
+   3条件をすべて満たす場合だけ `git branch -D <branch>` でローカル削除．
+   1つでも満たさない場合は削除せず停止し，満たさなかった条件と `git log --oneline main..<branch>` を報告する．
    リモートは `git fetch --prune` で状態確認のみ行う．
    既に `[deleted]` なら追加操作は不要．そうでない場合も
    `git push origin --delete` は実行せず，状況を報告して指示を待つ
