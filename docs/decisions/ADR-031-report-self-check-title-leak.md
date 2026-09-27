@@ -7,7 +7,7 @@
 
 `ERRORS.md` の漏洩系記録（`docs/errors_md_inventory.md` No.50・51・54・60・63・
 65〜73）が，報告本文への個人情報・実在作品名の混入を繰り返し記録している．
-既存の `scripts/check_no_personal_info.py`（ADR-023・ADR-024）は個人情報のみを
+既存の `scripts/check_no_personal_info.py` は個人情報のみを
 対象とし，実在作品名は対象外である．Issue #331の対処として，機械的な検査を
 新設する．
 
@@ -23,11 +23,3 @@
 5. 辞書の読み込みに失敗したら照合せず終了コード3で止める（fail-closed）．
 6. Skillとスクリプトは，マージ後にユーザが `settings.json` の `deny` に追加する．
 7. 同じチェックリストを，今後定義する監査役の観点に用いる．
-
-## 範囲外
-
-- `settings.json` の `deny` への実際の追加（決定6は運用の合意であり，追加作業
-  自体は本ADRでは行わない）．
-- 監査役の観点そのものの定義（決定7は転用の方針のみであり，監査役の設計は
-  別途行う）．
-- `scripts/check_no_personal_info.py` 本体の変更．
