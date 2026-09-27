@@ -71,12 +71,36 @@ introduced — their measurement date is unknown, and their freshness is not gua
   `ONGOING_FIELD_MARKER`, `HIATUS_MARKER`) — this isn't specific to `SPINOFF_MARKERS`.
   Tracked as Issue #171; decided to keep as-is (zero real-world harm found across the
   160-row corpus plus the 60 test fixtures). **The failure direction is not the same
-  for every marker list.** For `SPINOFF_MARKERS`'s exclusion, over-matching drops an
-  unrelated sentence from the scan — the fail-safe direction. For other lists (e.g.
-  `ONGOING_FIELD_MARKER`), over-matching could instead cause a wrong `連載中`
-  assertion — each site needs its own evaluation of which direction an over-match
-  would push the verdict. Before changing this, confirm real-world harm on an
-  independent sample and pre-register the verification.
+  for every marker list.** This corrects an earlier statement that `SPINOFF_MARKERS`'s
+  exclusion is fail-safe: that holds for the decisive-sentence skip, not for the
+  exclusion inside `_has_ongoing_signal()`. Whether any of the over-matches listed
+  below occurs in real articles has not been evaluated. In the regression corpus (61
+  rows), no end-field value contained `連載中`, one contained `休載`, and no
+  volumes-field value containing `既刊` also contained `全`, `完結` or `最終`. This is
+  discovery material only, not evidence either way. Before changing this, confirm
+  real-world harm on an independent sample and pre-register the verification.
+  Over-matching (a marker matching text it was not meant to match) pushes the verdict
+  in a different direction at each site. Read from the code paths in
+  `comic_checker/wikipedia_client.py` (Issue #345):
+  - Toward a wrong assertion (the dangerous direction):
+    - `ONGOING_FIELD_MARKER` (substring match on an end-field value): a match returns
+      `連載中` immediately, with no later check.
+    - `CONTINUATION_MARKER` (substring match on the volumes field): a match can turn
+      `判定不能` into `連載中`, subject to the staleness check on the year.
+    - `HIATUS_MARKER`: a match defers an end-field value that would otherwise return
+      `完結` to the continuation check, which can return `連載中`.
+    - `SPINOFF_MARKERS` inside `_has_ongoing_signal()`: excluding a sentence can only
+      turn an ongoing signal off. Over-matching can therefore disable the veto on an
+      infobox `完結` in `judge()` and the weak-completion veto in `_judge_extract()`,
+      leaving `完結` in place.
+    - `MANGA_MARKERS` (in `_is_novel_primary()`, the per-sentence check in
+      `_judge_extract()`, and the extract-wide check in `judge()`): a match removes
+      the protection for novel-primary works and lets `完結` or `連載中` stand.
+    - `ARTICLE_RELEVANCE_MARKERS` and `MERGED_COVERAGE_MARKERS`: a match leads to
+      accepting a candidate article that would otherwise be rejected.
+  - Toward `判定不能` or rejecting a candidate (the fail-safe direction):
+    `SPINOFF_MARKERS` in the decisive-sentence skip of `_judge_extract()`,
+    `NOVEL_MARKERS`, and `DERIVATIVE_WORK_MARKERS`.
 - **`ONGOING_RE` deliberately does not include 「掲載されている」.** Adding it was
   considered (Refs #135) but a real-data example showed it misattributing a
   spin-off/derivative one-shot's serialization to the main work, flipping a
