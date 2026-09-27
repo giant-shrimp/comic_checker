@@ -41,6 +41,8 @@
       "Write(.claude/skills/post-merge-cleanup/SKILL.md)",
       "Edit(.claude/skills/report-self-check/SKILL.md)",
       "Write(.claude/skills/report-self-check/SKILL.md)",
+      "Edit(.claude/agents/**)",
+      "Write(.claude/agents/**)",
       "Edit(scripts/check_title_leak.py)",
       "Write(scripts/check_title_leak.py)",
       "Edit(.claude/settings.json)",
