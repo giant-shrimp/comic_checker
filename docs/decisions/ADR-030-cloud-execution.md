@@ -55,6 +55,19 @@ fi
 /opt/comic_venv/bin/pip install -q openpyxl requests tkinterdnd2 playwright pytest
 ```
 
+## 追記（2026-09-27、Issue #327）
+
+事実：
+- attribution.sessionUrl=false により、コミットにトレーラは付かなかった。
+- GitHub MCP のツールで作成した PR の本文には、セッションURLへのリンクを含む帰属フッタが付いた。attribution に "pr": "" を追加しても付いた（PR #332）。
+- PR 本文のフッタは、GitHub MCP のツール（PR 更新用）で削除できた（PR #326・#332）。
+- Issue コメントには、GitHub MCP のツールでも gh api（REST）の POST・PATCH でも、製品ページへのリンクを含む帰属フッタが付いた。送信した本文にフッタを含めなくても付き、PATCH では削除できなかった（Issue #327）。
+
+決定：
+- PR を作成した直後に、PR 本文から帰属フッタを削除し、削除されたことを確認する。
+- Issue コメントの帰属フッタは許容する（セッションURLを含まないため）。
+
 ## 関連
 
 - Refs #325
+- Refs #327
