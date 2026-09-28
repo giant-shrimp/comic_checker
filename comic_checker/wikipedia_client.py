@@ -664,6 +664,12 @@ def _is_issued_only_ongoing(sentence):
 
     Issue #363: この語は単行本や別版の刊行も述べるため、連載の継続を直接は示さない。
     その語を取り除くとONGOING_REに一致しなくなる文は、連載中の根拠にしない。
+
+    既知の限界（意図した非対称）: _has_ongoing_signal() はこの除外を経由しない。
+    そのため「発行されている」だけの文も、他の文の弱い完結シグナルを打ち消す働き
+    （has_ongoing_elsewhere）と、judge() でインフォボックスの完結判定を打ち消す働きは
+    保つ。これを外すと判定が完結側（断定側）へ動くため、Issue #363 では残した。
+    発見用標本での試算では、この打ち消しにより完結ではなく判定不能になった記事がある。
     """
     return "発行されている" in sentence and not ONGOING_RE.search(
         sentence.replace("発行されている", "")
