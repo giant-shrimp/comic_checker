@@ -98,7 +98,7 @@
     {"dataset": "holdout:a3", "no": 34, "expected": "連載中", "status": "連載中"},
     {"dataset": "holdout:a3", "no": 35, "expected": "完結", "status": "完結"},
     {"dataset": "holdout:a3", "no": 36, "expected": "判定不能", "status": "判定不能"},
-    {"dataset": "holdout:a3", "no": 37, "expected": "連載中", "status": "連載中"},
+    {"dataset": "holdout:a3", "no": 37, "expected": "連載中", "status": "判定不能"},
     {"dataset": "holdout:a3", "no": 38, "expected": "連載中", "status": "連載中"},
     {"dataset": "holdout:a3", "no": 39, "expected": "完結", "status": "完結"},
     {"dataset": "holdout:a3", "no": 40, "expected": "完結", "status": "完結"},

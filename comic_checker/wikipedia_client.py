@@ -659,6 +659,17 @@ def _has_ongoing_signal(extract):
     )
 
 
+def _is_issued_only_ongoing(sentence):
+    """連載中として採用しようとする文が、「発行されている」だけでONGOING_REに一致するか。
+
+    Issue #363: この語は単行本や別版の刊行も述べるため、連載の継続を直接は示さない。
+    その語を取り除くとONGOING_REに一致しなくなる文は、連載中の根拠にしない。
+    """
+    return "発行されている" in sentence and not ONGOING_RE.search(
+        sentence.replace("発行されている", "")
+    )
+
+
 def _is_novel_primary(extract):
     """作品自体の一次分類が小説/ライトノベルかどうかを、冒頭文の「日本の<種別>」から見る。
 
@@ -734,11 +745,17 @@ def _judge_extract(extract):
             continue
 
         if not is_multimedia:
+            # Issue #363: 「発行されている」だけが根拠の連載中は採用せず、後続の文も見ない。
+            if status == "連載中" and _is_issued_only_ongoing(sentence):
+                return STATUS_UNKNOWN, None
             return status, sentence.strip()
 
         has_manga = any(marker in sentence for marker in MANGA_MARKERS)
         has_novel = any(marker in sentence for marker in NOVEL_MARKERS)
         if has_manga and not has_novel:
+            # Issue #363: 上と同じ。
+            if status == "連載中" and _is_issued_only_ongoing(sentence):
+                return STATUS_UNKNOWN, None
             return status, sentence.strip()
 
     return STATUS_UNKNOWN, None
