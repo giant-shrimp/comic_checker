@@ -3217,3 +3217,40 @@ def test_judge_onmyoji_reaches_completed_via_infobox_after_zokuhen_exclusion():
 
     assert result.status == "完結"
     assert result.evidence == "インフォボックス: 終了号 = [[2005年]]7月号<br />（月刊メロディ）"
+
+
+def test_judge_extract_issued_only_ongoing_sentence_is_unknown():
+    # Issue #363（D3-T1）: 「発行されている」だけでONGOING_REに一致する文は、
+    # 単行本等の刊行を述べているだけの可能性があるため、連載中の根拠にしない。
+    extract = (
+        "『例の刊行作品』は、某作者による日本の漫画作品。"
+        "単行本は例の出版社から全3巻が発行されている。"
+    )
+    status, evidence = _judge_extract(extract)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
+
+
+def test_judge_extract_issued_with_other_ongoing_signal_is_ongoing():
+    # Issue #363（D3-T2）: 同じ文に「発行されている」以外の連載中シグナルがあれば、
+    # 従来どおり連載中として採用する。
+    extract = (
+        "『例の継続作品』は、某作者による日本の漫画作品。"
+        "本作は現在も連載中で、単行本は例の出版社から全3巻が発行されている。"
+    )
+    status, evidence = _judge_extract(extract)
+    assert status == "連載中"
+    assert "連載中" in evidence
+
+
+def test_judge_extract_issued_only_ongoing_sentence_blocks_later_completion():
+    # Issue #363（D3-T3）: 「発行されている」だけの文で打ち切り、後続の文にある強い
+    # 完結シグナルは見ない（完結にならず判定不能を返す）。
+    extract = (
+        "『例の刊行後続作品』は、某作者による日本の漫画作品。"
+        "単行本は例の出版社から全3巻が発行されている。"
+        "物語は最終巻で完結した。"
+    )
+    status, evidence = _judge_extract(extract)
+    assert status == STATUS_UNKNOWN
+    assert evidence is None
