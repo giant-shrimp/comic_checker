@@ -128,6 +128,20 @@ introduced — their measurement date is unknown, and their freshness is not gua
   that observation does not count toward the threshold. Changing this requires meeting the
   threshold on independent real data not drawn from holdout2, with pre-registration before
   implementation.
+- **A 「配信された」 sentence counts as a weak completion signal whenever a manga word
+  (`HAISHIN_MANGA_WORDS`) appears anywhere in the same sentence, including when the manga
+  is only named as the source of an adaptation (Issue #355, PR #356 review).** The check
+  does not look at what was 配信された, so a sentence saying that an anime or drama based
+  on a manga was 配信された can still produce `完結` when nothing else in the scan range
+  says 連載中. The labelled corpus (160 rows) contains no sentence of this shape. A
+  discovery sample of 117 articles from `list=search` (2026-09-28) found one such sentence
+  deciding `完結`, on a TV-drama list article; entering the manga's own title selected the
+  manga article and did not reach this path. In the same sample, the sentences describing
+  a manga's own distribution ending were also answered `完結` by the infobox path when the
+  sentence was removed. So no misjudgment was observed for the intended input (a manga
+  title), but the sample was built from search terms and is not evidence of safety. Before
+  narrowing the check (for example, skipping sentences that contain 原作), confirm real
+  harm on an independent sample and pre-register the verification (Issue #359).
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
