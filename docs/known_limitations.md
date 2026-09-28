@@ -455,7 +455,10 @@ introduced — their measurement date is unknown, and their freshness is not gua
   end-field name — the fail-safe direction. **A non-empty value that contains no digit
   and is neither `連載中` nor `休載`-flagged is still taken as a real end value and can
   still assert `完結`.** Two such rows exist in the 160-row corpus
-  (holdout99+regression61); whether either is a misjudgment has not been evaluated.
+  (holdout99+regression61). Measured 2026-09-28: in neither row does this field decide
+  the final status, because the prose path answers first (one `連載中`, one `完結`, both
+  matching their labels). One of them is labelled `連載中`, so if its prose stopped
+  answering, this path would assert a false `完結`; the risk is latent, not observed.
   Widening the placeholder check to cover this shape needs its own pre-registration —
   not a mechanical extension of the `？`/`?` condition.
 - **Every request to the Wikipedia API waits 1.0 second, so a real run is slow — budget
