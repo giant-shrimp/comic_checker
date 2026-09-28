@@ -332,3 +332,44 @@ profile`）の`files.pull_request_template`フィールドで、GitHub側が
 本指示ではこの判断を記録するに留め、代わりの対応（判定ログの蓄積・
 1行要約）を導入する。
 （規則の改訂やスクリプトの修正ではない）。
+
+## 6. ERRORS.md の剪定（月次）
+
+`ERRORS.md` の「剪定運用」節が定める月次の棚卸しの手順。退避の基準は、
+適用結果を見る前に確定したものであり、結果を見て変えない。
+
+### 退避の対象
+
+棚卸し表（`docs/errors_md_inventory.md`）で行範囲を持つ記録のうち、次の
+いずれかに該当するもの。
+
+1. 棚卸し表の分類が A または C。
+2. 記録の行範囲の本文に、文字列 `work_loop`・`review_loop`・`review_proposer`・
+   `review_audit`・`loop_git`・`loop_metrics` のいずれかが現れ、かつ文字列
+   `claude-review`・`select_review_comment`・`check_review_comment` のいずれも
+   現れない（Issue #343 の基準2）。
+
+基準2は、`work_loop.sh`・`review_loop.sh` が稼働していないことを前提とする
+（ADR-030）。どちらかを再び稼働させた場合は、基準2を適用しない。
+`claude-review.yml` は稼働中のため、それに関わる記録は基準2の対象から除く。
+
+### 退避の方法
+
+- 退避先は `docs/archive/ERRORS_archive_YYYY-MM.md`（YYYY-MM は退避を行う月）。
+  見出しを含む本文を一字一句変えずに移す。
+- `ERRORS.md` には見出し行と、既存の退避スタブと同じ形式の3行（空行・退避の
+  注記・空行）を残す。
+- 移した本文は、移動元を `git show origin/main:ERRORS.md` から取り出して
+  移動先と diff し、一字一句一致することを確認する。
+- 棚卸し表の行範囲を同期し、`bash scripts/check_errors_inventory.sh` を通す。
+  分類は変えない。
+
+### 手順
+
+1. 基準に該当する記録を No. と行範囲で列挙する。見出しの文字列は画面・報告に
+   出さない。
+2. ユーザが候補を確認した後に退避する。
+
+### 範囲外
+
+- B 分類の一般の記録の統合・要約（本文の書き換えを伴うため、行わない）。

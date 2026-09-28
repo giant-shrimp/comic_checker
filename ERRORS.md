@@ -9,7 +9,7 @@
 - **周期**: 月次で棚卸しを行う。
 - **分類基準**: A（構造的に再発不能）／B（再発しうる・パターンとして有効）／
   C（一過性の事実記録）。
-- **退避先の命名規則**: `docs/archive/ERRORS_archive_YYYY-MM.md`。
+- **退避の対象・方法・命名規則**: `docs/runbook.md` の「6. ERRORS.md の剪定（月次）」節を参照。
 
 ## AI Loop（`scripts/work_loop.sh`）の検証で分かったこと（Issue #14〜#16）
 
