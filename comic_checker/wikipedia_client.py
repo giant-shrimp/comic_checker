@@ -149,11 +149,22 @@ COMPLETED_STRONG_RE = re.compile(r"(?<![話回未])完結(?!させ|し(?:てい�
 # 1件（17歳）のみ（作業87-2、事前登録済み）。「掲載されている」（ONGOING_REへの追加案）
 # はPupaで確定的な偽陽性が見つかった（作業86-3）ため実装しない（Issue #135に別課題として
 # 切り出し）。
+# Issue #355: 「配信された」は現在 COMPLETED_WEAK_RE から外し、HAISHIN_COMPLETED_RE として分離している（下の Issue #355 のコメントを参照）。
 COMPLETED_WEAK_RE = re.compile(
     r"連載(?:が|を)?終了(?:した)?|連載された|連載され、|まで[^。、]{0,20}?連載(?:された)?|打ち切(?:り|られ)"
-    r"|配信された"
 )
 CONTINUATION_VETO_RE = re.compile(r"継続|再開|引き続き|連載を?続け|掲載を?続け")
+
+# Issue #355: 「配信された」（Issue #135で追加）は、アニメ等の配信について述べた文にも
+# 一致してしまう。走査範囲全体に「連載」の語も連載中シグナルもない場合、
+# has_ongoing_elsewhereによる弱シグナルの無効化が働かず、そのまま完結に決着して
+# 連載中の作品を誤って完結と判定する回帰が実データで見つかった。この誤判定を防ぐため
+# 「配信された」はCOMPLETED_WEAK_REから外し、同じ文に漫画を示す語
+# （HAISHIN_MANGA_WORDS）がある場合に限り、完結の弱シグナルとして扱う。漫画を示す語が
+# なく、他のどの完結シグナルにも継続シグナルにも一致しない「配信された」の文は、
+# 完結・連載中いずれの判定材料にもしない（出力を判定不能側にだけ動かすfail-closed方針）。
+HAISHIN_COMPLETED_RE = re.compile(r"配信された")
+HAISHIN_MANGA_WORDS = ("漫画", "マンガ", "コミック", "コミカライズ")
 
 # Issue #134（M6-B-3の同系統・単一文版）: 「Aまで連載されたのち、Bに移籍し連載中」の
 # ように、1文の中に完結の弱シグナルと連載中シグナルが両方現れる移籍構文がある。
@@ -686,10 +697,25 @@ def _judge_extract(extract):
     has_ongoing_elsewhere = _has_ongoing_signal(extract)
 
     for sentence in sentences:
+        # Issue #355: 「配信された」に一致し、漫画を示す語も継続シグナルもなく、他の
+        # 完結シグナル（COMPLETED_STRONG_RE／変更後のCOMPLETED_WEAK_RE）にも一致しない
+        # 文は、アニメ等の配信を述べているだけの可能性があるため、判定材料にしない。
+        has_haishin = bool(HAISHIN_COMPLETED_RE.search(sentence))
+        has_haishin_manga_word = any(word in sentence for word in HAISHIN_MANGA_WORDS)
+        has_continuation_veto = bool(CONTINUATION_VETO_RE.search(sentence))
+        if (
+            has_haishin
+            and not has_haishin_manga_word
+            and not has_continuation_veto
+            and not COMPLETED_STRONG_RE.search(sentence)
+            and not COMPLETED_WEAK_RE.search(sentence)
+        ):
+            continue
+
         ongoing = bool(ONGOING_RE.search(sentence))
-        weak_completed = bool(COMPLETED_WEAK_RE.search(sentence)) and not CONTINUATION_VETO_RE.search(
-            sentence
-        )
+        weak_completed = (
+            bool(COMPLETED_WEAK_RE.search(sentence)) or (has_haishin and has_haishin_manga_word)
+        ) and not has_continuation_veto
         if weak_completed and has_ongoing_elsewhere and not ongoing:
             weak_completed = False
         completed = bool(COMPLETED_STRONG_RE.search(sentence)) or weak_completed

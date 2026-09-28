@@ -383,6 +383,34 @@ HAISHIN_SARETEIRU_EXTRACT = (
     "『例のサイト』にて2007年から配信されている。"
 )
 
+# Issue #355（C3-a）: アニメ等の配信を述べただけの文は、漫画を示す語も他の完結
+# シグナルも無いため、完結の判定材料にしない（判定不能に倒す）。
+ANIME_HAISHIN_ONLY_EXTRACT = (
+    "『例のアニメ化作品』は、某作者による日本の漫画作品。"
+    "テレビアニメ版は2015年に配信された。"
+)
+
+# Issue #355（C3-b）: 同じ文に漫画を示す語（コミック）があれば、「配信された」は
+# 完結の弱シグナルとして扱う。
+HAISHIN_WITH_MANGA_WORD_EXTRACT = (
+    "『例の電子配信作品』は、某作者による日本の漫画作品。"
+    "電子コミック版は2019年に配信された。"
+)
+
+# Issue #355（C3-c）: 連載中シグナルと、漫画を示す語のない「配信された」が同じ文に
+# 同居する場合、変更前と同じくこの文を判定材料にせず判定不能に倒す。
+ONGOING_AND_HAISHIN_SAME_SENTENCE_EXTRACT = (
+    "『例の混在作品』は、某作者による日本の漫画作品。"
+    "アニメ版は2018年に配信された一方、原作は現在も連載されている。"
+)
+
+# Issue #355（C3-d）: 「配信された」と別の完結シグナル（連載を終了）が同じ文に
+# 同居する場合、変更前と同じく完結として決着する。
+HAISHIN_WITH_OTHER_COMPLETION_SIGNAL_EXTRACT = (
+    "『例の終了配信作品』は、某作者による日本の漫画作品。"
+    "本作は2020年に連載を終了し、電子版として同日配信された。"
+)
+
 # Issue #37: 実際の『絶体絶命でんぢゃらすじーさん』の記事から、リード文と「概要」節の
 # 該当文を抜粋。Issueが「連載中の一話完結型作品を入力した場合、確実に完結と誤答する」と
 # 予測したとおりの誤答が、実在の作品で起きていた唯一の事例である（修正前は「基本的には
@@ -652,6 +680,34 @@ def test_haishin_sareteiru_present_tense_does_not_trigger_completion():
     status, _ = _judge_extract(HAISHIN_SARETEIRU_EXTRACT)
     assert status == STATUS_UNKNOWN
     assert not COMPLETED_WEAK_RE.search("『例のサイト』にて2007年から配信されている。")
+
+
+def test_haishin_sareta_anime_only_is_unknown():
+    # Issue #355（C3-a）: アニメ等の配信のみを述べた文は完結と判定しない。
+    status, _ = _judge_extract(ANIME_HAISHIN_ONLY_EXTRACT)
+    assert status == STATUS_UNKNOWN
+
+
+def test_haishin_sareta_with_manga_word_is_completed():
+    # Issue #355（C3-b）: 漫画を示す語を含む配信の文は完結として決着する。
+    status, evidence = _judge_extract(HAISHIN_WITH_MANGA_WORD_EXTRACT)
+    assert status == "完結"
+    assert "配信された" in evidence
+
+
+def test_haishin_sareta_with_ongoing_same_sentence_is_unknown():
+    # Issue #355（C3-c）: 連載中シグナルと、漫画を示す語のない「配信された」が
+    # 同じ文に同居する場合はスキップし、判定不能のままとする。
+    status, _ = _judge_extract(ONGOING_AND_HAISHIN_SAME_SENTENCE_EXTRACT)
+    assert status == STATUS_UNKNOWN
+
+
+def test_haishin_sareta_with_other_completion_signal_is_completed():
+    # Issue #355（C3-d）: 「配信された」と別の完結シグナルが同じ文に同居する場合は
+    # 変更前と同じく完結として決着する。
+    status, evidence = _judge_extract(HAISHIN_WITH_OTHER_COMPLETION_SIGNAL_EXTRACT)
+    assert status == "完結"
+    assert "連載を終了" in evidence
 
 
 def test_strong_completion_is_not_vetoed_by_ongoing_elsewhere():
