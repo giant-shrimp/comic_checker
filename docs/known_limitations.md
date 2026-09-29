@@ -150,7 +150,7 @@ introduced — their measurement date is unknown, and their freshness is not gua
   blocked) and reading each matching sentence. In the labelled corpus (160 rows), 11
   sentences in 9 rows match: 8 state the completion of the work, 1 of one of its arcs, and
   2 of a derivative work (holdout no=47, whose final evidence is another sentence); none
-  describes the format. The 3 rows whose final evidence is such a sentence are labelled
+  describes the format. The 3 rows whose final evidence is a matching sentence are labelled
   `完結`. A discovery sample of 58 articles from `list=search` (2026-09-29; queries
   `"漫画" "1冊完結"`, `"漫画" "一冊完結"`, `"漫画" "各巻完結"`, `"漫画" "それぞれ完結"`,
   `"漫画" "巻ごとに完結"`, `"漫画" "で完結する"`) gave 21 articles decided `完結` on such
