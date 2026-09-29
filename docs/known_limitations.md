@@ -142,6 +142,25 @@ introduced — their measurement date is unknown, and their freshness is not gua
   title), but the sample was built from search terms and is not evidence of safety. Before
   narrowing the check (for example, skipping sentences that contain 原作), confirm real
   harm on an independent sample and pre-register the verification (Issue #359).
+- **`COMPLETED_STRONG_RE` also matches 完結 in a sentence that only describes the format
+  (each volume or episode is self-contained) when the wording is not one of the excluded
+  話/回 forms, for example 1冊で完結 (Issue #365).** Such a sentence could decide `完結`
+  for a work that is still running. Measured 2026-09-29 by re-running `judge()` with the
+  harness used by `scripts/gen_labeled_snapshot.py` (`today` fixed to 2026-08-15, network
+  blocked) and reading each matching sentence. In the labelled corpus (160 rows), 11
+  sentences in 9 rows match: 8 state the completion of the work, 1 of one of its arcs, and
+  2 of a derivative work (holdout no=47, whose final evidence is another sentence); none
+  describes the format. The 3 rows whose final evidence is such a sentence are labelled
+  `完結`. A discovery sample of 58 articles from `list=search` (2026-09-29; queries
+  `"漫画" "1冊完結"`, `"漫画" "一冊完結"`, `"漫画" "各巻完結"`, `"漫画" "それぞれ完結"`,
+  `"漫画" "巻ごとに完結"`, `"漫画" "で完結する"`) gave 21 articles decided `完結` on such
+  a sentence, but only 2 of them have a manga infobox, and both are correct; the others
+  are articles a manga title would not select (concept, game, drama and author-biography
+  articles). The one format sentence found on a manga article (in the Issue #363 sample)
+  no longer decides, because an earlier sentence now returns `判定不能`. So no misjudgment
+  was observed for the intended input, and the sample is not evidence of safety. Do not
+  exclude a preceding 巻, since 全N巻完結 is a genuine signal. Also seen but not measured:
+  完結 followed by a resumed serialization, and 完結 inside a negation.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
