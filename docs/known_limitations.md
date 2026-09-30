@@ -161,6 +161,19 @@ introduced — their measurement date is unknown, and their freshness is not gua
   was observed for the intended input, and the sample is not evidence of safety. Do not
   exclude a preceding 巻, since 全N巻完結 is a genuine signal. Also seen but not measured:
   完結 followed by a resumed serialization, and 完結 inside a negation.
+- **Body completion evidence is not cross-checked against the infobox (Issue #367).**
+  When the body analysis (`_judge_extract`) returns 完結, `judge()` does not consult the
+  infobox, so a completion sentence that describes only one part of a work, or a general
+  statement, is adopted even when the infobox indicates that the series is ongoing. A change
+  that returns 判定不能 in this case (body 完結 and `_judge_via_infobox` 連載中) was
+  preregistered in `docs/code_defects_2026-08/prereg_a4b_infobox_ongoing_veto.md` and
+  measured on 2026-09-30 with `docs/code_defects_2026-08/a4b_measure.py` (network blocked,
+  today fixed to 2026-08-15). It changed 0 of the 160 saved labeled rows and 0 of the 119
+  holdout2 rows, so under the preregistered criteria the code was not changed. The pattern
+  was seen only in a search-based discovery sample (3 of 38 articles with a manga infobox,
+  collected with queries about resumed serialization), which is not an evaluation sample.
+  The change would also add one wikitext API call for each article whose body yields 完結.
+  Results: `docs/code_defects_2026-08/a4b_result.md`.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
