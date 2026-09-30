@@ -174,6 +174,23 @@ introduced — their measurement date is unknown, and their freshness is not gua
   collected with queries about resumed serialization), which is not an evaluation sample.
   The change would also add one wikitext API call for each article whose body yields 完結.
   Results: `docs/code_defects_2026-08/a4b_result.md`.
+- **A completion sentence adopted by the body analysis is not checked to be about the
+  work itself (Issue #369).** `_judge_extract` does not look at what the completion
+  signal refers to, so a sentence about another work (a predecessor, sequel, spin-off or
+  original), about the magazine or site that carried the work ceasing publication, or a
+  general statement can decide `完結`. Measured 2026-09-30 by re-running `judge()` with
+  the harness used by `scripts/gen_labeled_snapshot.py` (`today` fixed to 2026-08-15,
+  network blocked) and reading the evidence sentence of each row whose body analysis
+  returns `完結`. In the labelled corpus (160 rows), `judge()` returns `完結` for 86 rows,
+  75 of them decided by the body: 63 evidence sentences state the completion of the work,
+  7 that of another work, 1 the end of the magazine, and 4 another event of the work (such
+  as the end of an anime broadcast or of one part); none is a general statement. All 12
+  rows whose evidence is not about the work's own completion are labelled `完結`, so no
+  misjudgment was observed. Sentences of this kind deciding `完結` were seen otherwise only
+  in the search-based discovery sample of Issue #367, which is not an evaluation sample.
+  Excluding such sentences could lose the correct `完結` for those 12 rows unless another
+  sentence supports it; before changing this, confirm real harm on an independent sample
+  and pre-register the verification.
 - Article selection (`_pick_article()`, reworked in M6-E-1, Issue #30) probes several
   normalized variants of the input title, then falls back to `list=search`. It validates
   the *name* (exact match after NFKC normalization, a `(漫画)` disambiguation, an
