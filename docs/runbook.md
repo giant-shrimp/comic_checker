@@ -9,6 +9,7 @@
 
 スクリプト方式のローカルループ（`scripts/work_loop.sh`・`scripts/review_loop.sh`）は
 ADR-034 で廃止した。旧手順は、この節を書き換える前の版を git の履歴で参照する。
+
 ---
 
 ## 2. push済みの変更を戻す
