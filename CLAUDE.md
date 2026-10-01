@@ -98,7 +98,7 @@ GUIツールにする。
 
 ## 過去に詰まった失敗
 
-AI Loop（`scripts/work_loop.sh`）の検証で分かったことなど、過去の失敗と対応は
+旧方式の AI Loop（`scripts/work_loop.sh` 等。ADR-034 で廃止）の検証で分かったことなど、過去の失敗と対応は
 `ERRORS.md` を参照。似た仕組みを作る／触る前に、関連語で `grep -n` して該当する記録だけを読むこと（全文は長いため通して読まない）。
 
 ## 作業ルール
@@ -114,9 +114,6 @@ AI Loop（`scripts/work_loop.sh`）の検証で分かったことなど、過去
   5個が1件も落ちなかった）。定数を追加・変更するときに一度行えば足りるので、
   `verify.sh` には常設しない（全定数の変異は約20秒で、`verify.sh` 全体の約9倍になる）
 - コミット・pushは明示的な許可があるときだけ行う
-- 自律ループ（`scripts/work_loop.sh` 等）はfeature branchへのcommit・push・PR作成まで
-  行ってよい（対話セッションでの上記ルールとは別。`main`への直pushとPRのmergeは
-  引き続き人間が行う。ADR-001、GUI merge運用）
 - Issueに対応するPRを作成するときは、本文に `Fixes #N` / `Closes #N` を含め、
   マージ時に自動クローズされるようにする（#33・#38・#75でPRマージ後もIssueが
   残った事例が続いたため）

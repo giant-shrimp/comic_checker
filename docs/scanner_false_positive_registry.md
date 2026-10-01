@@ -814,7 +814,6 @@
 | tests/test_gui_run.py | dbb2defcdf374a9b | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_gui_run.py | e0f3e976f3c5aa7c | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
 | tests/test_gui_run.py | e13d24da6375300a | home-path | home-path型。テストフィクスチャの架空パス。実ホームディレクトリとは不一致（実測済み）。 |
-| tests/test_review_loop.py | f373321935e02ab8 | email | email型。IETF予約ドメイン（example.invalid・example.test）を用いたテストフィクスチャ。 |
 | tests/test_wikipedia_client.py | 05ea71b080b97ace | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_wikipedia_client.py | 0630ff4c7e57148f | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |
 | tests/test_wikipedia_client.py | 0911d2a19cb80e63 | honorific | 敬称型。実在作品名等に含まれる敬称字形への一致（Issue #271、ADR-024が構造的偽陽性として記録済み）。 |

@@ -185,7 +185,7 @@ EXE化する手順を[docs/build_windows.md](docs/build_windows.md)にまとめ�
 | [ERRORS.md](ERRORS.md) | 過去に詰まった失敗と、その対応 |
 | [docs/decisions/](docs/decisions/) | ADR（過去の決定と却下した案） |
 | [docs/build_windows.md](docs/build_windows.md) | Windows向けEXEのビルド手順 |
-| [docs/work_loop_testing.md](docs/work_loop_testing.md) | AI Loopの検証手順 |
+| [docs/work_loop_testing.md](docs/work_loop_testing.md) | 旧方式の AI Loop の検証記録（ADR-034 で廃止） |
 
 クローンした直後は `./scripts/setup_hooks.sh` を1回実行してください
 （`main` への直pushを止める pre-push フックを配線します。

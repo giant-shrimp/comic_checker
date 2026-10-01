@@ -5,66 +5,10 @@
 
 ---
 
-## 1. ローカルループ（work_loop.sh）を止める
+## 1. ローカルループ（廃止）
 
-### 1-1. 実行中のプロセスを止める
-
-- フォアグラウンドで動かしている場合: そのターミナルで `Ctrl+C`
-- バックグラウンド／別ターミナルで動かしている場合:
-  ```bash
-  pgrep -f work_loop.sh
-  kill <上で出たPID>
-  ```
-- `work_loop.sh` 自体には `trap` 等のシグナルハンドラは無い（`scripts/work_loop.sh` の
-  内容で確認済み）。素の bash スクリプトなので、`Ctrl+C`／`kill` は通常のシグナル伝播に
-  従う。`claude` 呼び出しは `timeout "$CLAUDE_TIMEOUT" claude ...`（既定600秒）で
-  ラップされているだけで、それ以外の独自の停止用フックは無い
-- `claude` 呼び出しが応答しなくなっている場合でも、`CLAUDE_TIMEOUT`（既定600秒）に
-  達すれば `timeout` が自動的にその呼び出しを終了させる。ただし `MAX_ITER`
-  （既定3）に達するまでは次のイテレーションへ進もうとするので、完全に止めたいなら
-  上記の `kill` が確実
-
-### 1-2. 途中commit・`loop/<issue>/iter-N` タグが残った状態からの後始末
-
-`work_loop.sh` はイテレーションごとに `loop_git.sh commit` → `loop_git.sh tag` で
-ローカルにコミットとタグを残す（verify失敗版も含む。push するのは成功時のみ）。
-
-状態を確認する:
-```bash
-git log --oneline loop/<issue番号>
-git tag -l 'loop/<issue番号>/*'
-git show loop/<issue番号>/iter-N --stat   # 特定のイテレーションの内容を見る
-```
-
-不要なら片付ける（`work_loop.sh` プリフライト4のエラーメッセージが提示する
-コマンドと同じもの。`main` に戻ってから実行する）:
-```bash
-git switch main
-git branch -D loop/<issue番号>
-git tag -d $(git tag -l 'loop/<issue番号>/*')
-```
-
-**この時点でリモート（origin）には何も出ていないのが通常**（`loop_git.sh push` は
-verify通過・no-op でない場合にしか呼ばれない）。念のため次で確認する:
-```bash
-git ls-remote --heads origin 'loop/<issue番号>'
-```
-何も出力されなければ origin には無い。出力があれば「2. push済みの変更を戻す」へ。
-
-### 1-3. `loop/<issue>` ブランチを捨てる場合と残す場合の判断基準
-
-- **捨ててよい**: outcome が `failed` / `no-op` / `no_progress` /
-  `no_progress_unmeasurable` / `max_iterations`（= success以外）で、かつ
-  `git show loop/<issue>/iter-N --stat` を見て残す価値のある内容が無い場合
-- **残す（少なくとも判断するまで消さない）**: outcome が `success` で
-  `push_failed` / `pr_failed` の場合。これは verify を通過し、意図した変更が
-  既にコミットされている状態なので、捨てずに「2. push済みの変更を戻す」ではなく
-  手動での push / PR作成を検討する対象になる
-- **`no_progress` 等でも即座に捨てない方がよい場合**: 複数の `iter-N` タグが
-  あり、最後のイテレーションより前の版の方が「落ち方がまし」なことがある
-  （`work_loop.sh` 冒頭コメントに明記されている設計）。`git show loop/<issue>/iter-N`
-  を1つずつ見てから判断する
-
+スクリプト方式のローカルループ（`scripts/work_loop.sh`・`scripts/review_loop.sh`）は
+ADR-034 で廃止した。旧手順は、この節を書き換える前の版を git の履歴で参照する。
 ---
 
 ## 2. push済みの変更を戻す
@@ -112,13 +56,11 @@ public` で確認済み）。したがって `main` への防御は現状 `.gith
 
 ---
 
-## 3. GitHub Actions を止める（将来用）
+## 3. GitHub Actions を止める
 
-**現時点ではこのリポジトリに対象となる常時稼働ワークフローは存在しない。**
-`.github/workflows/` には `verify.yml`（PR/push時のVERIFY Gate）と
-`build-windows.yml`（手動・タグ契機のEXEビルド）のみがあり、どちらも
-Claude を使った自律実行ではない。以下はPhase 5（GitHub Actions常時稼働）に
-着手し、該当ワークフローを追加した場合に備えた手順。
+`.github/workflows/` のうち `claude-review.yml`（PR作成時の Claude PR Review）は
+Claude を使って自動で実行される。誤動作したときや止めたいときは、以下の手順で止める。
+`verify.yml`・`build-windows.yml` も同じ手順で止められる。
 
 ### 3-1. ワークフローの無効化
 GitHubの当該リポジトリ → Actions タブ → 対象ワークフローを選択 →
@@ -139,14 +81,8 @@ Actions タブ → 実行中のワークフロー実行を選択 → **Cancel wo
 
 **既定は「`./scripts/verify.sh` が通る直近の地点まで戻す」。**
 
-- ローカルループの後始末（1章）でも、`main` への誤った変更を戻す場合（2章）でも、
-  戻した後に必ず `./scripts/verify.sh` を実行し、通ることを確認する
-- `loop/<issue>/iter-N` タグを遡って良い版を探す場合、タグだけでは
-  verify の合否が分からない（verify失敗版もタグは打たれる）。`logs/verify_N.log`
-  または `logs/outcome_N.txt` と突き合わせて判断する。ただし `logs/` は
-  `.gitignore` 対象のため、事故発生からしばらく経っている、または別マシンで
-  対応している場合はローカルに残っていない可能性がある。その場合は
-  `iter-N` を1つずつ取り出して手動で `./scripts/verify.sh` を回して確認する
+- push済みの変更を戻す場合（2章）は、戻した後に必ず `./scripts/verify.sh` を実行し、
+  通ることを確認する
 - `main` まで戻す必要が生じた場合も同様に、`revert` 後に `verify.sh` を
   実行してから push する
 
@@ -349,7 +285,7 @@ profile`）の`files.pull_request_template`フィールドで、GitHub側が
    現れない（Issue #343 の基準2）。
 
 基準2は、`work_loop.sh`・`review_loop.sh` が稼働していないことを前提とする
-（ADR-030）。どちらかを再び稼働させた場合は、基準2を適用しない。
+（ADR-030）。両スクリプトによるループは ADR-034 で廃止した。
 `claude-review.yml` は稼働中のため、それに関わる記録は基準2の対象から除く。
 
 ### 退避の方法
