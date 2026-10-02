@@ -130,5 +130,5 @@ GUIツールにする。
 - コミットメッセージに AI 帰属のトレーラを付けない。`Co-Authored-By: Claude ...`、
   `Claude-Session: ...`、`Generated with Claude ...` など、AI が作成したことを示す行は
   本文・トレーラのいずれにも含めない。誤って付与した場合は push 前に
-  `git commit --amend` で除去する。push 済みであれば、共有していない feature ブランチに
-  限り `git push --force-with-lease` で修正してよい。
+  `git commit --amend` で除去する。push 済みであれば force push はせず、停止してユーザに
+  報告する（force push は deny 対象。修正はユーザが `git push --force-with-lease` で行う）。
