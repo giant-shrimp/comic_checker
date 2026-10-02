@@ -27,10 +27,6 @@
     "deny": [
       "Edit(scripts/verify.sh)",
       "Write(scripts/verify.sh)",
-      "Edit(.claude/skills/work/SKILL.md)",
-      "Write(.claude/skills/work/SKILL.md)",
-      "Edit(.claude/skills/decompose/SKILL.md)",
-      "Write(.claude/skills/decompose/SKILL.md)",
       "Edit(.claude/skills/post-merge-cleanup/SKILL.md)",
       "Write(.claude/skills/post-merge-cleanup/SKILL.md)",
       "Edit(.claude/skills/report-self-check/SKILL.md)",

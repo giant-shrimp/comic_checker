@@ -1,6 +1,6 @@
 ---
 name: post-merge-cleanup
-description: Use this skill whenever the user reports that they merged a PR via the GitHub GUI (e.g. "mergeは終えた", "マージ完了", "PRをマージした", "merge done"). Directly performs the standard post-merge housekeeping for comic_checker: pulls main, confirms via the GitHub REST API (gh api) that the PR landed as merged, checks whether the linked Issue was auto-closed and proposes a gh issue close command if not, runs verify.sh, and safely deletes the now-merged feature branch (local delete after ancestor check, remote via fetch --prune only). Never merges PRs, closes issues, or pushes to main itself — the human always merges via GUI first; this skill only runs the cleanup steps afterward, and still stops for explicit confirmation before anything outside its fixed read-only/cleanup scope.
+description: Use this skill whenever the user reports that they merged a PR via the GitHub GUI (e.g. "mergeは終えた", "マージ完了", "PRをマージした", "merge done"). Directly performs the standard post-merge housekeeping for comic_checker: pulls main, confirms via the GitHub REST API (gh api) that the PR landed as merged, checks whether the linked Issue was auto-closed and, if it is still open, reports that without proposing a close command (auto-close can lag behind the merge), runs verify.sh, and safely deletes the now-merged feature branch (local delete after ancestor check, remote via fetch --prune only). Never merges PRs, closes issues, or pushes to main itself — the human always merges via GUI first; this skill only runs the cleanup steps afterward, and still stops for explicit confirmation before anything outside its fixed read-only/cleanup scope.
 ---
 
 # Post-Merge Cleanup
@@ -47,10 +47,10 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
    PRタイトルは慣習的に `#N ...` で始まるため，多くのケースで抽出できる．
    - **番号が1件だけ見つかった場合**:
      `gh api repos/giant-shrimp/comic_checker/issues/<N> --jq '{state, state_reason}'`
-     で `state` が `open` のままなら，`gh issue close <N> --comment "..."` の
-     コマンド案を提示する．**実行はしない**（`Bash(gh issue close*)` は
-     `.claude/settings.local.json` でdeny対象のため，Claude Codeからは
-     そもそも実行できない．人間がターミナルまたはGitHub GUIでクローズする）．
+     で `state` が `open` のままでも，クローズのコマンド案は提示しない．
+     `Closes #N` による自動クローズはマージから遅れて反映されることがあるため，
+     open のままである旨だけを報告し，時間をおいて再確認するよう案内する
+     （`Bash(gh issue close*)` は `.claude/settings.local.json` でdeny対象）．
    - **番号が0件，または異なる複数の番号が見つかった場合**: 自動判定は行わず，
      「対応Issueを特定できなかった」旨を報告するに留める（無関係なIssueを
      誤ってクローズ候補として提示しないため）．
@@ -94,7 +94,7 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
 ## このスキルが行わないこと（常に停止して人間の指示を待つ）
 
 - PRのマージ・クローズ・コメント追加
-- Issueのクローズ実行（コマンド案の提示までで，実行は人間が行う。deny対象でもある）
+- Issueのクローズ実行とコマンド案の提示（自動クローズの反映を待つ．deny対象でもある）
 - リモートブランチの明示的削除（`push origin --delete`）
 - 新しいブランチの作成
 - 次のIssue／タスクへの着手
