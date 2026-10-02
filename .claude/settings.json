@@ -41,6 +41,8 @@
       "Write(.claude/skills/publish-github/SKILL.md)",
       "Edit(.claude/skills/pre-push-check/SKILL.md)",
       "Write(.claude/skills/pre-push-check/SKILL.md)",
+      "Edit(.claude/skills/commander/SKILL.md)",
+      "Write(.claude/skills/commander/SKILL.md)",
       "Edit(.claude/agents/**)",
       "Write(.claude/agents/**)",
       "Edit(scripts/check_title_leak.py)",
