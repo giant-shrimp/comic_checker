@@ -68,10 +68,12 @@ GitHubの当該リポジトリ → Actions タブ → 対象ワークフロー�
 `⋯` → **Disable workflow**
 
 ### 3-2. シークレット削除
-Settings → Secrets and variables → Actions → 該当シークレット
-（`ANTHROPIC_API_KEY` 等）を削除。
-**削除だけでなく、Anthropic Console側でもAPIキーを失効させること。**
-削除しただけでは、既に流出したキーは有効なままである。
+Settings → Secrets and variables → Actions → `CLAUDE_CODE_OAUTH_TOKEN` を削除。
+（`.github/workflows/` が参照するリポジトリシークレットはこれだけである。
+`GITHUB_TOKEN` は自動発行のため削除の対象ではない。認証方式は ADR-005 で決定し、
+ADR-006 でも維持している。）
+**削除だけでなく、トークンを発行したアカウント側でもトークンを失効させること。**
+削除しただけでは、既に流出したトークンは有効なままである。
 
 ### 3-3. 実行中ジョブのキャンセル
 Actions タブ → 実行中のワークフロー実行を選択 → **Cancel workflow**
