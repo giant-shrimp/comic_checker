@@ -1,6 +1,6 @@
 ---
 name: post-merge-cleanup
-description: Use this skill whenever the user reports that they merged a PR via the GitHub GUI (e.g. "mergeは終えた", "マージ完了", "PRをマージした", "merge done"). Directly performs the standard post-merge housekeeping for comic_checker: pulls main, confirms via the GitHub REST API (gh api) that the PR landed as merged, checks whether the linked Issue was auto-closed and proposes a gh issue close command if not, runs verify.sh, safely deletes the now-merged feature/loop branch (local delete after ancestor check, remote via fetch --prune only), and checks logs/ gitignore hygiene for loop/<issue> branches. Never merges PRs, closes issues, or pushes to main itself — the human always merges via GUI first; this skill only runs the cleanup steps afterward, and still stops for explicit confirmation before anything outside its fixed read-only/cleanup scope.
+description: Use this skill whenever the user reports that they merged a PR via the GitHub GUI (e.g. "mergeは終えた", "マージ完了", "PRをマージした", "merge done"). Directly performs the standard post-merge housekeeping for comic_checker: pulls main, confirms via the GitHub REST API (gh api) that the PR landed as merged, checks whether the linked Issue was auto-closed and proposes a gh issue close command if not, runs verify.sh, and safely deletes the now-merged feature branch (local delete after ancestor check, remote via fetch --prune only). Never merges PRs, closes issues, or pushes to main itself — the human always merges via GUI first; this skill only runs the cleanup steps afterward, and still stops for explicit confirmation before anything outside its fixed read-only/cleanup scope.
 ---
 
 # Post-Merge Cleanup
@@ -91,12 +91,6 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
    `git push origin --delete` は実行せず，状況を報告して指示を待つ
    （リモートブランチの明示的削除はこのスキルの自動実行範囲に含めない）．
 
-6. **logs/ のgitignore hygiene確認**（対象ブランチが `loop/<issue>` の場合のみ）
-   `logs/` 配下の生成物（run_N.json, outcome_N.txt, verify_N.log 等）が
-   `git check-ignore -v` で無視対象になっており，
-   `git status --porcelain` を汚していないことを確認する．
-   汚れている場合は削除・追跡変更をせず，状況を報告して指示を待つ．
-
 ## このスキルが行わないこと（常に停止して人間の指示を待つ）
 
 - PRのマージ・クローズ・コメント追加
@@ -115,8 +109,6 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
 
 ## 注意
 
-- 対象ブランチが `loop/<issue>` かどうかでステップ6の要否が変わる．
-  `docs/*`, `chore/*` 等の対話セッション由来ブランチではステップ6を省略してよい．
 - 途中のいずれかのステップで想定外の状態（PRが未マージ，verify失敗，
-  ancestor確認NG，logs/の汚れ，`gh api` の失敗）に遭遇したら，そこで止めて報告し，
+  ancestor確認NG，`gh api` の失敗）に遭遇したら，そこで止めて報告し，
   以降のステップには進まない．
