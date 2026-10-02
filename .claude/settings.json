@@ -27,12 +27,6 @@
     "deny": [
       "Edit(scripts/verify.sh)",
       "Write(scripts/verify.sh)",
-      "Edit(scripts/work_loop.sh)",
-      "Write(scripts/work_loop.sh)",
-      "Edit(scripts/work_loop.settings.json)",
-      "Write(scripts/work_loop.settings.json)",
-      "Edit(scripts/loop_git.sh)",
-      "Write(scripts/loop_git.sh)",
       "Edit(.claude/skills/work/SKILL.md)",
       "Write(.claude/skills/work/SKILL.md)",
       "Edit(.claude/skills/decompose/SKILL.md)",
