@@ -1,6 +1,6 @@
 ---
 name: publish-github
-description: GitHub の Issue・PR を作成するときに使う．指示で確定した本文だけで作成し，作成後に本文を取得して一致を確認する．PR は帰属フッタを削除して確認する．
+description: GitHub の Issue・PR を作成するときに使う．指示で確定した本文だけで作成し，作成後に本文を取得して一致を確認する．Issue・PR とも，指示にない行（帰属フッタなど）が付いていれば削除して確認する．
 ---
 
 # Issue・PR の作成と確認
@@ -12,42 +12,58 @@ description: GitHub の Issue・PR を作成するときに使う．指示で確
 - 作成は，GitHub MCP の作成用ツールがあればそれを使う．なければ
   `gh api -X POST` で `repos/giant-shrimp/comic_checker/` 以下の
   エンドポイント（REST）を使う．
-- 本文の更新（PR の帰属フッタの削除を含む）は，GitHub MCP の更新用ツール
-  （PR は PR 更新用のツール，Issue は Issue 更新用のツール）で行う．
+- 本文の更新（帰属フッタの削除を含む）は，GitHub MCP の更新用ツール
+  （Issue は `issue_write` の method=update，PR は `update_pull_request`）で行う．
   GitHub MCP のツールがある環境では `gh api -X PATCH` を使わない
   （PATCH で更新してもフッタが付き直した．Issue #350・PR #351）．
   GitHub MCP のツールがない環境に限り `gh api -X PATCH` を使う．
+- クラウドでは，REST で作成しても PATCH で更新しても Issue・PR の本文に
+  帰属フッタが付く．GitHub MCP の更新用ツールを持たない主体（実装役など）は
+  フッタを削除せず，司令塔に返す．
 - 確認のための取得は，常に `gh api repos/giant-shrimp/comic_checker/...`
   （REST の GET）で行う．GraphQL を使う gh のサブコマンド（`gh issue view`・
   `gh pr view` 等）は使わない（クラウドでは 403 になる．ADR-030）．
   `--paginate` は使わない．
 - 本文の比較は，両側の末尾の改行を取り除いてから行う（`--jq .body` の出力は
   末尾に改行が1つ加わるため）．末尾の改行の差だけを理由に本文を更新しない．
-- ブランチ名は，指示がなければ環境の既定に従う．
+- ブランチ名は指示のものを使う．指示がなければ，ローカルは `<種別>/<番号>-<短い英語名>`，
+  クラウドは `claude/issue-<番号>-<短い名前>` とする（クラウドの環境は指定しないことがある）．
+- コマンドは1回の Bash 呼び出しに1つだけ実行する（`&&`・`;` でつながない）．
+  パイプは読み取り専用の確認と /tmp への書き出しに限る．
 
 ## 本文の比較
 
+次の3行を，それぞれ単独のコマンドとして1行ずつ実行する（`<種別>` は `issues` か `pulls`）．
+
 ```bash
-diff <(printf '%s\n' "$(cat /tmp/publish_body.md)") \
-     <(printf '%s\n' "$(gh api repos/giant-shrimp/comic_checker/<issues|pulls>/<番号> --jq .body)"); echo "exit=$?"
+gh api repos/giant-shrimp/comic_checker/<種別>/<番号> --jq .body > /tmp/publish_got.md
+printf '%s' "$(cat /tmp/publish_body.md)" | sha256sum
+printf '%s' "$(cat /tmp/publish_got.md)" | sha256sum
 ```
+
+- 2つの照合値が同じなら一致とする．
+- 取得が分類器に拒否されたら，再試行は1回までとする．それでも拒否されたら
+  「未確認」と記録して先に進む．
 
 ## Issue の作成
 
 1. 指示のタイトル・本文で作成する．ラベル等は指示があるときだけ付ける．
 2. 「本文の比較」で一致を確認する（`issues/<番号>`）．
-3. exit が 0 でなければ，Issue 更新用のツールで本文を指示どおりに更新し，
-   もう一度比較する．それでも 0 でなければ，停止して事実だけを報告する．
+3. 一致しなければ（帰属フッタが付いた場合を含む），`issue_write`（method=update）で
+   本文を指示どおりに更新し，もう一度比較する．それでも一致しなければ，
+   停止して事実だけを報告する．GitHub MCP の更新用ツールがなければ更新せず，
+   停止して司令塔に返す．
 
 ## PR の作成
 
 1. ブランチを push 済みで，pre-push-check を通したことを確認する．
 2. 指示の本文で作成する（通常は `Closes #<Issue番号>` の1行だけ）．
 3. 作成直後に「本文の比較」を行う（`pulls/<番号>`）．
-4. 帰属フッタなど指示にない行が付いていれば，PR 更新用のツールで本文を
-   指示どおりに更新し，もう一度比較する．それでも 0 でなければ，
-   停止して事実（使ったツール・取得した本文）を報告する．フッタの削除は
-   ユーザが Web 画面で行う．
+4. 一致しなければ（帰属フッタなど指示にない行が付いた場合を含む），
+   `update_pull_request` で本文を指示どおりに更新し，もう一度比較する．
+   それでも一致しなければ，停止して事実（使ったツール・照合値）を報告する．
+   GitHub MCP の更新用ツールがなければ更新せず，停止して司令塔に返す．
+   司令塔もツールを持たない場合に限り，フッタの削除はユーザが Web 画面で行う．
 
 ## Issue コメント
 
