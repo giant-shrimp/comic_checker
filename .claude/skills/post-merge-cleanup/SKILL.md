@@ -20,6 +20,12 @@ comic_checker の運用では，PRのマージは常に人間がGitHub GUIで行
 `gh issue view` が HTTP 403 になる．このスキルでは，ローカル・クラウドの両方で動く
 REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き換えない．
 
+## コマンドの実行と判定
+
+- コマンドは1回の Bash 呼び出しに1つだけ実行する．`&&`・`;` でつながない．
+- パイプは読み取り専用の確認と /tmp への書き出しに限る．
+- 合否は Bash ツールの結果がエラーかどうかで判断する．
+
 ## 実行内容（このスキルが直接行う）
 
 1. **main を最新化**
@@ -30,7 +36,7 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
 
 2. **マージ結果の確認**（推測せず`gh api`出力で確認する原則）
 ```
-   git log --oneline -3
+   git log -3 --format=%h
    gh api repos/giant-shrimp/comic_checker/pulls/<PR番号> --jq '{number, state, merged_at, merge_commit_sha, head_ref: .head.ref}'
 ```
    `merged_at` が null でないことを出力で確認する（null なら未マージ）．
@@ -41,17 +47,17 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
    PRマージ後もIssueがOPENのまま残る事例が続いたための追加。ERRORS.mdは対象外
    ―― コードの正誤ではなくGitHub側の状態管理のため）
 ```
-   gh api repos/giant-shrimp/comic_checker/pulls/<PR番号> --jq '{title, body}'
+   gh api repos/giant-shrimp/comic_checker/pulls/<N> --jq '[(.title + "\n" + (.body // "")) | scan("#[0-9]+")] | unique'
 ```
-   タイトル・本文から `#N` パターンを正規表現で抽出する．このリポジトリの
-   PRタイトルは慣習的に `#N ...` で始まるため，多くのケースで抽出できる．
-   - **番号が1件だけ見つかった場合**:
+   タイトル・本文から `#N` の番号だけを取り出して出力する（タイトルそのものは出力しない）．
+   呼び出し時に対応 Issue の番号が指定された場合は，その番号を使い，抽出した番号に含まれるかを報告する．
+   - **番号が指定された場合，または指定がなく1件だけ見つかった場合**:
      `gh api repos/giant-shrimp/comic_checker/issues/<N> --jq '{state, state_reason}'`
      で `state` が `open` のままでも，クローズのコマンド案は提示しない．
      `Closes #N` による自動クローズはマージから遅れて反映されることがあるため，
      open のままである旨だけを報告し，時間をおいて再確認するよう案内する
-     （`Bash(gh issue close*)` は `.claude/settings.local.json` でdeny対象）．
-   - **番号が0件，または異なる複数の番号が見つかった場合**: 自動判定は行わず，
+     （`gh issue close` は `.claude/settings.json` の deny 対象）．
+   - **番号の指定がなく，抽出した番号が0件，または異なる複数の番号だった場合**: 自動判定は行わず，
      「対応Issueを特定できなかった」旨を報告するに留める（無関係なIssueを
      誤ってクローズ候補として提示しないため）．
 
@@ -59,8 +65,9 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
 ```
    ./scripts/verify.sh
 ```
-   pytestのサマリ行をそのまま報告する．既知のゲート値
-   （例: M6-B-4 検出54/59・副作用1/37）が変化していないか明記する．
+   パイプを付けずに実行する（終了コードを隠さないため）．
+   出力から pytest のサマリ行・ゲート値の行・`VERIFY PASSED` の行を書き写す（pytest を別に実行しない）．
+   既知のゲート値（例: M6-B-4 検出54/59・副作用1/37）が変化していないか明記する．
    verify が落ちたらここで停止し，diffを提示して指示を仰ぐ
    （このスキルの範囲外の対応が必要なため）．
 
@@ -85,8 +92,9 @@ REST API（`gh api`）だけを使う．`gh pr ...`・`gh issue view` に置き�
    (b) `git merge-base --is-ancestor <merge_commit_sha> main` が YES．
    (c) `git rev-parse <branch>` が `head_sha` と一致．
    3条件をすべて満たす場合だけ `git branch -D <branch>` でローカル削除．
-   1つでも満たさない場合は削除せず停止し，満たさなかった条件と `git log --oneline main..<branch>` を報告する．
+   1つでも満たさない場合は削除せず停止し，満たさなかった条件と `git log --format=%h main..<branch>` を報告する．
    リモートは `git fetch --prune` で状態確認のみ行う．
+   GitHub の自動削除により，リモートは通常すでに `[deleted]` になっている．
    既に `[deleted]` なら追加操作は不要．そうでない場合も
    `git push origin --delete` は実行せず，状況を報告して指示を待つ
    （リモートブランチの明示的削除はこのスキルの自動実行範囲に含めない）．
