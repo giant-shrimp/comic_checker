@@ -27,20 +27,6 @@
     "deny": [
       "Edit(scripts/verify.sh)",
       "Write(scripts/verify.sh)",
-      "Edit(.claude/skills/post-merge-cleanup/SKILL.md)",
-      "Write(.claude/skills/post-merge-cleanup/SKILL.md)",
-      "Edit(.claude/skills/report-self-check/SKILL.md)",
-      "Write(.claude/skills/report-self-check/SKILL.md)",
-      "Edit(.claude/skills/replace-doc-range/SKILL.md)",
-      "Write(.claude/skills/replace-doc-range/SKILL.md)",
-      "Edit(.claude/skills/publish-github/SKILL.md)",
-      "Write(.claude/skills/publish-github/SKILL.md)",
-      "Edit(.claude/skills/pre-push-check/SKILL.md)",
-      "Write(.claude/skills/pre-push-check/SKILL.md)",
-      "Edit(.claude/skills/commander/SKILL.md)",
-      "Write(.claude/skills/commander/SKILL.md)",
-      "Edit(.claude/agents/**)",
-      "Write(.claude/agents/**)",
       "Edit(scripts/check_title_leak.py)",
       "Write(scripts/check_title_leak.py)",
       "Edit(.claude/settings.json)",
@@ -78,6 +64,22 @@
       "Write(scripts/setup_hooks.sh)",
       "Edit(.githooks/**)",
       "Write(.githooks/**)"
+    ],
+    "ask": [
+      "Edit(.claude/skills/post-merge-cleanup/SKILL.md)",
+      "Write(.claude/skills/post-merge-cleanup/SKILL.md)",
+      "Edit(.claude/skills/report-self-check/SKILL.md)",
+      "Write(.claude/skills/report-self-check/SKILL.md)",
+      "Edit(.claude/skills/replace-doc-range/SKILL.md)",
+      "Write(.claude/skills/replace-doc-range/SKILL.md)",
+      "Edit(.claude/skills/publish-github/SKILL.md)",
+      "Write(.claude/skills/publish-github/SKILL.md)",
+      "Edit(.claude/skills/pre-push-check/SKILL.md)",
+      "Write(.claude/skills/pre-push-check/SKILL.md)",
+      "Edit(.claude/skills/commander/SKILL.md)",
+      "Write(.claude/skills/commander/SKILL.md)",
+      "Edit(.claude/agents/**)",
+      "Write(.claude/agents/**)"
     ]
   }
 }
