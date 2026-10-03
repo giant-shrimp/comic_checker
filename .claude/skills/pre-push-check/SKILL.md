@@ -10,37 +10,47 @@ description: コミットした後，push する前に使う．verify.sh・差�
 - 変更はコミット済みであること（`--diff-base` は `origin/main...HEAD` の差分を見る）．
 - `git fetch origin` を実行してから始める．
 
+## コマンドの実行と判定
+
+- 下の各コードブロックの1行を，1回の Bash 呼び出しで実行する．`&&`・`;` でつながず，1回の応答で複数のツール呼び出しを出さない．
+- パイプは読み取り専用の確認と /tmp への書き出しに限る．
+- 合否は，Bash ツールの結果がエラー（`Exit code N`）として返ったかどうかで判断する．`; echo "exit=$?"` は付けない．
+- `grep -c` は一致が0件でもエラーとして返らない．件数の値で判断する．
+
 ## 手順1: 変更範囲とコミットの確認
 
 ```bash
 git diff --stat origin/main...HEAD
-git log origin/main..HEAD --format=%B | grep -i -E 'co-authored-by|generated with'; echo "trailer_grep_exit=$?"
+git log origin/main..HEAD --format=%B | grep -c -i -E 'co-authored-by|claude-session|generated with'
 ```
 
 - 変更ファイルが指示の範囲だけであることを確認する．
-- `trailer_grep_exit` が 1（一致なし）であることを確認する．0 ならコミットに
+- 2行目の値が 0 であることを確認する．0 でなければコミットに
   トレーラが付いているので，push せずに報告する．
 
 ## 手順2: 追加行の書き出し
 
 ```bash
 git diff --no-color -U0 origin/main...HEAD | grep '^+' | grep -v '^+++' | cut -c2- > /tmp/prepush_added.txt
-wc -l /tmp/prepush_added.txt
+wc -l < /tmp/prepush_added.txt
 ```
 
 ## 手順3: 検証の実行
 
 ```bash
-./scripts/verify.sh 2>&1 | tail -n 15
-python3 scripts/check_no_personal_info.py --diff-base origin/main; echo "exit=$?"
-python3 scripts/check_title_leak.py /tmp/prepush_added.txt; echo "exit=$?"
-bash scripts/check_scanner_registry.sh; echo "exit=$?"
+./scripts/verify.sh
+python3 scripts/check_no_personal_info.py --diff-base origin/main
+python3 scripts/check_title_leak.py /tmp/prepush_added.txt
+bash scripts/check_scanner_registry.sh
 ```
+
+- `verify.sh` は末尾が `VERIFY PASSED` で，エラーとして返らないことを確認する．出力をパイプで `tail` などに渡さない（終了コードが失われる）．
+- 同じ HEAD で直前に `verify.sh` が成功している場合は，再実行せずその結果を使ってよい．
 
 `ERRORS.md` または `docs/errors_md_inventory.md` を変えたときは，次も実行する．
 
 ```bash
-bash scripts/check_errors_inventory.sh; echo "exit=$?"
+bash scripts/check_errors_inventory.sh
 ```
 
 - `check_title_leak.py` は既存文書の全文には使わない（追加した行だけを照合する．ADR-031）．
