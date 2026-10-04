@@ -45,7 +45,7 @@ bash scripts/check_scanner_registry.sh
 ```
 
 - `verify.sh` は末尾が `VERIFY PASSED` で，エラーとして返らないことを確認する．出力をパイプで `tail` などに渡さない（終了コードが失われる）．
-- 同じ HEAD で直前に `verify.sh` が成功している場合は，再実行せずその結果を使ってよい．
+- 同じ HEAD で直前に `verify.sh` が成功し，その後に作業ツリーを変えていない（`git status --short` が空）場合に限り，再実行せずその結果を使ってよい．
 
 `ERRORS.md` または `docs/errors_md_inventory.md` を変えたときは，次も実行する．
 
