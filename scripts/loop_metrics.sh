@@ -17,9 +17,9 @@
 #     通してからPRを作る）により構造的に100%へ張り付きやすく、計画書
 #     Phase 7 の「50%を下回ったら赤信号」という判定基準は、この分母の
 #     ままでは機能しない。
-#   - コスト: 条件付き。scripts/work_loop.sh の実行ログ（logs/run_*.json）
-#     に total_cost_usd が記録されるが、logs/ は .gitignore 対象で
-#     永続化されない設計（Phase4完了条件）。ログが無ければ「取得不能」。
+#   - コスト: 取得不能。scripts/work_loop.sh の実行ログ（logs/run_*.json）
+#     を集計する処理は残しているが、work_loop.sh は ADR-034 で廃止したため
+#     ログは生まれず、常に「取得不能」になる。
 #   - 不具合件数: 条件付き。bugラベルが実際に付与された実績が無ければ
 #     「取得不能」（0件と表示すると「不具合が無かった」と誤読されうるため、
 #     ラベル運用の不在と区別する）。
@@ -111,11 +111,12 @@ else
 fi
 col "採用率（MERGED/作成、全PR対象）" "$RATE" "MERGED数 / 作成数"
 echo "注記（欠陥2の記録・修正はしない）: この値は構造的に100%へ張り付きやすい。"
-echo "本プロジェクトは対話セッションで ./scripts/verify.sh を通してからPRを作る"
-echo "運用のため、「作られたPR」を分母にする限り不採用がほぼ発生しない。"
+echo "本プロジェクトは実装役が ./scripts/verify.sh を通してからPRを作る"
+echo "運用（ADR-034）のため、「作られたPR」を分母にする限り不採用がほぼ発生しない。"
 echo "計画書Phase7の「採用率50%を下回ったら赤信号」という判定基準は、この分母の"
 echo "ままでは機能しない。100%という値は品質の高さを示すものではない。"
 col "参考: loop/<issue> ブランチ由来PR数" "$PR_LOOP" "$PR_CMD | jq 'select(.headRefName|startswith(\"loop/\"))'"
+echo "注記: loop/<issue> ブランチは ADR-034 で廃止した旧ループのもので、この数は今の実装役のPRを含まない。"
 echo
 
 # --- 指標1（続き）: ラベルによるAI製PR限定の採用率 ---
@@ -159,13 +160,13 @@ fi
 
 if [ "${#LOG_FILES[@]}" -eq 0 ]; then
   col "受け入れ1件あたりのコスト" "取得不能" \
-    "理由: logs/はgitignore対象で永続化されない設計（Phase4完了条件）。対話セッションのコストは本リポジトリ内から機械的に集計する手段が無い。期間内の run_*.json 無し"
+    "理由: work_loop.sh は ADR-034 で廃止したため run_*.json は生まれない。司令塔・実装役のコストは本リポジトリ内から機械的に集計する手段が無い。期間内の run_*.json 無し"
 else
   TOTAL_COST="$(jq -s '[.[].total_cost_usd] | add' "${LOG_FILES[@]}")"
   col "対象work_loop.sh実行ログ件数" "${#LOG_FILES[@]}" "find logs -name 'run_*.json' -newermt ${SINCE}"
   col "合計コスト（USD、work_loop.sh経由のみ）" "$TOTAL_COST" "jq -s '[.[].total_cost_usd] | add' logs/run_*.json"
   col "受け入れ1件あたりのコスト" "取得不能" \
-    "理由: 対話セッション（本プロジェクト作業の大半）のコストが含まれておらず、上記合計はwork_loop.sh経由分のみの部分集計のため、PR採用数で割っても意味のある単価にならない"
+    "理由: work_loop.sh は ADR-034 で廃止しており、上記合計は廃止前のログだけの部分集計で、司令塔・実装役のコストを含まないため、PR採用数で割っても意味のある単価にならない"
 fi
 echo
 
