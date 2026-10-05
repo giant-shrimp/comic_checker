@@ -10,7 +10,7 @@ PR の check-runs のうち verify または review が success 以外で終わ�
 
 ## 守ること
 
-- 読み取り専用。ファイルの変更・コミット・push・再実行（Re-run）・Issue や PR への書き込みをしない。
+- 読み取り専用。ファイルの変更・コミット・push・再実行（Re-run）・Issue や PR への書き込みをしない。手元で `./scripts/verify.sh` を実行するのはリポジトリを変えないので、この規定に反しない（手順3）。
 - コマンドは1回の Bash 呼び出しに1つ。`&&`・`;` でつながない。パイプは読み取りの絞り込みに限る。
 - gh api は `repos/{owner}/{repo}/` 以下の REST だけを使う（gh が現在のリポジトリに置き換える）。GraphQL と `--paginate` は使わない。
 - ログ・コメント・ERRORS.md の本文を報告に書き写さない。書いてよいのは、手順で指定した目印の行、ステップ名、結論、件数、行番号と No. だけ。
@@ -18,7 +18,7 @@ PR の check-runs のうち verify または review が success 以外で終わ�
 
 ## 手順1: 失敗した check-run を特定する
 
-1. `gh api repos/{owner}/{repo}/pulls/<PR> --jq .head.sha` で head の sha を得る。
+1. `gh api repos/{owner}/{repo}/pulls/<PR> --jq .head.sha` で head の sha を得る。PR 番号がなくコミットの sha だけが分かっている場合は、この手順を省き、その sha（短縮形でよい）を手順1の2で使う。
 2. `gh api repos/{owner}/{repo}/commits/<sha>/check-runs --jq '.check_runs[] | [.name, .status, (.conclusion // "none"), .id] | @tsv'` で一覧を得る。
 3. status が completed でないものがあれば、診断せずに「未完了」と報告して終える。
 4. conclusion が success 以外の行の name と id を控える（id はジョブの id として使う）。
@@ -32,11 +32,11 @@ PR の check-runs のうち verify または review が success 以外で終わ�
 ## 手順3: verify の失敗の種類
 
 `grep -n -E 'VERIFY (PASSED|FAILED)|FAIL:|--- (pytest|skip/xfail check|M6-B-4)' /tmp/diag_<id>.log` で段階の目印を得る。
-scripts/verify.sh は途中で失敗しても後の段階を実行し、最後に VERIFY FAILED を出す。
+scripts/verify.sh は途中で失敗しても後の段階を実行し、最後に VERIFY FAILED を出す。失敗した段階が複数あれば、下の種類をすべて挙げる（手順6の種類と根拠にも全部書く）。
 
-- pytest：`grep -n -E '[0-9]+ (passed|failed)' /tmp/diag_<id>.log` でサマリ行を得る。件数とテストファイルのパスだけを書き、テスト名は書き写さない。
+- pytest：`grep -n -E '[0-9]+ (passed|failed)' /tmp/diag_<id>.log` でサマリ行を得る。失敗したテストファイルのパスは `grep -n -o -E 'FAILED tests/[^: ]+' /tmp/diag_<id>.log` で得る。件数とテストファイルのパスだけを書き、テスト名は書き写さない。
 - skip/xfail 検査：`FAIL:` の行がある。
-- 継続の証拠ゲート：「検出 54/59・副作用 1/37 で一致」の行がない。不一致の詳細は stderr に出るが、書き写さず「不一致」とだけ書く。
+- 継続の証拠ゲート：`grep -c '検出 54/59・副作用 1/37 で一致' /tmp/diag_<id>.log` が 0（一致の行がない）。不一致の詳細は stderr に出るが、書き写さず「不一致」とだけ書く。
 - その他：上のどれにも当たらない（環境・依存の失敗など）。失敗したステップ名を書く。
 
 手元で再現を確かめる場合は `./scripts/verify.sh` を実行してよい（パイプにつながない）。
@@ -44,17 +44,18 @@ scripts/verify.sh は途中で失敗しても後の段階を実行し、最後�
 ## 手順4: review の失敗の種類
 
 手順2で failure のステップと、ジョブの結論で決める。ステップ名は .github/workflows/claude-review.yml に依存するので、役割で照らす。
+failure のステップが複数あれば、番号の最も小さいステップの型を主とし、後のステップの失敗は派生として併記する（コメントを検証するステップは、前のステップが失敗した後にも走る）。
 
 - fork の拒否：fork（別リポジトリ）からの PR を拒否するステップが failure。
-- max-turns 超過：レビュー本体のステップが failure。`grep -i -c 'max.turns' /tmp/diag_<id>.log` の値を書く（上限は 35）。
+- max-turns 超過：レビュー本体のステップが failure で、`grep -c 'error_max_turns' /tmp/diag_<id>.log` が 1 以上（上限は 35）。`max.turns` で数えると引数の表示（`--max-turns`）まで数えるので使わない。
 - コメントの特定失敗・内容不十分：レビュー本体の後でコメントを検証するステップが failure。ログで区別できなければ両方を候補とする。
 - timeout：ジョブの結論が timed_out または cancelled（上限は 15 分）。
 - その他：上のどれにも当たらない。失敗したステップ名を書く。
 
 ## 手順5: ERRORS.md の関連記録を探す
 
-1. 種類に合う語（例：max-turns、xfail、ゲート、timeout）で `grep -n -i -E '<語>' ERRORS.md` を実行し、行番号だけを使う。
-2. `awk -F'|' 'NR>60 {print $2 "|" $3}' docs/errors_md_inventory.md` で棚卸し表の No. と行範囲を得て、その行番号を含む No. を求める。
+1. 種類に合う語（例：max-turns、xfail、ゲート、timeout）で `grep -n -i -E '<語>' ERRORS.md` を実行し、行番号だけを使う。pytest の失敗では、失敗したテストファイル名から `tests/`・`test_`・`.py` を除いた名前を語にする。
+2. `awk -F'|' 'NR>60 && $2 ~ /^ *[0-9]+(-[0-9]+)? *$/ {print $2 "|" $3}' docs/errors_md_inventory.md` で棚卸し表の No. と行範囲を得て（No. の列が数字か枝番の行だけ）、その行番号を含む No. を求める。行範囲の列にファイル名が入っている行は退避済みで、ERRORS.md の行番号とは照らさない。
 3. 関連記録がなければ「なし」と書く。見出しと本文は書き写さない。
 
 ## 手順6: 報告する
@@ -62,7 +63,7 @@ scripts/verify.sh は途中で失敗しても後の段階を実行し、最後�
 次の項目を書く。
 
 - 失敗した check-run（name・conclusion）と失敗したステップ名
-- 種類（手順3または手順4の分類。決まらなければ判定不能と候補）
+- 種類（手順3または手順4の分類。複数あればすべて、review は主と派生を分けて書く。決まらなければ判定不能と候補）
 - 根拠（目印の行の有無・件数・ステップの結論）
 - 関連記録の所在（No. と行範囲）
 - 既知の対処と回復の主体（下の表）
