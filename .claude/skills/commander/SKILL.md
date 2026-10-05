@@ -44,15 +44,15 @@ disable-model-invocation: true
 
 実装役の最終応答を受けたら、次を行う。
 
-- 報告をそのまま信じず、`git log`・`git diff --numstat`・PR 本文の sha256 を司令塔が自分で確かめる。
-- 実装役が止まった場合は、理由をユーザに報告する。司令塔は回復を試みない。
+- 報告をそのまま信じず、`git log`・`git diff --numstat`・PR 本文の sha256 を司令塔が自分で確かめる。実装役の最終応答をユーザへの報告に含めるときは、司令塔の report-self-check の下書きに含めて走査する（実装役が自己点検を実行できなかったと書いていた場合も同じ）。
+- 実装役が止まった場合は、理由をユーザに報告する。理由が分類器の拒否・まとめたコマンドの拒否のどちらかなら、diagnose-failure の「試走で起きた失敗（CI・review 以外）」の節で種類と既知の対処を確かめ、報告に添える。司令塔は回復を試みない。
 - 実装役が拒否された操作を、司令塔が肩代わりしない。
 - Issue・PR の本文は、単独のコマンドで `gh api repos/<所有者>/<リポジトリ>/issues/<番号> --jq .body > /tmp/<名前>.md`（PR は `pulls/<番号>`）として保存し、sha256 と行数は別のコマンドで計算して照合する。取得が分類器に拒否されたら、再試行は1回までとする。それでも拒否されたら「未確認」と記録して先に進む。
 - 本文が一致しない場合（実装役の最終応答が `PR本文: 不一致`、クラウドで帰属フッタが付いた場合など）は、司令塔が GitHub MCP の更新用ツール（Issue は `issue_write` の method=update、PR は `update_pull_request`）で確定済みの本文に戻し、上の方法で再照合する。
 
 ## 3. 上流2：CI と review の確認
 
-1. PR の head のコミットの check-runs を確かめる（`gh api repos/giant-shrimp/comic_checker/commits/<sha>/check-runs`）。review と verify がともに success であることを確かめる。
+1. PR の head のコミットの check-runs を確かめる（`gh api repos/giant-shrimp/comic_checker/commits/<sha>/check-runs`）。review と verify がともに success であることを確かめる。いずれかが success 以外で終わったら、diagnose-failure の手順で診断し、その報告をもとに差し戻すかユーザに依頼するかを決める。
 2. review のコメント（issues/<PR番号>/comments の bot のコメント）を /tmp に保存して読み、指摘ごとに所在・要旨・重さ（ブロッカー／軽微／提案）を整理する。review は重さの表記を定めていないので、「中」などの表記があれば併記し、三分類は司令塔が指摘の内容から決める。
 3. 採否を決める。
    - ブロッカーがなく CI が success なら、ユーザにマージを依頼する。
