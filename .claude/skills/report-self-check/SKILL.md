@@ -16,7 +16,7 @@ comic_checker では，報告本文に個人情報・実在作品名が紛れ込
 
 ## 手順1: 下書きをファイルに書き出す
 
-報告の下書き全文を `/tmp/report_draft.md` に書き出す．要約・省略はせず，
+報告の下書き全文を `/tmp/selfcheck_draft.md` に書き出す．要約・省略はせず，
 実際に送るつもりの本文をそのまま書く．
 
 ## 手順2: 2つの走査器を実行する
@@ -24,8 +24,8 @@ comic_checker では，報告本文に個人情報・実在作品名が紛れ込
 リポジトリのルートで次の2つを実行する．
 
 ```bash
-python3 scripts/check_no_personal_info.py /tmp/report_draft.md
-python3 scripts/check_title_leak.py /tmp/report_draft.md
+python3 scripts/check_no_personal_info.py /tmp/selfcheck_draft.md
+python3 scripts/check_title_leak.py /tmp/selfcheck_draft.md
 ```
 
 どちらも終了コード0になるまで下書きを直して繰り返す．`check_title_leak.py`
