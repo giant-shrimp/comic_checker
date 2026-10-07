@@ -54,3 +54,8 @@
 - 報告の自己点検は /ai-loop:report-self-check、push 前の確認は /ai-loop:pre-push-check を使う。
 - .claude/skills と .claude/agents の元の複製は、プラグイン版で本リポジトリの Issue を1件通すまで残す。複製はプラグインより古い版なので、呼び出しには必ず ai-loop: を付ける。
 - 元の複製の削除は段階2として別の Issue で行う。scripts/check_title_leak.py の説明文が元の複製を指す記述（deny 対象）も、そのとき扱う。
+
+## 追記（2026-10-08：運用の切り替え・段階2）
+- .claude/skills の7件と .claude/agents の3件の元の複製を削除した。司令塔・実装役・各スキルは ai-loop プラグインのものだけを使う。
+- この削除は /ai-loop:commander と ai-loop:implementer で Issue から PR まで通した。これで段階1の「プラグイン版で本リポジトリの Issue を1件通す」条件を満たした。
+- .claude/settings.json の ask の項目と、scripts/check_title_leak.py の説明文の古い記述（いずれも deny 対象）は残した。後者は別の Issue で扱う。
