@@ -132,3 +132,8 @@ GUIツールにする。
   本文・トレーラのいずれにも含めない。誤って付与した場合は push 前に
   `git commit --amend` で除去する。push 済みであれば force push はせず、停止してユーザに
   報告する（force push は deny 対象。修正はユーザが `git push --force-with-lease` で行う）。
+
+## 判定ロジックの変更と holdout2
+- 判定ロジック（`comic_checker/`）を変える Issue では、実装の前に測定スクリプトと事前登録をコミットする。依頼文に事前登録のコミットが示されていない判定ロジックの変更はしない
+- holdout2 は事前登録した測定の局面でだけ使う。それ以外の局面で holdout2 のデータを開かず、holdout2 に対して `judge()` やスクリプトを実行しない
+- この節は ai-loop プラグインの commander・implementer が参照する（ADR-036 の追記）

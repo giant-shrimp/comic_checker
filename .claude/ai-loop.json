@@ -1,0 +1,26 @@
+{
+  "repo": "giant-shrimp/comic_checker",
+  "default_branch": "main",
+  "python": ".venv/bin/python",
+  "verify": {
+    "command": "./scripts/verify.sh",
+    "pass_marker": "VERIFY PASSED",
+    "fail_marker": "VERIFY FAILED",
+    "summary_markers": [" passed", " failed", "VERIFY ", "検出 "],
+    "deny": true
+  },
+  "scanners": [
+    {"name": "個人情報走査", "command": "check_no_personal_info.py", "added_lines_only": false},
+    {"name": "作品名照合", "command": ".venv/bin/python scripts/check_title_leak.py", "added_lines_only": true}
+  ],
+  "extra_checks": [
+    {"command": "bash scripts/check_scanner_registry.sh"},
+    {"command": "bash scripts/check_errors_inventory.sh", "when_changed": ["ERRORS.md", "docs/errors_md_inventory.md"]}
+  ],
+  "records": {
+    "errors": "ERRORS.md",
+    "errors_inventory": "docs/errors_md_inventory.md",
+    "decisions": "docs/decisions/",
+    "trials": "docs/ai_loop_state/"
+  }
+}
