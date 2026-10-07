@@ -3,7 +3,7 @@
 
 ERRORS.md の漏洩系記録（作品名を報告に書いてしまった一連の再発、
 `docs/errors_md_inventory.md` の No.50・51・54・60・63・65〜73）の再発防止として、
-`.claude/skills/report-self-check/` から呼ばれることを想定している。
+ai-loop プラグインの report-self-check（`/ai-loop:report-self-check`）から呼ばれることを想定している。
 
 辞書は、Issue #331 の起票前の調査で特定した JSON 29ファイル
 （`TITLE_KEY_FILES` の27ファイル＋`TITLE_ARRAY_FILES` の2ファイル）から実行時に
