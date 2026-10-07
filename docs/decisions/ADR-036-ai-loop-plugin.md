@@ -31,3 +31,13 @@
 - .claude/ai-loop.json の項目と形式の詳細（移す Issue で決める）。
 - インストール済みのプラグインの複製（ユーザ設定の配下に置かれる）を、Claude Code が書き換えないように守る方法。
 - プラグインのエージェントの skills 欄に書いたスキル名が、接頭辞なしで解決されるか（公式ドキュメントに記載がない。移す Issue で、移す前に実機で確かめる）。
+
+## 追記（2026-10-07：移設の完了と未決定の解決）
+- 移設：ai-loop に、スキル7件（report-self-check・replace-doc-range・publish-github・pre-push-check・post-merge-cleanup・diagnose-failure・commander）、エージェント3件（investigator・auditor・implementer）、bin/ のスクリプト3本（check_no_personal_info.py・check_review_comment.sh・select_review_comment.sh）を置いた。プラグインの version は 0.4.1 である。setup_hooks.sh は deny 対象で写せないため、bin/ に置くかは保留する。
+- 非公開リポジトリのマーケットプレイスは、手元の git（SSH）の認証で追加・更新できた（claude plugin marketplace update と claude plugin update の後、/reload-plugins で反映）。
+- プラグインのエージェントの skills 欄に書いたスキル名は、接頭辞なしで解決された（移す前に実機で確認した）。
+- .claude/ai-loop.json の項目と形式は、ai-loop の docs/config.md に定めた。本リポジトリの値は .claude/ai-loop.json に置く。
+- 汎用部分と固有部分の境界は、各スキル・エージェントが固有の値を .claude/ai-loop.json から読む形にすることで決めた。diagnose-failure は、検証の失敗の分類を「テストの失敗」と「その他」の2つに簡素化した。
+- 判定ロジックの事前登録と holdout2 の扱いは本リポジトリに固有なので、プラグインの commander・implementer からは外し、CLAUDE.md の「判定ロジックの変更と holdout2」節に置く。プラグイン側は、使う側のリポジトリの CLAUDE.md の定めに従うとだけ書く。
+- インストール済みのプラグインの複製を守る方法は、未決定のまま残す。
+- 決定5の有効化（.claude/settings.json の編集）は、別の Issue で行う。
