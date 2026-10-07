@@ -48,3 +48,9 @@
 - 試走で得た気づき24件のうち、手順の改善に当たるものを ai-loop の PR #7〜#11 で反映した。報告の自己点検の書式と下書きの分け方（#7）、マージ後の後始末の番号の抽出（#8）、push 前の検証の再実行の条件（#9）、司令塔の照合の方法と CI がないリポジトリの扱い（#10）、設定の説明と README（#11）である。反映後のプラグインの version は 0.4.6 である。
 - 試走したリポジトリと ai-loop の Contributors に AI 由来のアカウントは入らなかった。帰属は settings.json の attribution と照合で守った。
 - 決定1の公開の判断と、本リポジトリの運用の切り替え（元のスキル・エージェントの扱いを含む）は、別の Issue で行う。
+
+## 追記（2026-10-08：運用の切り替え・段階1）
+- 本リポジトリの司令塔は /ai-loop:commander、実装役は ai-loop:implementer を使う。CLAUDE.md の該当の記述を改めた。
+- 報告の自己点検は /ai-loop:report-self-check、push 前の確認は /ai-loop:pre-push-check を使う。
+- .claude/skills と .claude/agents の元の複製は、プラグイン版で本リポジトリの Issue を1件通すまで残す。複製はプラグインより古い版なので、呼び出しには必ず ai-loop: を付ける。
+- 元の複製の削除は段階2として別の Issue で行う。scripts/check_title_leak.py の説明文が元の複製を指す記述（deny 対象）も、そのとき扱う。
