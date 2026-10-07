@@ -24,15 +24,15 @@
       }
     ]
   },
+  "enabledPlugins": {
+    "ai-loop@ai-loop": true
+  },
+  "extraKnownMarketplaces": {
+    "ai-loop": {
+      "source": { "source": "github", "repo": "giant-shrimp/ai-loop" }
+    }
+  },
   "permissions": {
-    "enabledPlugins": {
-      "ai-loop@ai-loop": true
-    },
-    "extraKnownMarketplaces": {
-      "ai-loop": {
-        "source": { "source": "github", "repo": "giant-shrimp/ai-loop" }
-      }
-    },
     "deny": [
       "Edit(scripts/verify.sh)",
       "Write(scripts/verify.sh)",
