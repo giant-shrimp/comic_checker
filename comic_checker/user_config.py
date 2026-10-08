@@ -2,13 +2,15 @@
 
 保存先はWindowsなら `%APPDATA%\\comic_checker\\config.json`、それ以外なら
 `~/.config/comic_checker/config.json`。値は暗号化せず平文のJSONで保存する
-（Windows以外ではファイルの権限を 0o600 にする）。
+（Windows以外では、権限 0o600 の一時ファイルに書いてから置き換えるので、
+他のユーザが読める瞬間も、途中で失敗して設定が壊れることもない）。
 
 ファイルがない・JSONとして読めない・値が文字列でないときは「未設定」として扱う。
 ファイルの中身は、例外の文面にもログにも出さない。
 """
 import json
 import os
+import tempfile
 from pathlib import Path
 
 CONFIG_DIR_NAME = "comic_checker"
@@ -72,6 +74,19 @@ def save_values(values):
     directory = config_dir()
     directory.mkdir(parents=True, exist_ok=True)
     path = config_path()
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    if not _is_windows():
-        path.chmod(_FILE_MODE)
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    # 同じディレクトリの一時ファイル（最初から 0o600）に書いてから置き換える。
+    # 途中で失敗しても既存の設定は壊れず、他のユーザが読める瞬間もない。
+    fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=".config-", suffix=".tmp")
+    try:
+        if not _is_windows():
+            os.chmod(tmp_name, _FILE_MODE)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise

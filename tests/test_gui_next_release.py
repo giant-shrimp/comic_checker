@@ -109,8 +109,31 @@ def test_completion_and_cancel_messages(app):
 
     event = threading.Event()
     event.set()
-    run_worker(app, return_value=2, cancel_event=event)
+
+    def fake_run(path, on_progress=None, cancel_event=None):
+        on_progress(1, 5, "架空の作品A", "未確認", None)
+        on_progress(2, 5, "架空の作品B", "未確認", None)
+        return 2
+
+    run_worker(app, side_effect=fake_run, cancel_event=event)
     assert "中断しました（2件処理・保存済み" in log_text(app)
+
+
+def test_cancel_during_last_row_is_reported_as_complete(app):
+    import threading
+
+    event = threading.Event()
+
+    def fake_run(path, on_progress=None, cancel_event=None):
+        on_progress(1, 2, "架空の作品A", "未確認", None)
+        on_progress(2, 2, "架空の作品B", "未確認", None)
+        event.set()  # 最後の行の処理中に中断が要求された
+        return 2
+
+    run_worker(app, side_effect=fake_run, cancel_event=event)
+    assert "完了しました（2件処理" in log_text(app)
+    assert "中断しました" not in log_text(app)
+    assert "完了しました" in app.status_text.get()
 
 
 # ---------------------------------------------------------------- 集計・ログ

@@ -82,6 +82,28 @@ def test_file_permission_is_0600(monkeypatch):
         assert mode == 0o600
 
 
+def test_failed_replace_keeps_existing_config_and_leaves_no_temp(monkeypatch):
+    path = user_config.config_path()
+    path.parent.mkdir(parents=True)
+    original = json.dumps({"rakuten_app_id": "old"})
+    path.write_text(original, encoding="utf-8")
+
+    def boom(src, dst):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(user_config.os, "replace", boom)
+    with pytest.raises(OSError):
+        user_config.save_values({user_config.KEY_RAKUTEN_APP_ID: "new"})
+    assert path.read_text(encoding="utf-8") == original
+    assert [p.name for p in path.parent.iterdir()] == [path.name]
+
+
+def test_saved_file_permission_is_0600_without_patching():
+    user_config.save_values({user_config.KEY_RAKUTEN_APP_ID: "x"})
+    if os.name != "nt":  # Windows の実機では権限ビットの意味が違うため確かめない
+        assert stat.S_IMODE(user_config.config_path().stat().st_mode) == 0o600
+
+
 def fake_os(monkeypatch, name, environ):
     monkeypatch.setattr(user_config, "os", SimpleNamespace(name=name, environ=environ))
 

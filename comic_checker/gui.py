@@ -1019,21 +1019,27 @@ class App(ttk.Frame):
     def _next_release_worker(self, excel_path, cancel_event=None):
         self._reset_run_state(NEXT_SUMMARY_STATUSES)
         self._log_threadsafe(f"次巻発売日の確認を開始: {excel_path}")
+        self._next_total = 0
         try:
-            total = next_release.run(
+            processed = next_release.run(
                 excel_path,
                 on_progress=self._on_next_progress,
                 cancel_event=cancel_event,
             )
-            if cancel_event is not None and cancel_event.is_set():
+            # 最後の行の処理中に中断要求が立っても、全件処理済みなら完了として扱う。
+            if (
+                cancel_event is not None
+                and cancel_event.is_set()
+                and processed < self._next_total
+            ):
                 self._log_threadsafe(
-                    f"中断しました（{total}件処理・保存済み、保存先: {excel_path}）"
+                    f"中断しました（{processed}件処理・保存済み、保存先: {excel_path}）"
                 )
-                self._set_status_threadsafe(f"中断しました（{total}件処理・保存済み）")
+                self._set_status_threadsafe(f"中断しました（{processed}件処理・保存済み）")
                 self.after(0, self._set_progress_done, False)
             else:
-                self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
-                self._set_status_threadsafe(f"完了しました（{total}件処理）")
+                self._log_threadsafe(f"完了しました（{processed}件処理、保存先: {excel_path}）")
+                self._set_status_threadsafe(f"完了しました（{processed}件処理）")
                 self.after(0, self._set_progress_done, True)
         except (RuntimeError, ValueError) as exc:
             # キー未設定（_load_keys の文面）・タイトル列なし（find_column の文面）。
@@ -1058,6 +1064,7 @@ class App(ttk.Frame):
             self.after(0, self._reset_buttons_after_run)
 
     def _on_next_progress(self, index, total, title, status, next_sales_date, error=None):
+        self._next_total = total
         key = "エラー" if error is not None else status
         self._counts[key] = self._counts.get(key, 0) + 1
 
