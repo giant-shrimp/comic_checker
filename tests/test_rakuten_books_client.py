@@ -268,6 +268,27 @@ def test_same_volume_same_author_is_fine(monkeypatch):
     assert info.status == "未定"
 
 
+@pytest.mark.parametrize("order", [1, -1])
+def test_same_volume_same_author_different_dates_needs_check(monkeypatch, order):
+    items = [
+        book(f"{TITLE} 1"),
+        book(f"{TITLE} 2", sales="2026年05月01日", availability="1"),
+        book(f"{TITLE} 2", sales="2026年12月05日", availability="5"),
+    ]
+    info = run(monkeypatch, items[::order])
+    assert info.status == "要確認"
+    assert info.next_title == ""
+    assert info.latest_title == ""
+
+
+def test_same_volume_special_only_different_dates_needs_check(monkeypatch):
+    info = run(monkeypatch, [
+        book(f"{TITLE} 1 特装版", sales="2026年05月01日"),
+        book(f"{TITLE} 1 限定版", sales="2026年12月05日", availability="5"),
+    ])
+    assert info.status == "要確認"
+
+
 @pytest.mark.parametrize("sales", ["2026年12月上旬", "2026年12月", "2026年12月頃", "2026年12月05日頃"])
 def test_ambiguous_sales_date_is_kept_as_is(monkeypatch, sales):
     info = run(monkeypatch, [

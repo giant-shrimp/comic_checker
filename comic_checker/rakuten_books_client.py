@@ -233,12 +233,13 @@ def _interpret(query, variants, products, today):
     for volume, group in by_volume.items():
         plain = [e for e in group if e.kind == "normal"]
         specials = [e for e in group if e.kind == "special"]
-        if plain:
-            if len({e.author for e in plain}) > 1:
-                return ReleaseInfo(query=query, status=STATUS_CHECK)
-            chosen[volume] = (plain[0], bool(specials))
-        else:
-            chosen[volume] = (specials[0], True)
+        picked = plain or specials
+        if plain and len({e.author for e in plain}) > 1:
+            return ReleaseInfo(query=query, status=STATUS_CHECK)
+        # 同じ巻の候補で発売日が食い違うなら絞りきれない（重版・新装版など）。
+        if len({e.sales_date for e in picked}) > 1:
+            return ReleaseInfo(query=query, status=STATUS_CHECK)
+        chosen[volume] = (picked[0], bool(specials) if plain else True)
 
     released = {v: _is_released(e, today) for v, (e, _) in chosen.items()}
     if any(r is None for r in released.values()):
