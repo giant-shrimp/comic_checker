@@ -5,13 +5,15 @@ import tkinter as tk
 from tkinter import filedialog, font as tkfont, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from comic_checker import version_string
+from comic_checker import next_release, rakuten_books_client, user_config, version_string
 from comic_checker.main import _default_adoption_trace_path, count_rows, run
 
 # サマリに表示する判定結果。main.py の run() が on_progress へ渡す status 値のうち、
 # 利用者が件数を知りたいものを並べている。ここに無い値（manba経路の「ヒットなし」
 # 「不明」等）は「その他」にまとめる（0件のときは表示しない）。
 SUMMARY_STATUSES = ("完結", "連載中", "判定不能", "記事なし", "エラー")
+# 次巻発売日の確認で並べる集計（next_release.run() が on_progress へ渡す status 値）。
+NEXT_SUMMARY_STATUSES = ("次巻あり", "未定", "要確認", "ヒットなし", "エラー")
 OTHER_STATUS_LABEL = "その他"
 
 # アクセントカラー。彩度を抑えた実用寄りの色にしてある（判定結果を読む画面なので、
@@ -33,6 +35,11 @@ STATUS_COLORS = {
     "記事なし": "#5f6b7a",
     "エラー": "#b3261e",
     OTHER_STATUS_LABEL: "#5f6b7a",
+    # 次巻発売日の確認用。_style_key は出現順の索引なので、既存の並びの後ろに足す。
+    "次巻あり": "#1f7a3d",
+    "未定": "#5f6b7a",
+    "要確認": "#a2660a",
+    "ヒットなし": "#5f6b7a",
 }
 
 # 各ブロックの見出しに添えるアイコン。絵文字グリフを持つフォントが
@@ -490,6 +497,100 @@ class FilledRowsDialog(tk.Toplevel):
         return self.choice
 
 
+class RakutenKeyDialog(tk.Toplevel):
+    """楽天ブックス書籍検索APIのキー（アプリID・アクセスキー）を入力して保存する小窓。
+
+    キーの値は画面にもログにも出さない。入力欄は伏せ字で、既存の値は入れない。
+    表示するのは「設定済み／未設定」と、環境変数が優先される場合はその旨だけ。
+    空欄のまま保存したキーは変更しない。保存時にAPIは呼ばない。
+    """
+
+    # (設定ファイルの項目名, 環境変数名, 表示名)
+    FIELDS = (
+        (user_config.KEY_RAKUTEN_APP_ID, rakuten_books_client.APP_ID_ENV, "アプリID"),
+        (user_config.KEY_RAKUTEN_ACCESS_KEY, rakuten_books_client.ACCESS_KEY_ENV, "アクセスキー"),
+    )
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("楽天APIキーの設定")
+        self.resizable(False, False)
+        self.transient(master)
+
+        body = ttk.Frame(self, padding=(16, 14, 16, 12))
+        body.pack(fill="both", expand=True)
+        body.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            body,
+            text=(
+                "楽天ウェブサービスで取得したキーを入力してください。\n"
+                "キーは平文で設定ファイルに保存されます。"
+                "空欄のまま保存したキーは変更しません。"
+            ),
+            justify="left",
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self.entries = {}
+        self.status_vars = {}
+        for i, (key, _env, label) in enumerate(self.FIELDS):
+            row = 1 + i * 2
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=(10, 0))
+            entry = ttk.Entry(body, show="*", width=40)
+            entry.grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=(10, 0))
+            self.entries[key] = entry
+            var = tk.StringVar()
+            self.status_vars[key] = var
+            ttk.Label(body, textvariable=var, style="Hint.TLabel").grid(
+                row=row + 1, column=1, sticky="w", padx=(8, 0)
+            )
+
+        self.message = tk.StringVar(value="")
+        ttk.Label(body, textvariable=self.message).grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(10, 0)
+        )
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        self.save_button = ttk.Button(buttons, text="保存", command=self.save)
+        self.save_button.pack(side="left")
+        ttk.Button(buttons, text="閉じる", command=self.destroy).pack(side="left", padx=(8, 0))
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.refresh_status()
+        _center_window(self)
+
+    def refresh_status(self):
+        """「設定済み／未設定」と、環境変数が優先される場合の注記を更新する。"""
+        for key, env_name, _label in self.FIELDS:
+            text = "設定済み" if user_config.is_set(key) else "未設定"
+            if os.environ.get(env_name):
+                text += f"（環境変数 {env_name} が設定されているため、環境変数の値が優先されます）"
+            self.status_vars[key].set(text)
+
+    def save(self):
+        values = {}
+        for key, _env, _label in self.FIELDS:
+            value = self.entries[key].get().strip()
+            if value:
+                values[key] = value
+        if not values:
+            self.message.set("入力がないため、何も変更しませんでした")
+            return
+        try:
+            user_config.save_values(values)
+        except OSError:
+            # 例外の文面は出さない（値は含まないが、画面に出す必要もない）。
+            self.message.set("保存できませんでした。保存先のフォルダの権限を確認してください")
+        else:
+            self.message.set("保存しました")
+        finally:
+            for entry in self.entries.values():
+                entry.delete(0, "end")
+            values.clear()
+        self.refresh_status()
+
+
 class App(ttk.Frame):
     """Excelファイルを選択して読み込みを実行するGUI画面。"""
 
@@ -506,6 +607,7 @@ class App(ttk.Frame):
         # 増やさない。
         self.adoption_trace = tk.BooleanVar(value=False)
         self._counts = {}
+        self._summary_statuses = SUMMARY_STATUSES
         self._summary_chips = []
         # 実行中の中断要求（Issue #61）。実行していない間は None。生成も差し替えも
         # メインスレッド（_on_run）だけで行い、ワーカーへは引数で渡す。
@@ -570,6 +672,16 @@ class App(ttk.Frame):
         )
         self.run_button.pack(side="left")
 
+        # 次巻発売日の確認（楽天ブックス）。完結チェックとは別の実行で、どちらかの
+        # 実行中は両方の実行ボタンを無効にする。進捗・ログ・中断ボタンは共通。
+        self.next_button = ttk.Button(
+            frame,
+            text="次巻発売日を確認",
+            command=self._on_next_release,
+            style=button_style,
+        )
+        self.next_button.pack(side="left", padx=(8, 0))
+
         # 中断ボタンは実行中だけ有効にする（Issue #61）。数百行の入力では実行が
         # 1時間近くかかるので、強制終了せずに止められる必要がある。
         self.cancel_button = ttk.Button(
@@ -585,6 +697,10 @@ class App(ttk.Frame):
             frame,
             text="採用経路のログを出力する",
             variable=self.adoption_trace,
+        ).pack(side="left", padx=(12, 0))
+
+        ttk.Button(
+            frame, text="楽天APIキーの設定…", command=self._open_key_dialog
         ).pack(side="left", padx=(12, 0))
 
         ttk.Label(
@@ -816,6 +932,7 @@ class App(ttk.Frame):
 
         self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
+        self.next_button.config(state="disabled")
         self.cancel_button.config(state="normal")
         threading.Thread(
             target=self._run_worker,
@@ -874,8 +991,84 @@ class App(ttk.Frame):
     def _reset_buttons_after_run(self):
         """実行後のボタン状態を戻す。ワーカーからは after() 経由でのみ呼ぶこと。"""
         self.run_button.config(state="normal")
+        self.next_button.config(state="normal")
         self.cancel_button.config(state="disabled")
         self._cancel_event = None
+
+    # ------------------------------------------------ 次巻発売日の確認
+
+    def _open_key_dialog(self):
+        RakutenKeyDialog(self.master)
+
+    def _on_next_release(self):
+        excel_path = self.excel_path.get()
+        if not excel_path:
+            self._log("Excelファイルを選択してください")
+            return
+
+        self._cancel_event = threading.Event()
+        self.run_button.config(state="disabled")
+        self.next_button.config(state="disabled")
+        self.cancel_button.config(state="normal")
+        threading.Thread(
+            target=self._next_release_worker,
+            kwargs={"excel_path": excel_path, "cancel_event": self._cancel_event},
+            daemon=True,
+        ).start()
+
+    def _next_release_worker(self, excel_path, cancel_event=None):
+        self._reset_run_state(NEXT_SUMMARY_STATUSES)
+        self._log_threadsafe(f"次巻発売日の確認を開始: {excel_path}")
+        try:
+            total = next_release.run(
+                excel_path,
+                on_progress=self._on_next_progress,
+                cancel_event=cancel_event,
+            )
+            if cancel_event is not None and cancel_event.is_set():
+                self._log_threadsafe(
+                    f"中断しました（{total}件処理・保存済み、保存先: {excel_path}）"
+                )
+                self._set_status_threadsafe(f"中断しました（{total}件処理・保存済み）")
+                self.after(0, self._set_progress_done, False)
+            else:
+                self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
+                self._set_status_threadsafe(f"完了しました（{total}件処理）")
+                self.after(0, self._set_progress_done, True)
+        except (RuntimeError, ValueError) as exc:
+            # キー未設定（_load_keys の文面）・タイトル列なし（find_column の文面）。
+            # どちらも文面にキーの値を含まないので、そのまま出す。
+            self._log_threadsafe(str(exc))
+            self._set_status_threadsafe(str(exc))
+            self.after(0, self._set_progress_done, False)
+        except PermissionError:
+            message = (
+                "Excel を保存できません。ファイルを Excel で開いたままになっていないか"
+                "確認してください"
+            )
+            self._log_threadsafe(message)
+            self._set_status_threadsafe(message)
+            self.after(0, self._set_progress_done, False)
+        except Exception as exc:
+            # 例外の文面にはキーを含むURLが入りうるため、型の名前だけを出す。
+            self._log_threadsafe(f"エラーが発生しました: {type(exc).__name__}")
+            self._set_status_threadsafe("エラーで中断しました")
+            self.after(0, self._set_progress_done, False)
+        finally:
+            self.after(0, self._reset_buttons_after_run)
+
+    def _on_next_progress(self, index, total, title, status, next_sales_date, error=None):
+        key = "エラー" if error is not None else status
+        self._counts[key] = self._counts.get(key, 0) + 1
+
+        if error is not None:
+            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー {type(error).__name__}")
+        else:
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})")
+
+        self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
+        self.after(0, self._update_progress, index, total)
+        self.after(0, self._update_summary)
 
     def _on_progress(self, index, total, title, status, matched_title, error=None):
         key = "エラー" if error is not None else status
@@ -892,8 +1085,9 @@ class App(ttk.Frame):
 
     # ------------------------------------------------------------ 表示の更新
 
-    def _reset_run_state(self):
+    def _reset_run_state(self, summary_statuses=SUMMARY_STATUSES):
         self._counts = {}
+        self._summary_statuses = summary_statuses
         self.after(0, self._update_progress, 0, 0)
         self.after(0, self._update_summary)
         self.after(0, self._set_progress_done, None)
@@ -920,13 +1114,13 @@ class App(ttk.Frame):
     def _update_summary(self):
         parts = []
         if self._counts:
-            for name in SUMMARY_STATUSES:
+            for name in self._summary_statuses:
                 if self._counts.get(name):
                     parts.append((name, self._counts[name]))
             other = sum(
                 count
                 for name, count in self._counts.items()
-                if name not in SUMMARY_STATUSES
+                if name not in self._summary_statuses
             )
             if other:
                 parts.append((OTHER_STATUS_LABEL, other))

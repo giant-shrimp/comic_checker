@@ -64,12 +64,14 @@ def run(
     url_column=DEFAULT_URL_COLUMN,
     save_every=5,
     on_progress=None,
+    cancel_event=None,
 ):
     """Excelの全タイトルについて次巻発売日を調べ、4列を毎回書き直す。
 
     1行処理するごとに on_progress(index, total, title, status, next_sales_date, error=None)
     を呼ぶ。想定外の例外が起きた行は「エラー」として書き、error に例外を渡して次の行へ進む。
-    戻り値は処理した行数。
+    cancel_event が立つと、次の行の切れ目で止めて、そこまでの結果を保存する。
+    戻り値は実際に処理した行数。
     """
     if on_progress is None:
         on_progress = lambda *args, **kwargs: None
@@ -96,7 +98,11 @@ def run(
     total = len(rows)
     print(f"{total}件を処理します")
 
+    processed = 0
     for i, (row, title) in enumerate(rows, start=1):
+        # 行の切れ目で中断要求を見る（main.run() と同じ）。
+        if cancel_event is not None and cancel_event.is_set():
+            break
         error = None
         try:
             info = rakuten_books_client.find_next_release(title)
@@ -110,13 +116,17 @@ def run(
         for col, value in zip((date_col, next_title_col, latest_col, url_col), values):
             ws.cell(row=row, column=col, value=value)
         on_progress(i, total, title, status, values[0], error=error)
+        processed = i
 
         if i % save_every == 0:
             wb.save(excel_path)
 
     wb.save(excel_path)
-    print("完了しました")
-    return total
+    if processed < total:
+        print(f"中断しました（{processed}件処理・保存済み）")
+    else:
+        print("完了しました")
+    return processed
 
 
 def _print_progress(index, total, title, status, next_sales_date, error=None):

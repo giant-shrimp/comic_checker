@@ -3,11 +3,14 @@
 応答のJSONに使う作品名はすべて架空のもの。
 """
 from datetime import date
+import threading
+import time
 
 import pytest
 import requests
 
 from comic_checker import rakuten_books_client as rbc
+from comic_checker import user_config
 from comic_checker.rakuten_books_client import find_next_release
 
 TODAY = date(2026, 10, 8)
@@ -469,3 +472,85 @@ def test_all_title_variants_are_used_for_matching(monkeypatch):
 def test_flat_item_format_is_accepted(monkeypatch):
     serve(monkeypatch, response=FakeResponse(payload={"Items": [book(f"{TITLE} 1")]}))
     assert find_next_release(TITLE, today=TODAY).status == "未定"
+
+
+# ------------------------------------------------------------ キーの読み込み（設定ファイル）
+
+
+def test_env_takes_priority_over_config_file(monkeypatch):
+    user_config.save_values(
+        {
+            user_config.KEY_RAKUTEN_APP_ID: "file-app-id",
+            user_config.KEY_RAKUTEN_ACCESS_KEY: "file-access-key",
+        }
+    )
+    assert rbc._load_keys() == (APP_ID, ACCESS_KEY)
+
+
+def test_config_file_is_used_without_env(monkeypatch):
+    monkeypatch.delenv(rbc.APP_ID_ENV)
+    monkeypatch.delenv(rbc.ACCESS_KEY_ENV)
+    user_config.save_values(
+        {
+            user_config.KEY_RAKUTEN_APP_ID: "file-app-id",
+            user_config.KEY_RAKUTEN_ACCESS_KEY: "file-access-key",
+        }
+    )
+    assert rbc._load_keys() == ("file-app-id", "file-access-key")
+
+
+def test_keys_are_resolved_per_key(monkeypatch):
+    monkeypatch.delenv(rbc.ACCESS_KEY_ENV)
+    user_config.save_values({user_config.KEY_RAKUTEN_ACCESS_KEY: "file-access-key"})
+    assert rbc._load_keys() == (APP_ID, "file-access-key")
+
+
+def test_empty_env_falls_back_to_config_file(monkeypatch):
+    monkeypatch.setenv(rbc.APP_ID_ENV, "")
+    user_config.save_values({user_config.KEY_RAKUTEN_APP_ID: "file-app-id"})
+    assert rbc._load_keys() == ("file-app-id", ACCESS_KEY)
+
+
+def test_missing_key_message_mentions_gui_and_hides_other_value(monkeypatch):
+    monkeypatch.delenv(rbc.APP_ID_ENV)
+    monkeypatch.delenv(rbc.ACCESS_KEY_ENV)
+    user_config.save_values({user_config.KEY_RAKUTEN_ACCESS_KEY: "file-access-key"})
+    with pytest.raises(RuntimeError) as excinfo:
+        rbc._load_keys()
+    message = str(excinfo.value)
+    assert "楽天APIキーの設定" in message
+    assert rbc.APP_ID_ENV in message
+    assert "file-access-key" not in message
+    assert ACCESS_KEY not in message
+
+
+# ------------------------------------------------------------ 呼び出し間隔のスレッド安全性
+
+
+def test_interval_holds_across_threads(monkeypatch):
+    # 本物の time で、複数スレッドからの呼び出し開始時刻の間隔を測る。
+    monkeypatch.setattr(rbc, "time", time)
+    monkeypatch.setattr(rbc, "MIN_INTERVAL_SECONDS", 0.05)
+    started = []
+
+    def fake_get(url, **kwargs):
+        started.append(time.monotonic())
+        return FakeResponse(payload={"Items": []})
+
+    monkeypatch.setattr(rbc.requests, "get", fake_get)
+    barrier = threading.Barrier(4)
+
+    def worker():
+        barrier.wait()
+        rbc._fetch_items("q", APP_ID, ACCESS_KEY)
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(started) == 4
+    started.sort()
+    gaps = [b - a for a, b in zip(started, started[1:])]
+    assert all(gap >= 0.05 - 0.005 for gap in gaps), gaps
