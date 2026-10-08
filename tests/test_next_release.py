@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 from openpyxl import Workbook, load_workbook
 
@@ -294,3 +296,40 @@ def test_main_sheet_and_header_row(tmp_path, monkeypatch):
     ws = load_workbook(path)["対象"]
     assert ws.cell(row=2, column=2).value == "次巻発売日"
     assert ws.cell(row=3, column=2).value == "2030年1月5日"
+
+
+def test_cancel_stops_at_row_boundary_and_saves(tmp_path, monkeypatch):
+    path = _make_excel(tmp_path, ["架空の物語", "別の架空譚", "三つ目の架空"])
+    calls = _patch_find(
+        monkeypatch,
+        {"架空の物語": _next(), "別の架空譚": _next(next_title="別 2巻"), "三つ目の架空": _next()},
+    )
+    cancel_event = threading.Event()
+
+    def progress(index, total, title, status, date, error=None):
+        if index == 2:
+            cancel_event.set()
+
+    processed = next_release.run(
+        path, on_progress=progress, cancel_event=cancel_event, save_every=100
+    )
+    assert processed == 2
+    assert calls == ["架空の物語", "別の架空譚"]
+    assert _read_row(path, 2)["次巻発売日"] == "2030年1月5日"
+    assert _read_row(path, 3)["次巻タイトル"] == "別 2巻"
+    assert _read_row(path, 4)["次巻発売日"] is None
+
+
+def test_cancel_before_start_processes_nothing(tmp_path, monkeypatch):
+    path = _make_excel(tmp_path, ["架空の物語"])
+    calls = _patch_find(monkeypatch, {"架空の物語": _next()})
+    cancel_event = threading.Event()
+    cancel_event.set()
+    assert next_release.run(path, cancel_event=cancel_event) == 0
+    assert calls == []
+
+
+def test_unset_cancel_event_processes_all(tmp_path, monkeypatch):
+    path = _make_excel(tmp_path, ["架空の物語", "別の架空譚"])
+    _patch_find(monkeypatch, {"架空の物語": _next(), "別の架空譚": _next()})
+    assert next_release.run(path, cancel_event=threading.Event()) == 2

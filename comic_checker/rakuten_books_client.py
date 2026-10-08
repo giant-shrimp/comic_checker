@@ -8,11 +8,13 @@ from dataclasses import dataclass
 from datetime import date
 import os
 import re
+import threading
 import time
 import unicodedata
 
 import requests
 
+from comic_checker import user_config
 from comic_checker.wikipedia_client import _title_variants
 
 SEARCH_URL = "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404"
@@ -55,6 +57,7 @@ _FULL_DATE_RE = re.compile(r"^(\d{4})年(\d{1,2})月(\d{1,2})日$")
 _YEAR_MONTH_RE = re.compile(r"^(\d{4})年(\d{1,2})月")
 
 _last_call_time = None
+_call_lock = threading.Lock()
 
 
 @dataclass
@@ -85,8 +88,11 @@ def _nfkc(text):
 
 
 def _load_keys():
-    app_id = os.environ.get(APP_ID_ENV)
-    access_key = os.environ.get(ACCESS_KEY_ENV)
+    """キーごとに「環境変数 → 設定ファイル」の順で読む。環境変数が空でなければそれを使う。"""
+    app_id = os.environ.get(APP_ID_ENV) or user_config.get_value(user_config.KEY_RAKUTEN_APP_ID)
+    access_key = os.environ.get(ACCESS_KEY_ENV) or user_config.get_value(
+        user_config.KEY_RAKUTEN_ACCESS_KEY
+    )
     missing = [
         name for name, value in ((APP_ID_ENV, app_id), (ACCESS_KEY_ENV, access_key))
         if not value
@@ -94,9 +100,10 @@ def _load_keys():
     if missing:
         names = "・".join(missing)
         raise RuntimeError(
-            f"環境変数 {names} が設定されていません。"
-            "楽天ウェブサービスで取得したアプリIDとアクセスキーを設定してください"
-            f"（例: export {APP_ID_ENV}=... ・ export {ACCESS_KEY_ENV}=... ）。"
+            f"楽天ブックスのキー（{names}）が設定されていません。"
+            "楽天ウェブサービスで取得したアプリIDとアクセスキーを、"
+            "画面の「楽天APIキーの設定」で設定するか、"
+            f"環境変数で設定してください（例: export {APP_ID_ENV}=... ・ export {ACCESS_KEY_ENV}=... ）。"
         )
     return app_id, access_key
 
@@ -112,7 +119,6 @@ def _wait_for_interval():
 def _fetch_items(query, app_id, access_key):
     """APIを1回呼び、商品（dict）のリストを返す。失敗したら None（理由は外に出さない）。"""
     global _last_call_time
-    _wait_for_interval()
     params = {
         "applicationId": app_id,
         "title": query,
@@ -122,17 +128,21 @@ def _fetch_items(query, app_id, access_key):
         "hits": SEARCH_HITS,
         "format": "json",
     }
-    try:
-        resp = requests.get(
-            SEARCH_URL,
-            params=params,
-            headers={ACCESS_KEY_HEADER: access_key},
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException:
-        return None
-    finally:
-        _last_call_time = time.monotonic()
+    # 待機・API呼び出し・_last_call_time の更新をまとめて囲み、複数のスレッドから
+    # 呼ばれても呼び出しの間隔が MIN_INTERVAL_SECONDS 以上になるようにする。
+    with _call_lock:
+        _wait_for_interval()
+        try:
+            resp = requests.get(
+                SEARCH_URL,
+                params=params,
+                headers={ACCESS_KEY_HEADER: access_key},
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException:
+            return None
+        finally:
+            _last_call_time = time.monotonic()
 
     if resp.status_code != 200:
         return None

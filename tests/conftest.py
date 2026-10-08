@@ -22,7 +22,7 @@ Issue #40 で`_api_get`にリクエスト間隔（1秒）と429時のバック�
 """
 import pytest
 
-from comic_checker import wikipedia_client
+from comic_checker import user_config, wikipedia_client
 
 
 def pytest_configure(config):
@@ -31,6 +31,18 @@ def pytest_configure(config):
         "real_wait_settings: 待機の間隔・バックオフを本番の値のまま使う"
         "（待機そのものを検証するテスト用）",
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_user_config_dir(tmp_path, monkeypatch):
+    """設定ファイルの保存先を tmp のディレクトリに差し替える。
+
+    開発機の実際の設定ファイル（楽天ブックスのキー）を読み書きしないため。
+    保存先の組み立てそのものを検証するテストは `user_config.config_dir` を自分で差し替える。
+    """
+    config_dir = tmp_path / "user_config_dir"
+    monkeypatch.setattr(user_config, "config_dir", lambda: config_dir)
+    return config_dir
 
 
 @pytest.fixture(autouse=True)
