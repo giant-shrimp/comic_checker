@@ -505,6 +505,23 @@ def test_derived_row_falls_back_to_short_variant_without_long_match(monkeypatch)
     assert info.next_title == f"{TITLE} 2"
 
 
+def test_same_length_variants_use_the_earlier_one_in_variants_order():
+    # 長さが同じ変種が複数一致しても、variants の並びで先の変種が必ず選ばれる。
+    first = f"{TITLE} 甲版"
+    second = f"{TITLE} 乙版"
+    assert len(first) == len(second)
+    products = [
+        book(f"{first} 1"),
+        book(f"{first} 2", sales="2026年12月05日", availability="5"),
+        book(f"{second} 1"),
+        book(f"{second} 3", sales="2027年02月05日", availability="5"),
+    ]
+    info = rbc._interpret(first, [first, second], products, TODAY)
+    assert info.next_title == f"{first} 2"
+    info = rbc._interpret(second, [second, first], products, TODAY)
+    assert info.next_title == f"{second} 3"
+
+
 def test_main_row_excludes_derived_products(monkeypatch):
     info = run(monkeypatch, [
         book(f"{TITLE} 1"),

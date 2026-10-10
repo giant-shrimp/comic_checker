@@ -233,7 +233,8 @@ def _interpret(query, variants, products, today):
         return ReleaseInfo(query=query, status=STATUS_NO_HIT)
     # 最も長い変種から見て、一致した商品がある最初の変種の商品だけを候補にする。
     # 派生シリーズの行で、本編名だけの変種に一致する本編の商品が混ざるのを防ぐ。
-    best = max({e.variant for e in entries}, key=len)
+    matched = {e.variant for e in entries}
+    best = next(v for v in sorted(variants, key=len, reverse=True) if v in matched)
     entries = [e for e in entries if e.variant == best]
 
     volumed = [e for e in entries if e.volume is not None]
