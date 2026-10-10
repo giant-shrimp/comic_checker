@@ -15,3 +15,17 @@ def version_string():
     if commit and build_date:
         return f"{__version__} ({commit}, {build_date})"
     return __version__
+
+
+def positive_int(value):
+    """argparse の type 用。1以上の整数だけ受け付ける。
+
+    整数でない値は int() の ValueError のまま（argparse が従来どおり扱う）。
+    1未満は ArgumentTypeError にして、日本語のメッセージで終了コード 2 にする。
+    """
+    import argparse
+
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("1以上の整数を指定してください")
+    return number

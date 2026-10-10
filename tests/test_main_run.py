@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openpyxl import Workbook
 
-from comic_checker.main import run
+from comic_checker.main import parse_args, run
 from comic_checker.manba_client import LookupResult
 from comic_checker.wikipedia_client import WikipediaJudgment
 
@@ -519,3 +519,19 @@ def _reload(excel_path):
     from openpyxl import load_workbook
 
     return load_workbook(excel_path)
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_save_every_1未満は日本語メッセージで終了コード2になる(value, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        parse_args(["dummy.xlsx", "--save-every", value])
+    assert excinfo.value.code == 2
+    assert "1以上の整数を指定してください" in capsys.readouterr().err
+
+
+def test_save_every_1は受け付ける():
+    assert parse_args(["dummy.xlsx", "--save-every", "1"]).save_every == 1
+
+
+def test_save_every_省略時は5():
+    assert parse_args(["dummy.xlsx"]).save_every == 5

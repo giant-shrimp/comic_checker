@@ -8,7 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from comic_checker import rakuten_books_client, version_string
+from comic_checker import positive_int, rakuten_books_client, version_string
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
 
 DEFAULT_NEXT_DATE_COLUMN = "次巻発売日"
@@ -148,7 +148,7 @@ def parse_args(argv=None):
     parser.add_argument("--sheet", default=None, help="対象シート名（省略時はアクティブシート）")
     parser.add_argument("--header-row", type=int, default=1, help="ヘッダー行番号（デフォルト:1）")
     parser.add_argument("--title-column", default="タイトル", help="タイトルが入っている列のヘッダー名")
-    parser.add_argument("--save-every", type=int, default=5, help="何件ごとにExcelを保存するか")
+    parser.add_argument("--save-every", type=positive_int, default=5, help="何件ごとにExcelを保存するか")
     return parser.parse_args(argv)
 
 

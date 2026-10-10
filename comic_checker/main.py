@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 from typing import NamedTuple
 
-from comic_checker import version_string, wikipedia_client
+from comic_checker import positive_int, version_string, wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
 
 DEFAULT_STATE_FILE = ".manba_state.json"
@@ -101,7 +101,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--max-delay", type=float, default=6.0, help="（--fallback-to-manba有効時のみ使用）リクエスト間の最大待機秒数"
     )
-    parser.add_argument("--save-every", type=int, default=5, help="何件ごとにExcelを保存するか")
+    parser.add_argument("--save-every", type=positive_int, default=5, help="何件ごとにExcelを保存するか")
     parser.add_argument(
         "--adoption-trace",
         action="store_true",
