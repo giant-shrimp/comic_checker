@@ -469,6 +469,71 @@ def test_all_title_variants_are_used_for_matching(monkeypatch):
     assert info.status == "次巻あり"
 
 
+DERIVED_TITLE = f"{TITLE} 〜月の裏側〜"
+
+
+def test_derived_row_ignores_main_series_products(monkeypatch):
+    # 派生の行では本編名だけの変種にも一致する本編の商品が混ざるが、派生の商品だけから次巻を選ぶ。
+    info = run(
+        monkeypatch,
+        [
+            book(f"{TITLE} 1", sales="2020年01月01日"),
+            book(f"{TITLE} 2", sales="2020年06月01日"),
+            book(f"{TITLE} 5", sales="2027年01月05日", availability="5"),
+            book(f"{DERIVED_TITLE} 1"),
+            book(f"{DERIVED_TITLE} 2", sales="2026年12月05日", availability="5"),
+        ],
+        title=DERIVED_TITLE,
+    )
+    assert info.status == "次巻あり"
+    assert info.next_title == f"{DERIVED_TITLE} 2"
+    assert info.next_sales_date == "2026年12月05日"
+    assert info.latest_title == f"{DERIVED_TITLE} 1"
+
+
+def test_derived_row_falls_back_to_short_variant_without_long_match(monkeypatch):
+    # 注記を含む長い変種に一致する商品が無いときは、短い変種で照合する。
+    info = run(
+        monkeypatch,
+        [
+            book(f"{TITLE} 1"),
+            book(f"{TITLE} 2", sales="2026年12月05日", availability="5"),
+        ],
+        title=DERIVED_TITLE,
+    )
+    assert info.status == "次巻あり"
+    assert info.next_title == f"{TITLE} 2"
+
+
+def test_same_length_variants_use_the_earlier_one_in_variants_order():
+    # 長さが同じ変種が複数一致しても、variants の並びで先の変種が必ず選ばれる。
+    first = f"{TITLE} 甲版"
+    second = f"{TITLE} 乙版"
+    assert len(first) == len(second)
+    products = [
+        book(f"{first} 1"),
+        book(f"{first} 2", sales="2026年12月05日", availability="5"),
+        book(f"{second} 1"),
+        book(f"{second} 3", sales="2027年02月05日", availability="5"),
+    ]
+    info = rbc._interpret(first, [first, second], products, TODAY)
+    assert info.next_title == f"{first} 2"
+    info = rbc._interpret(second, [second, first], products, TODAY)
+    assert info.next_title == f"{second} 3"
+
+
+def test_main_row_excludes_derived_products(monkeypatch):
+    info = run(monkeypatch, [
+        book(f"{TITLE} 1"),
+        book(f"{TITLE} 2", sales="2026年12月05日", availability="5"),
+        book(f"{DERIVED_TITLE} 1"),
+        book(f"{DERIVED_TITLE} 3", sales="2027年02月05日", availability="5"),
+    ])
+    assert info.status == "次巻あり"
+    assert info.next_title == f"{TITLE} 2"
+    assert info.latest_title == f"{TITLE} 1"
+
+
 def test_flat_item_format_is_accepted(monkeypatch):
     serve(monkeypatch, response=FakeResponse(payload={"Items": [book(f"{TITLE} 1")]}))
     assert find_next_release(TITLE, today=TODAY).status == "未定"
