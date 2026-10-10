@@ -333,3 +333,19 @@ def test_unset_cancel_event_processes_all(tmp_path, monkeypatch):
     path = _make_excel(tmp_path, ["架空の物語", "別の架空譚"])
     _patch_find(monkeypatch, {"架空の物語": _next(), "別の架空譚": _next()})
     assert next_release.run(path, cancel_event=threading.Event()) == 2
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_save_every_1未満は日本語メッセージで終了コード2になる(value, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        next_release.parse_args(["dummy.xlsx", "--save-every", value])
+    assert excinfo.value.code == 2
+    assert "1以上の整数を指定してください" in capsys.readouterr().err
+
+
+def test_save_every_1は受け付ける():
+    assert next_release.parse_args(["dummy.xlsx", "--save-every", "1"]).save_every == 1
+
+
+def test_save_every_省略時は5():
+    assert next_release.parse_args(["dummy.xlsx"]).save_every == 5
