@@ -81,6 +81,7 @@ class _Entry:
     availability: str
     url: str
     author: str
+    variant: str = ""  # 一致した変種
 
 
 def _nfkc(text):
@@ -189,6 +190,7 @@ def _to_entry(product, variants):
             availability=str(product.get("availability") or "").strip(),
             url=str(product.get("itemUrl") or ""),
             author=_nfkc(product.get("author")),
+            variant=variant,
         )
         match = _VOLUME_RE.match(rest)
         if match:
@@ -229,6 +231,10 @@ def _interpret(query, variants, products, today):
     entries = [e for e in (_to_entry(p, variants) for p in products) if e]
     if not entries:
         return ReleaseInfo(query=query, status=STATUS_NO_HIT)
+    # 最も長い変種から見て、一致した商品がある最初の変種の商品だけを候補にする。
+    # 派生シリーズの行で、本編名だけの変種に一致する本編の商品が混ざるのを防ぐ。
+    best = max({e.variant for e in entries}, key=len)
+    entries = [e for e in entries if e.variant == best]
 
     volumed = [e for e in entries if e.volume is not None]
     if not volumed:
