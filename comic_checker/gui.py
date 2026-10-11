@@ -25,6 +25,44 @@ COLOR_ACCENT_DISABLED = "#a8c3e0"
 COLOR_SUCCESS = "#1f7a3d"
 COLOR_ON_ACCENT = "#ffffff"
 
+# 面の配色。画面の地は淡い灰色、各セクションは白いカードに細い枠線を付ける。
+COLOR_BG = "#f1f3f6"
+COLOR_CARD = "#ffffff"
+COLOR_BORDER = "#d3d8e0"
+COLOR_MUTED = "#5f6b7a"
+COLOR_BUTTON_DISABLED_FG = "#9aa3af"
+COLOR_IDLE = "#8a94a3"
+
+# 文字の大きさは見出し・本文・補助の3段にそろえる。
+FONT_SIZE_HEADING = 11
+FONT_SIZE_BODY = 10
+FONT_SIZE_HINT = 9
+
+# 余白は外側（セクション間・画面端）と内側（カードの中）の2種類にそろえる。
+PAD_OUTER = 12
+PAD_INNER = 12
+
+COLOR_DROP_BORDER = "#a9b2bf"
+DROP_AREA_HEIGHT = 84
+RUN_STATE_DOT_SIZE = 12
+# 状態バーの左の表示。status_text（進捗の文言）とは別で、実行中かどうかだけを示す。
+RUN_STATE_IDLE = "待機中"
+RUN_STATE_RUNNING = "実行中"
+
+# カード用スタイルが作れない環境で使う、通常のスタイル名。
+_PLAIN_STYLES = {
+    "App.TFrame": "TFrame",
+    "Card.TFrame": "TFrame",
+    "Card.TLabel": "TLabel",
+    "CardHeading.TLabel": "Heading.TLabel",
+    "CardHint.TLabel": "Hint.TLabel",
+    "CardStatus.TLabel": "Status.TLabel",
+    "Card.TCheckbutton": "TCheckbutton",
+    "Bar.TFrame": "TFrame",
+    "Bar.TLabel": "TLabel",
+    "BarHint.TLabel": "Hint.TLabel",
+}
+
 # 判定結果ごとの文字色。エラーは赤、完結は緑、連載中は青、判定不能は琥珀、
 # 記事なし・その他は灰。背景色は付けず文字色だけにしている（背景を塗ると
 # Windowsのネイティブテーマの地色とぶつかって浮くため）。
@@ -298,13 +336,91 @@ def _configure_accent_styles(style, ui_font):
     return accent_ok, progress_ok
 
 
+def _configure_card_styles(style, root, family):
+    """画面の地（淡い灰）と、白いカード・状態バー用のスタイルを定義する。
+
+    vista/winnative では Frame や Label の background 指定が効かないことがある。
+    その場合も色が付かないだけで画面は崩れない。作れなかった環境では False を返し、
+    呼び出し側（App._style）が通常のスタイルに落とす。
+    """
+    try:
+        root.configure(background=COLOR_BG)
+        style.configure("App.TFrame", background=COLOR_BG)
+        style.configure("Card.TFrame", background=COLOR_CARD)
+        style.configure("Card.TLabel", background=COLOR_CARD, font=(family, FONT_SIZE_BODY))
+        style.configure(
+            "CardHeading.TLabel",
+            background=COLOR_CARD,
+            font=(family, FONT_SIZE_HEADING, "bold"),
+        )
+        style.configure(
+            "CardHint.TLabel",
+            background=COLOR_CARD,
+            foreground=COLOR_MUTED,
+            font=(family, FONT_SIZE_HINT),
+        )
+        style.configure(
+            "CardStatus.TLabel", background=COLOR_CARD, font=(family, FONT_SIZE_BODY)
+        )
+        style.configure("Card.TCheckbutton", background=COLOR_CARD)
+        style.configure("Bar.TFrame", background=COLOR_BG)
+        style.configure("Bar.TLabel", background=COLOR_BG, font=(family, FONT_SIZE_BODY))
+        style.configure(
+            "BarHint.TLabel",
+            background=COLOR_BG,
+            foreground=COLOR_MUTED,
+            font=(family, FONT_SIZE_HINT),
+        )
+        return True
+    except tk.TclError:
+        return False
+
+
+def _configure_secondary_button_style(style, family):
+    """枠線の副ボタン（白地に青の文字と枠）と、無効時の灰色表示を定義する。
+
+    副ボタンは TButton のレイアウトをそのまま使う（名前の接尾辞で継承される）。
+    vista/winnative では色指定が効かず通常のボタンの見た目になるが、崩れはしない。
+    """
+    try:
+        style.configure(
+            "Secondary.TButton",
+            background=COLOR_CARD,
+            foreground=COLOR_ACCENT,
+            bordercolor=COLOR_ACCENT,
+            lightcolor=COLOR_CARD,
+            darkcolor=COLOR_CARD,
+            focuscolor=COLOR_CARD,
+            font=(family, FONT_SIZE_BODY, "bold"),
+            padding=(18, 7),
+            anchor="center",
+        )
+        style.map(
+            "Secondary.TButton",
+            background=[("disabled", COLOR_CARD), ("pressed", "#dbe8f7"), ("active", "#eaf2fc")],
+            foreground=[("disabled", COLOR_BUTTON_DISABLED_FG)],
+            bordercolor=[("disabled", COLOR_BORDER)],
+        )
+        # 「中断」など通常のボタンは、無効のときに灰色の文字にする。
+        style.map("TButton", foreground=[("disabled", COLOR_BUTTON_DISABLED_FG)])
+        return True
+    except tk.TclError:
+        return False
+
+
 def _apply_theme(root):
     """ttkテーマ・既定フォント・アクセント配色を設定する。
 
     設定できたものを dict で返す（呼び出し側がフォールバックの判断に使う）。
     失敗してもGUIは動くべきなので、例外は握りつぶす。
     """
-    settings = {"accent_button": False, "accent_progress": False, "emoji": False}
+    settings = {
+        "accent_button": False,
+        "accent_progress": False,
+        "emoji": False,
+        "card": False,
+        "secondary_button": False,
+    }
     try:
         style = ttk.Style(root)
         # vista/winnativeはWindowsのネイティブテーマ。無い環境（Linux）では
@@ -323,23 +439,29 @@ def _apply_theme(root):
                     pass
 
         # 見出し・補助テキスト用のスタイル。
-        style.configure("Heading.TLabel", font=(ui_font or "TkDefaultFont", 10, "bold"))
-        style.configure("Hint.TLabel", font=(ui_font or "TkDefaultFont", 8))
-        style.configure("Status.TLabel", font=(ui_font or "TkDefaultFont", 10))
+        family = ui_font or "TkDefaultFont"
+        style.configure("Heading.TLabel", font=(family, FONT_SIZE_HEADING, "bold"))
+        style.configure("Hint.TLabel", font=(family, FONT_SIZE_HINT))
+        style.configure("Status.TLabel", font=(family, FONT_SIZE_BODY))
         style.configure(
-            "SectionTitle.TLabelframe.Label", font=(ui_font or "TkDefaultFont", 10, "bold")
+            "SectionTitle.TLabelframe.Label", font=(family, FONT_SIZE_HEADING, "bold")
         )
-        # サマリの内訳（判定結果ごとの色分け）。
+        card_ok = _configure_card_styles(style, root, family)
+        settings["card"] = card_ok
+        # サマリの内訳（判定結果ごとの色分け）。カードの白い面に載せる。
         for name, color in STATUS_COLORS.items():
-            style.configure(
-                f"Summary{_style_key(name)}.TLabel",
-                foreground=color,
-                font=(ui_font or "TkDefaultFont", 10, "bold"),
-            )
+            options = {
+                "foreground": color,
+                "font": (family, FONT_SIZE_BODY, "bold"),
+            }
+            if card_ok:
+                options["background"] = COLOR_CARD
+            style.configure(f"Summary{_style_key(name)}.TLabel", **options)
 
         accent, progress = _configure_accent_styles(style, ui_font)
         settings["accent_button"] = accent
         settings["accent_progress"] = progress
+        settings["secondary_button"] = _configure_secondary_button_style(style, family)
         settings["emoji"] = _emoji_available(root)
     except Exception:
         pass
@@ -626,41 +748,115 @@ class App(ttk.Frame):
         icon = SECTION_ICONS.get(key)
         return f"{icon} {text}" if icon else text
 
+    def _style(self, name):
+        """カード用のスタイル名を返す。作れなかった環境では通常のスタイル名に落とす。
+
+        `_apply_theme()` の戻り値には新しい項目が無いこともある（テストが3項目だけの
+        dict に差し替える）ので、`get()` で読む。
+        """
+        return name if self._theme.get("card") else _PLAIN_STYLES[name]
+
+    def _surface_colour(self, card_colour):
+        """tk（ttkでない）部品の背景色。カードの配色が無い環境では既定の地色にする。"""
+        if self._theme.get("card"):
+            return card_colour
+        try:
+            return ttk.Style(self).lookup("TFrame", "background") or card_colour
+        except tk.TclError:
+            return card_colour
+
     def _build_widgets(self):
         self.columnconfigure(0, weight=1)
         # ログ欄（row=3）だけが縦に伸びる。
         self.rowconfigure(3, weight=1)
+        try:
+            self.configure(style=self._style("App.TFrame"))
+        except tk.TclError:
+            pass
 
         self._build_file_section()
         self._build_run_section()
         self._build_progress_section()
         self._build_log_section()
-        self._build_footer_section()
+        self._build_status_bar()
+
+    def _make_card(self, row, title, sticky="ew", pady=(PAD_OUTER, 0)):
+        """白い面と細い枠線のカードを置き、中身を入れるフレームを返す。
+
+        titleがNoneなら見出しは付けない。vista/winnative で背景色が効かない場合は、
+        色が付かないだけで配置は変わらない。
+        """
+        options = {"highlightthickness": 1}
+        if self._theme.get("card"):
+            options.update(
+                background=COLOR_CARD,
+                highlightbackground=COLOR_BORDER,
+                highlightcolor=COLOR_BORDER,
+            )
+        outer = tk.Frame(self, **options)
+        outer.grid(row=row, column=0, sticky=sticky, padx=PAD_OUTER, pady=pady)
+        inner = ttk.Frame(outer, style=self._style("Card.TFrame"), padding=PAD_INNER)
+        inner.pack(fill="both", expand=True)
+        if title is not None:
+            ttk.Label(inner, text=title, style=self._style("CardHeading.TLabel")).pack(
+                anchor="w", pady=(0, 8)
+            )
+        content = ttk.Frame(inner, style=self._style("Card.TFrame"))
+        content.pack(fill="both", expand=True)
+        return content
 
     def _build_file_section(self):
-        frame = ttk.LabelFrame(
-            self,
-            text=self._decorate("file", "対象ファイル"),
-            padding=(12, 8, 12, 12),
-            style="SectionTitle.TLabelframe",
-        )
-        frame.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 0))
+        frame = self._make_card(0, self._decorate("file", "対象ファイル"))
         frame.columnconfigure(0, weight=1)
 
+        # ドロップ欄。破線の枠をCanvasに描き、中にファイル名の欄と案内の文を置く。
+        canvas_options = {"height": DROP_AREA_HEIGHT, "highlightthickness": 0}
+        canvas_options["background"] = self._surface_colour(COLOR_CARD)
+        self._drop_canvas = tk.Canvas(frame, **canvas_options)
+        self._drop_canvas.grid(row=0, column=0, sticky="ew")
+        drop_inner = ttk.Frame(self._drop_canvas, style=self._style("Card.TFrame"))
+        drop_inner.columnconfigure(0, weight=1)
+        self._drop_window = self._drop_canvas.create_window(0, 0, window=drop_inner)
+        self._drop_canvas.bind("<Configure>", self._redraw_drop_area)
+
         # フルパスではなくファイル名を主に見せる（長いパスで欄が埋まらないように）。
-        self.file_entry = ttk.Entry(frame, textvariable=self.file_label, state="readonly")
+        self.file_entry = ttk.Entry(drop_inner, textvariable=self.file_label, state="readonly")
         self.file_entry.grid(row=0, column=0, sticky="ew")
-        ttk.Button(frame, text="ファイルを選択…", command=self._choose_file).grid(
-            row=0, column=1, sticky="w", padx=(8, 0)
-        )
         # フルパスは補助情報として小さく添える。D&Dが使えるかもここに出す。
-        ttk.Label(
-            frame, textvariable=self.file_hint, style="Hint.TLabel", anchor="w"
-        ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        hint_label = ttk.Label(
+            drop_inner,
+            textvariable=self.file_hint,
+            style=self._style("CardHint.TLabel"),
+            anchor="center",
+        )
+        hint_label.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        # ドロップは広げた欄の全体で受け付ける。file_entry も受け口のまま残す。
+        self._drop_targets = [self._drop_canvas, drop_inner, self.file_entry, hint_label]
+
+        ttk.Button(frame, text="ファイルを選択…", command=self._choose_file).grid(
+            row=0, column=1, sticky="e", padx=(PAD_INNER, 0)
+        )
+
+    def _redraw_drop_area(self, event):
+        """ドロップ欄の大きさが変わったら、破線の枠と中身の位置・幅を合わせ直す。"""
+        canvas = self._drop_canvas
+        canvas.delete("drop_border")
+        width, height = event.width, event.height
+        canvas.create_rectangle(
+            2,
+            2,
+            max(width - 3, 3),
+            max(height - 3, 3),
+            outline=COLOR_DROP_BORDER,
+            dash=(5, 4),
+            tags="drop_border",
+        )
+        canvas.tag_lower("drop_border")
+        canvas.coords(self._drop_window, width // 2, height // 2)
+        canvas.itemconfigure(self._drop_window, width=max(width - 2 * PAD_INNER - 8, 1))
 
     def _build_run_section(self):
-        frame = ttk.Frame(self)
-        frame.grid(row=1, column=0, sticky="ew", padx=12, pady=(12, 0))
+        frame = self._make_card(1, None)
 
         # アクセント配色が使えない環境では通常のttkボタンに落とす。
         button_style = "Accent.TButton" if self._theme.get("accent_button") else "TButton"
@@ -674,11 +870,13 @@ class App(ttk.Frame):
 
         # 次巻発売日の確認（楽天ブックス）。完結チェックとは別の実行で、どちらかの
         # 実行中は両方の実行ボタンを無効にする。進捗・ログ・中断ボタンは共通。
+        # 「実行」を塗りの主ボタン、こちらを枠線の副ボタンにして主従を分ける。
+        next_style = "Secondary.TButton" if self._theme.get("secondary_button") else button_style
         self.next_button = ttk.Button(
             frame,
             text="次巻発売日を確認",
             command=self._on_next_release,
-            style=button_style,
+            style=next_style,
         )
         self.next_button.pack(side="left", padx=(8, 0))
 
@@ -697,6 +895,7 @@ class App(ttk.Frame):
             frame,
             text="採用経路のログを出力する",
             variable=self.adoption_trace,
+            style=self._style("Card.TCheckbutton"),
         ).pack(side="left", padx=(12, 0))
 
         ttk.Button(
@@ -706,21 +905,18 @@ class App(ttk.Frame):
         ttk.Label(
             frame,
             text="「タイトル」列のある .xlsx を選んで実行してください。",
-            style="Hint.TLabel",
+            style=self._style("CardHint.TLabel"),
         ).pack(side="left", padx=(12, 0))
 
     def _build_progress_section(self):
-        frame = ttk.LabelFrame(
-            self,
-            text=self._decorate("progress", "進捗"),
-            padding=(12, 8, 12, 12),
-            style="SectionTitle.TLabelframe",
-        )
-        frame.grid(row=2, column=0, sticky="ew", padx=12, pady=(12, 0))
+        frame = self._make_card(2, self._decorate("progress", "進捗"))
         frame.columnconfigure(0, weight=1)
 
         self.status_label = ttk.Label(
-            frame, textvariable=self.status_text, style="Status.TLabel", anchor="w"
+            frame,
+            textvariable=self.status_text,
+            style=self._style("CardStatus.TLabel"),
+            anchor="w",
         )
         self.status_label.grid(row=0, column=0, sticky="ew")
 
@@ -734,25 +930,25 @@ class App(ttk.Frame):
         )
         self.progress.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
-        ttk.Label(frame, text="内訳", style="Heading.TLabel").grid(
+        ttk.Label(frame, text="内訳", style=self._style("CardHeading.TLabel")).grid(
             row=2, column=0, sticky="w", pady=(10, 0)
         )
         # 判定結果ごとに色を変えるため、1つのLabelではなくFrame＋複数Labelにする。
-        self.summary_frame = ttk.Frame(frame)
+        self.summary_frame = ttk.Frame(frame, style=self._style("Card.TFrame"))
         self.summary_frame.grid(row=3, column=0, sticky="ew", pady=(2, 0))
         self.summary_label = ttk.Label(
-            self.summary_frame, textvariable=self.summary_text, anchor="w", justify="left"
+            self.summary_frame,
+            textvariable=self.summary_text,
+            style=self._style("Card.TLabel"),
+            anchor="w",
+            justify="left",
         )
         self.summary_label.pack(side="left")
 
     def _build_log_section(self):
-        frame = ttk.LabelFrame(
-            self,
-            text=self._decorate("log", "ログ"),
-            padding=(8, 4, 8, 8),
-            style="SectionTitle.TLabelframe",
+        frame = self._make_card(
+            3, self._decorate("log", "ログ"), sticky="nsew", pady=(PAD_OUTER, 0)
         )
-        frame.grid(row=3, column=0, sticky="nsew", padx=12, pady=12)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
@@ -781,16 +977,54 @@ class App(ttk.Frame):
             except tk.TclError:
                 pass
 
-    def _build_footer_section(self):
-        """バージョン表示。ウィンドウタイトルは環境によって切り詰められることが
-        あるため、不具合報告時にコピーしやすい形でも別途表示しておく。
+    def _build_status_bar(self):
+        """画面の下端の状態バー。左に実行の状態、右にバージョンを置く。
+
+        バージョンは、ウィンドウタイトルが環境によって切り詰められることがあるため、
+        不具合報告時にコピーしやすい形でも別途表示しておく。
         """
+        bar = ttk.Frame(self, style=self._style("Bar.TFrame"))
+        bar.grid(row=4, column=0, sticky="ew", padx=PAD_OUTER, pady=(8, 8))
+        bar.columnconfigure(1, weight=1)
+        self.status_bar = bar
+
+        self.run_state_dot = tk.Canvas(
+            bar,
+            width=RUN_STATE_DOT_SIZE,
+            height=RUN_STATE_DOT_SIZE,
+            highlightthickness=0,
+            background=self._surface_colour(COLOR_BG),
+        )
+        self.run_state_dot.grid(row=0, column=0, sticky="w")
+        self._run_state_dot_item = self.run_state_dot.create_oval(
+            1, 1, RUN_STATE_DOT_SIZE - 1, RUN_STATE_DOT_SIZE - 1, outline="", fill=COLOR_IDLE
+        )
+        self.run_state_text = tk.StringVar(value=RUN_STATE_IDLE)
         ttk.Label(
-            self,
+            bar, textvariable=self.run_state_text, style=self._style("Bar.TLabel")
+        ).grid(row=0, column=1, sticky="w", padx=(6, 0))
+
+        self.version_label = ttk.Label(
+            bar,
             text=f"バージョン: {version_string()}",
-            style="Hint.TLabel",
+            style=self._style("BarHint.TLabel"),
             anchor="e",
-        ).grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 8))
+        )
+        self.version_label.grid(row=0, column=2, sticky="e")
+
+    def _set_run_state(self, running):
+        """状態バーの表示を切り替える。実行中は「実行中」、それ以外は「待機中」。
+
+        ボタンの有効・無効を切り替える所（実行の開始と実行後の復帰）からだけ呼び、
+        ワーカーの処理には手を入れない。
+        """
+        self.run_state_text.set(RUN_STATE_RUNNING if running else RUN_STATE_IDLE)
+        try:
+            self.run_state_dot.itemconfigure(
+                self._run_state_dot_item, fill=COLOR_ACCENT if running else COLOR_IDLE
+            )
+        except tk.TclError:
+            pass
 
     # ------------------------------------------------ ドラッグ＆ドロップ
 
@@ -809,8 +1043,10 @@ class App(ttk.Frame):
             self._set_dnd_hint(False)
             return False
         try:
-            self.file_entry.drop_target_register(DND_FILES)
-            self.file_entry.dnd_bind("<<Drop>>", self._on_drop)
+            # 広げたドロップ欄の全体（file_entry を含む）を受け口にする。
+            for widget in self._drop_targets:
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind("<<Drop>>", self._on_drop)
         except (tk.TclError, AttributeError):
             self._set_dnd_hint(False)
             return False
@@ -934,6 +1170,7 @@ class App(ttk.Frame):
         self.run_button.config(state="disabled")
         self.next_button.config(state="disabled")
         self.cancel_button.config(state="normal")
+        self._set_run_state(True)
         threading.Thread(
             target=self._run_worker,
             kwargs={
@@ -993,6 +1230,7 @@ class App(ttk.Frame):
         self.run_button.config(state="normal")
         self.next_button.config(state="normal")
         self.cancel_button.config(state="disabled")
+        self._set_run_state(False)
         self._cancel_event = None
 
     # ------------------------------------------------ 次巻発売日の確認
@@ -1010,6 +1248,7 @@ class App(ttk.Frame):
         self.run_button.config(state="disabled")
         self.next_button.config(state="disabled")
         self.cancel_button.config(state="normal")
+        self._set_run_state(True)
         threading.Thread(
             target=self._next_release_worker,
             kwargs={"excel_path": excel_path, "cancel_event": self._cancel_event},
@@ -1151,7 +1390,7 @@ class App(ttk.Frame):
         self.summary_label.pack_forget()
         for i, (name, count) in enumerate(parts):
             if i:
-                sep = ttk.Label(self.summary_frame, text="／", style="Hint.TLabel")
+                sep = ttk.Label(self.summary_frame, text="／", style=self._style("CardHint.TLabel"))
                 sep.pack(side="left", padx=4)
                 self._summary_chips.append(sep)
             chip = ttk.Label(

@@ -614,3 +614,40 @@ def test_run_button_falls_back_to_plain_style_without_accent_support():
         assert str(widget.run_button.cget("style")) in ("", "TButton")
     finally:
         root.destroy()
+
+
+# ------------------------------------------------------------ 状態バー（Issue #526）
+
+
+def test_status_bar_shows_idle_initially(app):
+    assert app.run_state_text.get() == "待機中"
+
+
+def test_status_bar_shows_running_after_run_starts(app):
+    start_run_without_thread(app)
+
+    assert app.run_state_text.get() == "実行中"
+
+
+def test_status_bar_shows_running_after_next_release_starts(app):
+    app.excel_path.set("/tmp/対象.xlsx")
+    with patch("comic_checker.gui.threading.Thread"):
+        app._on_next_release()
+    app.master.update()
+
+    assert app.run_state_text.get() == "実行中"
+
+
+def test_status_bar_returns_to_idle_after_reset_buttons(app):
+    start_run_without_thread(app)
+
+    app._reset_buttons_after_run()
+    app.master.update()
+
+    assert app.run_state_text.get() == "待機中"
+
+
+def test_status_bar_shows_version(app):
+    from comic_checker import version_string
+
+    assert version_string() in str(app.version_label.cget("text"))
