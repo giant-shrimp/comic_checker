@@ -651,3 +651,53 @@ def test_status_bar_shows_version(app):
     from comic_checker import version_string
 
     assert version_string() in str(app.version_label.cget("text"))
+
+
+# ------------------------------------------------ モックアップに合わせた見た目（Issue #526）
+
+
+def test_nav_items_are_four_in_order(app):
+    assert [str(item.cget("text")) for item in app.nav_items] == [
+        "メイン",
+        "設定",
+        "ヘルプ",
+        "バージョン情報",
+    ]
+
+
+def test_progress_stat_values_start_as_dash(app):
+    assert app.stat_file_value.get() == "-"
+    assert app.stat_count_value.get() == "-"
+    assert app.stat_elapsed_value.get() == "-"
+
+
+def test_log_filter_has_only_all_and_clear_button_exists(app):
+    assert app.log_filter.get() == "すべて"
+    assert tuple(app.log_filter.cget("values")) == ("すべて",)
+    assert str(app.log_filter.cget("state")) == "readonly"
+    assert str(app.log_clear_button.cget("text")) == "ログをクリア"
+
+
+def test_log_clear_button_does_not_change_the_log(app):
+    app._log("残るはずの行")
+    app.log_clear_button.invoke()
+
+    assert "残るはずの行" in app.log_area.get("1.0", "end")
+
+
+def test_window_sizes_use_initial_size_on_a_large_screen():
+    from comic_checker.gui import _compute_window_sizes
+
+    initial, minimum = _compute_window_sizes(1920, 1080, 1000, 640)
+
+    assert initial == (1240, 940)
+    assert minimum == (1000, 640)
+
+
+def test_window_sizes_shrink_to_fit_a_small_screen():
+    from comic_checker.gui import SCREEN_MARGIN_HEIGHT, _compute_window_sizes
+
+    initial, minimum = _compute_window_sizes(1366, 768, 1000, 640)
+
+    assert initial[0] <= 1366 and initial[1] <= 768 - SCREEN_MARGIN_HEIGHT
+    assert minimum[0] <= initial[0] and minimum[1] <= initial[1]

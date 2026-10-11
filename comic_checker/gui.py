@@ -31,7 +31,9 @@ COLOR_CARD = "#ffffff"
 COLOR_BORDER = "#d3d8e0"
 COLOR_MUTED = "#5f6b7a"
 COLOR_BUTTON_DISABLED_FG = "#9aa3af"
-COLOR_IDLE = "#8a94a3"
+COLOR_NAV_BG = "#e8ebf0"
+COLOR_ICON_MUTED = "#8a94a3"
+COLOR_BUTTON_OUTLINE_ACTIVE = "#f3f5f8"
 
 # 文字の大きさは見出し・本文・補助の3段にそろえる。
 FONT_SIZE_HEADING = 11
@@ -43,11 +45,29 @@ PAD_OUTER = 12
 PAD_INNER = 12
 
 COLOR_DROP_BORDER = "#a9b2bf"
-DROP_AREA_HEIGHT = 84
+DROP_AREA_HEIGHT = 80
+DROP_AREA_MARGIN = 16
 RUN_STATE_DOT_SIZE = 12
+NAV_WIDTH = 180
+ICON_SIZE = 20
+# 窓の大きさ。初期値はこの大きさで、画面の作業領域（画面の大きさからタスクバーと
+# タイトルバーの分を引いたもの）より大きければ収まるように縮める。
+WINDOW_INITIAL_WIDTH = 1240
+WINDOW_INITIAL_HEIGHT = 940
+SCREEN_MARGIN_WIDTH = 20
+SCREEN_MARGIN_HEIGHT = 80
+# ログ欄が最小のときの行数。縦が足りないときに縮むのはログ欄だけにする。
+LOG_MIN_LINES = 3
 # 状態バーの左の表示。status_text（進捗の文言）とは別で、実行中かどうかだけを示す。
 RUN_STATE_IDLE = "待機中"
 RUN_STATE_RUNNING = "実行中"
+# 左のメニューの項目（文言, アイコンの種類）。先頭が選択中の表示。
+NAV_ITEMS = (
+    ("メイン", "home"),
+    ("設定", "gear"),
+    ("ヘルプ", "help"),
+    ("バージョン情報", "info"),
+)
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
@@ -401,8 +421,23 @@ def _configure_secondary_button_style(style, family):
             foreground=[("disabled", COLOR_BUTTON_DISABLED_FG)],
             bordercolor=[("disabled", COLOR_BORDER)],
         )
-        # 「中断」など通常のボタンは、無効のときに灰色の文字にする。
-        style.map("TButton", foreground=[("disabled", COLOR_BUTTON_DISABLED_FG)])
+        # 「中断」だけ、無効のときに灰色の文字にする（ダイアログのボタンには効かせない）。
+        style.map("Cancel.TButton", foreground=[("disabled", COLOR_BUTTON_DISABLED_FG)])
+        # 白地に細い枠線の副ボタン（「ファイルを選択…」など）。
+        style.configure(
+            "Outline.TButton",
+            background=COLOR_CARD,
+            bordercolor=COLOR_BORDER,
+            lightcolor=COLOR_CARD,
+            darkcolor=COLOR_CARD,
+            focuscolor=COLOR_CARD,
+            font=(family, FONT_SIZE_BODY),
+            padding=(14, 6),
+        )
+        style.map(
+            "Outline.TButton",
+            background=[("pressed", "#e4e8ee"), ("active", COLOR_BUTTON_OUTLINE_ACTIVE)],
+        )
         return True
     except tk.TclError:
         return False
@@ -540,6 +575,104 @@ def _center_window(window):
         window.geometry(f"+{x}+{y}")
     except Exception:
         pass
+
+
+def _compute_window_sizes(screen_width, screen_height, required_width, required_height):
+    """窓の初期の大きさと最小の大きさを返す（それぞれ (幅, 高さ)）。
+
+    初期値は WINDOW_INITIAL_WIDTH x WINDOW_INITIAL_HEIGHT。画面の作業領域
+    （画面の大きさからタスクバーなどの余白を引いたもの）より大きければ縮める。
+    最小の大きさは、ログ欄を最小の行数にしたときの部品の必要な大きさ
+    （required_*）で、これも作業領域を超えないようにする。縦が足りないときに
+    縮むのはログ欄だけ（他の部品は縦の伸び縮みの重みが無い）。
+    """
+    avail_width = max(screen_width - SCREEN_MARGIN_WIDTH, 1)
+    avail_height = max(screen_height - SCREEN_MARGIN_HEIGHT, 1)
+    min_size = (min(required_width, avail_width), min(required_height, avail_height))
+    initial = (
+        max(min(WINDOW_INITIAL_WIDTH, avail_width), min_size[0]),
+        max(min(WINDOW_INITIAL_HEIGHT, avail_height), min_size[1]),
+    )
+    return initial, min_size
+
+
+def _draw_icon(canvas, kind, colour, size=ICON_SIZE):
+    """Canvas に簡単な図形でアイコンを描く（画像ファイルは使わない）。
+
+    kind が未知なら何も描かない。フォントに依存する記号は最小限にしている。
+    """
+    s = size
+    w = max(s // 10, 1)
+
+    def p(v):
+        return v * s / 20
+
+    if kind == "folder":
+        canvas.create_polygon(
+            p(2), p(5), p(8), p(5), p(10), p(7), p(18), p(7), p(18), p(16), p(2), p(16),
+            fill=colour, outline=colour,
+        )
+    elif kind == "excel":
+        canvas.create_rectangle(p(1), p(1), p(19), p(19), fill=COLOR_SUCCESS, outline=COLOR_SUCCESS)
+        canvas.create_line(p(6), p(6), p(14), p(14), fill=COLOR_ON_ACCENT, width=max(w, 2))
+        canvas.create_line(p(14), p(6), p(6), p(14), fill=COLOR_ON_ACCENT, width=max(w, 2))
+    elif kind == "refresh":
+        canvas.create_arc(
+            p(3), p(3), p(17), p(17), start=60, extent=270, style="arc", outline=colour, width=w + 1
+        )
+        canvas.create_polygon(p(13), p(1), p(19), p(5), p(12), p(7), fill=colour, outline=colour)
+    elif kind == "ring":
+        canvas.create_oval(p(3), p(3), p(17), p(17), outline="#cdd4de", width=w + 2)
+        canvas.create_arc(
+            p(3), p(3), p(17), p(17), start=90, extent=-100, style="arc", outline=colour, width=w + 2
+        )
+    elif kind == "doc":
+        canvas.create_rectangle(p(4), p(2), p(16), p(18), outline=colour, width=w)
+        for y in (7, 10, 13):
+            canvas.create_line(p(7), p(y), p(13), p(y), fill=colour, width=w)
+    elif kind == "trash":
+        canvas.create_line(p(3), p(5), p(17), p(5), fill=colour, width=w + 1)
+        canvas.create_rectangle(p(8), p(2), p(12), p(5), outline=colour, width=w)
+        canvas.create_polygon(
+            p(5), p(7), p(15), p(7), p(14), p(18), p(6), p(18), outline=colour, fill="", width=w
+        )
+    elif kind == "calendar":
+        canvas.create_rectangle(p(3), p(4), p(17), p(17), outline=colour, width=w)
+        canvas.create_rectangle(p(3), p(4), p(17), p(8), fill=colour, outline=colour)
+        for x in (7, 10, 13):
+            canvas.create_rectangle(p(x), p(11), p(x + 1.5), p(13), fill=colour, outline=colour)
+    elif kind == "home":
+        canvas.create_polygon(p(2), p(10), p(10), p(3), p(18), p(10), fill=colour, outline=colour)
+        canvas.create_rectangle(p(5), p(10), p(15), p(17), fill=colour, outline=colour)
+    elif kind == "gear":
+        canvas.create_oval(p(3), p(3), p(17), p(17), outline=colour, width=w + 2)
+        canvas.create_oval(p(8), p(8), p(12), p(12), fill=colour, outline=colour)
+    elif kind in ("help", "info"):
+        canvas.create_oval(p(2), p(2), p(18), p(18), outline=colour, width=w)
+        canvas.create_text(
+            p(10), p(10), text="?" if kind == "help" else "i", fill=colour,
+            font=("TkDefaultFont", max(int(p(9)), 6), "bold"),
+        )
+    elif kind == "count":
+        canvas.create_text(
+            p(10), p(10), text="#", fill=colour, font=("TkDefaultFont", max(int(p(14)), 6), "bold")
+        )
+    elif kind == "clock":
+        canvas.create_oval(p(2), p(2), p(18), p(18), outline=colour, width=w)
+        canvas.create_line(p(10), p(10), p(10), p(5), fill=colour, width=w)
+        canvas.create_line(p(10), p(10), p(14), p(12), fill=colour, width=w)
+    elif kind == "file":
+        canvas.create_rectangle(p(4), p(2), p(16), p(18), outline=colour, width=w)
+        canvas.create_line(p(11), p(2), p(16), p(7), fill=colour, width=w)
+
+
+def _icon_canvas(parent, kind, colour, background, size=ICON_SIZE):
+    """アイコンを描いた Canvas を作って返す。"""
+    canvas = tk.Canvas(
+        parent, width=size, height=size, highlightthickness=0, borderwidth=0, background=background
+    )
+    _draw_icon(canvas, kind, colour, size)
+    return canvas
 
 
 class FilledRowsDialog(tk.Toplevel):
@@ -766,13 +899,22 @@ class App(ttk.Frame):
             return card_colour
 
     def _build_widgets(self):
-        self.columnconfigure(0, weight=1)
-        # ログ欄（row=3）だけが縦に伸びる。
-        self.rowconfigure(3, weight=1)
+        # 左にメニュー（NAV_WIDTH 固定）、右にカード。状態バーは下の端に横いっぱい。
+        self.columnconfigure(0, minsize=NAV_WIDTH)
+        self.columnconfigure(1, weight=1)
+        # 縦に伸び縮みするのはカード側の行だけ（さらにその中ではログ欄だけ）。
+        self.rowconfigure(0, weight=1)
         try:
             self.configure(style=self._style("App.TFrame"))
         except tk.TclError:
             pass
+
+        self._build_nav()
+        self._content = ttk.Frame(self, style=self._style("App.TFrame"))
+        self._content.grid(row=0, column=1, sticky="nsew")
+        self._content.columnconfigure(0, weight=1)
+        # ログ欄（row=3）だけが縦に伸びる。
+        self._content.rowconfigure(3, weight=1)
 
         self._build_file_section()
         self._build_run_section()
@@ -780,11 +922,51 @@ class App(ttk.Frame):
         self._build_log_section()
         self._build_status_bar()
 
-    def _make_card(self, row, title, sticky="ew", pady=(PAD_OUTER, 0)):
+    def _build_nav(self):
+        """窓の左の縦のメニュー。見た目だけで、押しても何もしない（機能は後で足す）。"""
+        nav = tk.Frame(self, width=NAV_WIDTH, background=COLOR_NAV_BG)
+        nav.grid(row=0, column=0, sticky="nsew")
+        nav.pack_propagate(False)
+        self.nav_frame = nav
+        self.nav_items = []
+        for index, (label, icon) in enumerate(NAV_ITEMS):
+            selected = index == 0
+            background = COLOR_ACCENT if selected else COLOR_NAV_BG
+            foreground = COLOR_ON_ACCENT if selected else "#2b3340"
+            item = tk.Label(
+                nav,
+                text=label,
+                anchor="w",
+                background=background,
+                foreground=foreground,
+                font="TkDefaultFont",
+                padx=44,
+                pady=10,
+            )
+            item.pack(fill="x", padx=8, pady=(16 if index == 0 else 2, 0))
+            _icon_canvas(item, icon, foreground, background, size=18).place(
+                x=14, rely=0.5, anchor="w"
+            )
+            self.nav_items.append(item)
+
+    def _add_button_icon(self, button, kind, colour):
+        """ボタンの左の余白にアイコンを重ねる。アイコンを押してもボタンが押される。"""
+        icon = _icon_canvas(button, kind, colour, self._surface_colour(COLOR_CARD), size=16)
+        icon.place(x=12, rely=0.5, anchor="w")
+
+        def press(_event):
+            if str(button.cget("state")) != "disabled":
+                button.invoke()
+
+        icon.bind("<Button-1>", press)
+        return icon
+
+    def _make_card(self, row, title, icon=None, sticky="ew", pady=(PAD_OUTER, 0)):
         """白い面と細い枠線のカードを置き、中身を入れるフレームを返す。
 
-        titleがNoneなら見出しは付けない。vista/winnative で背景色が効かない場合は、
-        色が付かないだけで配置は変わらない。
+        titleがNoneなら見出しは付けない。見出しの行は self._card_header に残す
+        （右側に部品を足せるように。見出しが無いときは None）。vista/winnative で
+        背景色が効かない場合は、色が付かないだけで配置は変わらない。
         """
         options = {"highlightthickness": 1}
         if self._theme.get("card"):
@@ -793,49 +975,116 @@ class App(ttk.Frame):
                 highlightbackground=COLOR_BORDER,
                 highlightcolor=COLOR_BORDER,
             )
-        outer = tk.Frame(self, **options)
+        outer = tk.Frame(self._content, **options)
         outer.grid(row=row, column=0, sticky=sticky, padx=PAD_OUTER, pady=pady)
         inner = ttk.Frame(outer, style=self._style("Card.TFrame"), padding=PAD_INNER)
         inner.pack(fill="both", expand=True)
+        self._card_header = None
         if title is not None:
-            ttk.Label(inner, text=title, style=self._style("CardHeading.TLabel")).pack(
-                anchor="w", pady=(0, 8)
+            header = ttk.Frame(inner, style=self._style("Card.TFrame"))
+            header.pack(fill="x", pady=(0, 8))
+            if icon:
+                _icon_canvas(
+                    header, icon, COLOR_ACCENT, self._surface_colour(COLOR_CARD)
+                ).pack(side="left", padx=(0, 6))
+            ttk.Label(header, text=title, style=self._style("CardHeading.TLabel")).pack(
+                side="left"
             )
+            self._card_header = header
         content = ttk.Frame(inner, style=self._style("Card.TFrame"))
         content.pack(fill="both", expand=True)
         return content
 
     def _build_file_section(self):
-        frame = self._make_card(0, self._decorate("file", "対象ファイル"))
+        frame = self._make_card(0, "対象ファイル", icon="folder")
         frame.columnconfigure(0, weight=1)
+        card_colour = self._surface_colour(COLOR_CARD)
 
-        # ドロップ欄。破線の枠をCanvasに描き、中にファイル名の欄と案内の文を置く。
+        # ドロップ欄。破線の枠をCanvasに描き、中にアイコン・案内・ファイル名・
+        # 「ファイルを選択…」ボタンを置く。
         canvas_options = {"height": DROP_AREA_HEIGHT, "highlightthickness": 0}
-        canvas_options["background"] = self._surface_colour(COLOR_CARD)
+        canvas_options["background"] = card_colour
         self._drop_canvas = tk.Canvas(frame, **canvas_options)
         self._drop_canvas.grid(row=0, column=0, sticky="ew")
         drop_inner = ttk.Frame(self._drop_canvas, style=self._style("Card.TFrame"))
-        drop_inner.columnconfigure(0, weight=1)
+        drop_inner.columnconfigure(1, weight=1)
         self._drop_window = self._drop_canvas.create_window(0, 0, window=drop_inner)
         self._drop_canvas.bind("<Configure>", self._redraw_drop_area)
 
+        excel_icon = _icon_canvas(drop_inner, "excel", COLOR_SUCCESS, card_colour, size=40)
+        excel_icon.grid(row=0, column=0, rowspan=4, sticky="w", padx=(4, 14))
+
+        guide1 = ttk.Label(
+            drop_inner,
+            text="ここに .xlsx ファイルをドラッグ＆ドロップするか、",
+            style=self._style("Card.TLabel"),
+            anchor="w",
+        )
+        guide1.grid(row=0, column=1, sticky="ew")
+        guide2 = ttk.Label(
+            drop_inner,
+            text="「ファイルを選択」ボタンから選んでください。",
+            style=self._style("Card.TLabel"),
+            anchor="w",
+        )
+        guide2.grid(row=1, column=1, sticky="ew")
+        title_hint = ttk.Label(
+            drop_inner,
+            text="「タイトル」列のある .xlsx を選んで実行してください。",
+            style=self._style("CardHint.TLabel"),
+            anchor="w",
+        )
+        title_hint.grid(row=2, column=1, sticky="ew", pady=(2, 0))
+
         # フルパスではなくファイル名を主に見せる（長いパスで欄が埋まらないように）。
-        self.file_entry = ttk.Entry(drop_inner, textvariable=self.file_label, state="readonly")
-        self.file_entry.grid(row=0, column=0, sticky="ew")
+        file_row = ttk.Frame(drop_inner, style=self._style("Card.TFrame"))
+        file_row.grid(row=3, column=1, sticky="ew", pady=(6, 0))
+        file_row.columnconfigure(1, weight=1)
+        self.file_entry = ttk.Entry(
+            file_row, textvariable=self.file_label, state="readonly", width=28
+        )
+        self.file_entry.grid(row=0, column=0, sticky="w")
         # フルパスは補助情報として小さく添える。D&Dが使えるかもここに出す。
         hint_label = ttk.Label(
-            drop_inner,
+            file_row,
             textvariable=self.file_hint,
             style=self._style("CardHint.TLabel"),
-            anchor="center",
+            anchor="w",
         )
-        hint_label.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        # ドロップは広げた欄の全体で受け付ける。file_entry も受け口のまま残す。
-        self._drop_targets = [self._drop_canvas, drop_inner, self.file_entry, hint_label]
+        hint_label.grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
-        ttk.Button(frame, text="ファイルを選択…", command=self._choose_file).grid(
-            row=0, column=1, sticky="e", padx=(PAD_INNER, 0)
+        outline = "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
+        choose = ttk.Button(
+            drop_inner,
+            text="ファイルを選択…",
+            command=self._choose_file,
+            style=outline,
+            padding=(34, 6, 14, 6),
         )
+        choose.grid(row=0, column=2, rowspan=4, sticky="e", padx=(PAD_INNER, 4))
+        self._add_button_icon(choose, "folder", COLOR_ACCENT)
+
+        # 破線の枠の高さは中身の高さに余白を足したものにする（無駄に高くしない）。
+        try:
+            drop_inner.update_idletasks()
+            self._drop_canvas.configure(
+                height=max(drop_inner.winfo_reqheight() + DROP_AREA_MARGIN, DROP_AREA_HEIGHT)
+            )
+        except tk.TclError:
+            pass
+
+        # ドロップは広げた欄の全体で受け付ける。file_entry も受け口のまま残す。
+        self._drop_targets = [
+            self._drop_canvas,
+            drop_inner,
+            excel_icon,
+            guide1,
+            guide2,
+            title_hint,
+            file_row,
+            self.file_entry,
+            hint_label,
+        ]
 
     def _redraw_drop_area(self, event):
         """ドロップ欄の大きさが変わったら、破線の枠と中身の位置・幅を合わせ直す。"""
@@ -871,14 +1120,17 @@ class App(ttk.Frame):
         # 次巻発売日の確認（楽天ブックス）。完結チェックとは別の実行で、どちらかの
         # 実行中は両方の実行ボタンを無効にする。進捗・ログ・中断ボタンは共通。
         # 「実行」を塗りの主ボタン、こちらを枠線の副ボタンにして主従を分ける。
-        next_style = "Secondary.TButton" if self._theme.get("secondary_button") else button_style
+        has_secondary = self._theme.get("secondary_button")
+        next_style = "Secondary.TButton" if has_secondary else button_style
         self.next_button = ttk.Button(
             frame,
             text="次巻発売日を確認",
             command=self._on_next_release,
             style=next_style,
+            padding=(38, 7, 18, 7),
         )
         self.next_button.pack(side="left", padx=(8, 0))
+        self._add_button_icon(self.next_button, "refresh", COLOR_ACCENT)
 
         # 中断ボタンは実行中だけ有効にする（Issue #61）。数百行の入力では実行が
         # 1時間近くかかるので、強制終了せずに止められる必要がある。
@@ -887,6 +1139,7 @@ class App(ttk.Frame):
             text=self._decorate("cancel", "中断"),
             command=self._on_cancel,
             state="disabled",
+            style="Cancel.TButton",
         )
         self.cancel_button.pack(side="left", padx=(8, 0))
 
@@ -898,18 +1151,19 @@ class App(ttk.Frame):
             style=self._style("Card.TCheckbutton"),
         ).pack(side="left", padx=(12, 0))
 
-        ttk.Button(
-            frame, text="楽天APIキーの設定…", command=self._open_key_dialog
-        ).pack(side="left", padx=(12, 0))
-
-        ttk.Label(
+        outline = "Outline.TButton" if has_secondary else "TButton"
+        key_button = ttk.Button(
             frame,
-            text="「タイトル」列のある .xlsx を選んで実行してください。",
-            style=self._style("CardHint.TLabel"),
-        ).pack(side="left", padx=(12, 0))
+            text="楽天APIキーの設定…",
+            command=self._open_key_dialog,
+            style=outline,
+            padding=(34, 6, 14, 6),
+        )
+        key_button.pack(side="left", padx=(12, 0))
+        self._add_button_icon(key_button, "calendar", COLOR_ACCENT)
 
     def _build_progress_section(self):
-        frame = self._make_card(2, self._decorate("progress", "進捗"))
+        frame = self._make_card(2, "進捗", icon="ring")
         frame.columnconfigure(0, weight=1)
 
         self.status_label = ttk.Label(
@@ -930,12 +1184,50 @@ class App(ttk.Frame):
         )
         self.progress.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
-        ttk.Label(frame, text="内訳", style=self._style("CardHeading.TLabel")).grid(
-            row=2, column=0, sticky="w", pady=(10, 0)
+        tk.Frame(frame, height=1, background=COLOR_BORDER).grid(
+            row=2, column=0, sticky="ew", pady=(12, 0)
+        )
+
+        # 3つの欄。見た目だけで、値は「-」のまま更新しない（後の Issue で足す）。
+        stats = ttk.Frame(frame, style=self._style("Card.TFrame"))
+        stats.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        self.stat_file_value = tk.StringVar(value="-")
+        self.stat_count_value = tk.StringVar(value="-")
+        self.stat_elapsed_value = tk.StringVar(value="-")
+        stat_cells = (
+            ("対象ファイル", "file", self.stat_file_value),
+            ("処理件数", "count", self.stat_count_value),
+            ("経過時間", "clock", self.stat_elapsed_value),
+        )
+        card_colour = self._surface_colour(COLOR_CARD)
+        for index, (name, icon, variable) in enumerate(stat_cells):
+            column = index * 2
+            stats.columnconfigure(column, weight=1, uniform="stat")
+            cell = ttk.Frame(stats, style=self._style("Card.TFrame"))
+            cell.grid(row=0, column=column, sticky="ew")
+            _icon_canvas(cell, icon, COLOR_ICON_MUTED, card_colour, size=26).grid(
+                row=0, column=0, rowspan=2, padx=(10, 10)
+            )
+            ttk.Label(cell, text=name, style=self._style("CardHint.TLabel")).grid(
+                row=0, column=1, sticky="w"
+            )
+            ttk.Label(cell, textvariable=variable, style=self._style("Card.TLabel")).grid(
+                row=1, column=1, sticky="w"
+            )
+            if index < len(stat_cells) - 1:
+                tk.Frame(stats, width=1, background=COLOR_BORDER).grid(
+                    row=0, column=column + 1, sticky="ns", padx=4
+                )
+
+        # 3つの欄の下に「内訳」を1行で置く（縦の高さを節約する）。
+        summary_row = ttk.Frame(frame, style=self._style("Card.TFrame"))
+        summary_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        ttk.Label(summary_row, text="内訳", style=self._style("CardHeading.TLabel")).pack(
+            side="left", padx=(0, 12)
         )
         # 判定結果ごとに色を変えるため、1つのLabelではなくFrame＋複数Labelにする。
-        self.summary_frame = ttk.Frame(frame, style=self._style("Card.TFrame"))
-        self.summary_frame.grid(row=3, column=0, sticky="ew", pady=(2, 0))
+        self.summary_frame = ttk.Frame(summary_row, style=self._style("Card.TFrame"))
+        self.summary_frame.pack(side="left", fill="x")
         self.summary_label = ttk.Label(
             self.summary_frame,
             textvariable=self.summary_text,
@@ -946,20 +1238,41 @@ class App(ttk.Frame):
         self.summary_label.pack(side="left")
 
     def _build_log_section(self):
-        frame = self._make_card(
-            3, self._decorate("log", "ログ"), sticky="nsew", pady=(PAD_OUTER, 0)
-        )
+        frame = self._make_card(3, "ログ", icon="doc", sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        # ScrolledTextにttk版は無いのでtkのまま使い、見た目だけ整える。
+        # 見出しの行の右に、絞り込みとクリア。見た目だけで、押しても何もしない。
+        header = self._card_header
+        outline = "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
+        self.log_clear_button = ttk.Button(
+            header, text="ログをクリア", style=outline, padding=(30, 4, 12, 4)
+        )
+        self.log_clear_button.pack(side="right")
+        self._add_button_icon(self.log_clear_button, "trash", COLOR_MUTED)
+        self.log_filter = ttk.Combobox(
+            header, values=("すべて",), state="readonly", width=12
+        )
+        self.log_filter.current(0)
+        self.log_filter.pack(side="right", padx=(0, 8))
+
+        # ScrolledTextにttk版は無いのでtkのまま使い、枠線は外側のFrameで描く。
         # wrapは"none"にしないこと。ScrolledTextが用意するスクロールバーは
         # 縦だけなので、"none"にすると欄幅を超えた行（長いタイトル＋長い
         # 参照タイトル）が横スクロールできず読めなくなる。
-        self.log_area = ScrolledText(
+        # 高さの要求はLOG_MIN_LINES行にして、縦が足りないときはこの欄だけが縮む。
+        log_border = tk.Frame(
             frame,
+            highlightthickness=1,
+            background=COLOR_CARD,
+            highlightbackground=COLOR_BORDER,
+            highlightcolor=COLOR_BORDER,
+        )
+        log_border.grid(row=0, column=0, sticky="nsew")
+        self.log_area = ScrolledText(
+            log_border,
             state="disabled",
-            height=14,
+            height=LOG_MIN_LINES,
             width=80,
             wrap="word",
             relief="flat",
@@ -968,7 +1281,7 @@ class App(ttk.Frame):
             spacing1=1,
             spacing3=1,
         )
-        self.log_area.grid(row=0, column=0, sticky="nsew")
+        self.log_area.pack(fill="both", expand=True)
 
         mono = _pick_font(self.master, MONO_FONT_CANDIDATES)
         if mono:
@@ -984,7 +1297,7 @@ class App(ttk.Frame):
         不具合報告時にコピーしやすい形でも別途表示しておく。
         """
         bar = ttk.Frame(self, style=self._style("Bar.TFrame"))
-        bar.grid(row=4, column=0, sticky="ew", padx=PAD_OUTER, pady=(8, 8))
+        bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=PAD_OUTER, pady=(6, 6))
         bar.columnconfigure(1, weight=1)
         self.status_bar = bar
 
@@ -997,7 +1310,7 @@ class App(ttk.Frame):
         )
         self.run_state_dot.grid(row=0, column=0, sticky="w")
         self._run_state_dot_item = self.run_state_dot.create_oval(
-            1, 1, RUN_STATE_DOT_SIZE - 1, RUN_STATE_DOT_SIZE - 1, outline="", fill=COLOR_IDLE
+            1, 1, RUN_STATE_DOT_SIZE - 1, RUN_STATE_DOT_SIZE - 1, outline="", fill=COLOR_SUCCESS
         )
         self.run_state_text = tk.StringVar(value=RUN_STATE_IDLE)
         ttk.Label(
@@ -1021,7 +1334,7 @@ class App(ttk.Frame):
         self.run_state_text.set(RUN_STATE_RUNNING if running else RUN_STATE_IDLE)
         try:
             self.run_state_dot.itemconfigure(
-                self._run_state_dot_item, fill=COLOR_ACCENT if running else COLOR_IDLE
+                self._run_state_dot_item, fill=COLOR_ACCENT if running else COLOR_SUCCESS
             )
         except tk.TclError:
             pass
@@ -1422,10 +1735,20 @@ def main():
 
     root = _create_root()
     root.title(f"コミックチェッカー v{version_string()}")
-    root.minsize(720, 560)
 
     app = App(master=root)
     app.pack(fill="both", expand=True)
+
+    # 窓の大きさ。最小は、ログ欄を最小の行数にした部品の必要な大きさ。
+    root.update_idletasks()
+    initial, minimum = _compute_window_sizes(
+        root.winfo_screenwidth(),
+        root.winfo_screenheight(),
+        app.winfo_reqwidth(),
+        app.winfo_reqheight(),
+    )
+    root.minsize(*minimum)
+    root.geometry(f"{initial[0]}x{initial[1]}")
 
     _center_window(root)
     root.mainloop()
