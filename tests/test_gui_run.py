@@ -703,18 +703,25 @@ def test_progress_stat_values_start_as_dash(app):
     assert app.stat_elapsed_value.get() == "-"
 
 
-def test_log_filter_has_only_all_and_clear_button_exists(app):
+def test_log_filter_lists_all_and_each_level_and_clear_button_exists(app):
     assert app.log_filter.get() == "すべて"
-    assert tuple(app.log_filter.cget("values")) == ("すべて",)
+    assert tuple(app.log_filter.cget("values")) == (
+        "すべて",
+        "INFO",
+        "SUCCESS",
+        "WARNING",
+        "ERROR",
+    )
     assert str(app.log_filter.cget("state")) == "readonly"
     assert str(app.log_clear_button.cget("text")) == "ログをクリア"
 
 
-def test_log_clear_button_does_not_change_the_log(app):
-    app._log("残るはずの行")
+def test_log_clear_button_clears_the_log(app):
+    app._log("消えるはずの行")
     app.log_clear_button.invoke()
 
-    assert "残るはずの行" in app.log_area.get("1.0", "end")
+    assert "消えるはずの行" not in app.log_area.get("1.0", "end")
+    assert app._log_entries == []
 
 
 def test_window_sizes_use_initial_size_on_a_large_screen():
