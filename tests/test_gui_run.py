@@ -540,6 +540,38 @@ def test_dnd_is_disabled_gracefully_when_tkinterdnd2_is_missing(app):
         assert app._init_dnd() is False
 
 
+def test_init_dnd_registers_every_drop_target_including_file_entry(app):
+    # 広げたドロップ欄の全部品（file_entry を含む）が受け口として登録される。
+    import types
+    from unittest.mock import MagicMock
+
+    fake_module = types.SimpleNamespace(DND_FILES="DND_FILES_SENTINEL")
+    assert app._drop_targets
+    assert app.file_entry in app._drop_targets
+
+    registers = {}
+    binds = {}
+    patches = []
+    for widget in app._drop_targets:
+        registers[widget] = MagicMock()
+        binds[widget] = MagicMock()
+        patches.append(patch.object(widget, "drop_target_register", registers[widget], create=True))
+        patches.append(patch.object(widget, "dnd_bind", binds[widget], create=True))
+
+    for p in patches:
+        p.start()
+    try:
+        with patch.dict("sys.modules", {"tkinterdnd2": fake_module}):
+            assert app._init_dnd() is True
+    finally:
+        for p in patches:
+            p.stop()
+
+    for widget in app._drop_targets:
+        registers[widget].assert_called_once_with("DND_FILES_SENTINEL")
+        binds[widget].assert_called_once_with("<<Drop>>", app._on_drop)
+
+
 # ------------------------------------------------------ 配色・アイコン
 
 
