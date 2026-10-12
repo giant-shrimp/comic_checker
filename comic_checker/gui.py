@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, ttk
 from tkinter.scrolledtext import ScrolledText
@@ -61,6 +62,8 @@ LOG_MIN_LINES = 3
 # 状態バーの左の表示。status_text（進捗の文言）とは別で、実行中かどうかだけを示す。
 RUN_STATE_IDLE = "待機中"
 RUN_STATE_RUNNING = "実行中"
+# 経過時間の欄を更新する間隔（ミリ秒）。
+ELAPSED_TICK_MS = 1000
 # 左のメニューの項目（文言, アイコンの種類）。先頭が選択中の表示。
 NAV_ITEMS = (
     ("メイン", "home"),
@@ -178,6 +181,16 @@ def filled_rows_message(counts):
         )
     lines.append("判定結果を最新の内容に更新したい場合は、すべて再判定してください。")
     return "\n".join(lines)
+
+
+def _format_elapsed(seconds):
+    """経過秒数を「mm:ss」で返す。1時間以上は「h:mm:ss」。"""
+    total = max(int(seconds), 0)
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
 
 
 def _enable_dpi_awareness():
@@ -867,6 +880,10 @@ class App(ttk.Frame):
         # 実行中の中断要求（Issue #61）。実行していない間は None。生成も差し替えも
         # メインスレッド（_on_run）だけで行い、ワーカーへは引数で渡す。
         self._cancel_event = None
+        # 経過時間。時計は1か所から取り、テストで差し替えられるようにする。
+        self._clock = time.monotonic
+        self._elapsed_start = 0.0
+        self._elapsed_after_id = None
         self._theme = _apply_theme(master)
         self._build_widgets()
         self.excel_path.trace_add("write", self._on_path_changed)
@@ -1188,7 +1205,8 @@ class App(ttk.Frame):
             row=2, column=0, sticky="ew", pady=(12, 0)
         )
 
-        # 3つの欄。見た目だけで、値は「-」のまま更新しない（後の Issue で足す）。
+        # 3つの欄。対象ファイルは _on_path_changed()、処理件数は _update_progress()、
+        # 経過時間は _start_elapsed()・_tick_elapsed()・_stop_elapsed() が更新する。
         stats = ttk.Frame(frame, style=self._style("Card.TFrame"))
         stats.grid(row=3, column=0, sticky="ew", pady=(10, 0))
         self.stat_file_value = tk.StringVar(value="-")
@@ -1417,9 +1435,11 @@ class App(ttk.Frame):
         if path:
             self.file_label.set(os.path.basename(path))
             self.file_hint.set(path)
+            self.stat_file_value.set(os.path.basename(path))
         else:
             self.file_label.set("（未選択）")
             self.file_hint.set("")
+            self.stat_file_value.set("-")
 
     def _choose_file(self):
         path = filedialog.askopenfilename(
@@ -1484,6 +1504,7 @@ class App(ttk.Frame):
         self.next_button.config(state="disabled")
         self.cancel_button.config(state="normal")
         self._set_run_state(True)
+        self._start_elapsed()
         threading.Thread(
             target=self._run_worker,
             kwargs={
@@ -1544,7 +1565,36 @@ class App(ttk.Frame):
         self.next_button.config(state="normal")
         self.cancel_button.config(state="disabled")
         self._set_run_state(False)
+        self._stop_elapsed()
         self._cancel_event = None
+
+    # ------------------------------------------------ 経過時間
+
+    def _start_elapsed(self):
+        """経過時間の計測を始める（メインスレッドのafterだけで数える）。"""
+        if self._elapsed_after_id is not None:
+            self.after_cancel(self._elapsed_after_id)
+        self._elapsed_start = self._clock()
+        self.stat_elapsed_value.set(_format_elapsed(0))
+        self._elapsed_after_id = self.after(ELAPSED_TICK_MS, self._tick_elapsed)
+
+    def _tick_elapsed(self):
+        # 予約の回数ではなく開始時刻からの差で出す（afterの遅れを積み重ねない）。
+        self._refresh_elapsed()
+        self._elapsed_after_id = self.after(ELAPSED_TICK_MS, self._tick_elapsed)
+
+    def _refresh_elapsed(self):
+        self.stat_elapsed_value.set(
+            _format_elapsed(self._clock() - self._elapsed_start)
+        )
+
+    def _stop_elapsed(self):
+        """計測を止め、その時点の値を最後に1回表示して残す。未開始なら何もしない。"""
+        if self._elapsed_after_id is None:
+            return
+        self.after_cancel(self._elapsed_after_id)
+        self._elapsed_after_id = None
+        self._refresh_elapsed()
 
     # ------------------------------------------------ 次巻発売日の確認
 
@@ -1562,6 +1612,7 @@ class App(ttk.Frame):
         self.next_button.config(state="disabled")
         self.cancel_button.config(state="normal")
         self._set_run_state(True)
+        self._start_elapsed()
         threading.Thread(
             target=self._next_release_worker,
             kwargs={"excel_path": excel_path, "cancel_event": self._cancel_event},
@@ -1669,6 +1720,8 @@ class App(ttk.Frame):
     def _update_progress(self, index, total):
         # totalが0（対象行なし・実行前）のときは空のバーにする。
         self.progress.config(maximum=max(total, 1), value=index)
+        # 処理件数の欄も同じ時点で変える。totalが0のときは「-」。
+        self.stat_count_value.set(f"{index} / {total}" if total > 0 else "-")
 
     def _update_summary(self):
         parts = []
