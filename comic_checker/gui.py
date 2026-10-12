@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 import threading
@@ -25,6 +26,27 @@ COLOR_ACCENT_PRESSED = "#08508f"
 COLOR_ACCENT_DISABLED = "#a8c3e0"
 COLOR_SUCCESS = "#1f7a3d"
 COLOR_ON_ACCENT = "#ffffff"
+COLOR_WARNING = "#a2660a"
+COLOR_ERROR = "#b3261e"
+
+# ログの各行の形と色。印（レベル）は淡い背景に濃い文字。
+LOG_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_LEVELS = ("INFO", "SUCCESS", "WARNING", "ERROR")
+LOG_DEFAULT_LEVEL = "INFO"
+# 印の文字は最長のレベル名（SUCCESS・WARNING の7文字）に空白で合わせる。
+LOG_LEVEL_WIDTH = max(len(level) for level in LOG_LEVELS)
+LOG_FILTER_ALL = "すべて"
+COLOR_LOG_INFO_BG = "#e3eefb"
+COLOR_LOG_SUCCESS_BG = "#e1f1e6"
+COLOR_LOG_WARNING_BG = "#f8eddb"
+COLOR_LOG_ERROR_BG = "#f9e1df"
+# レベル -> (印の背景, 印の文字)。log_area のタグはこの辞書から作る。
+LOG_LEVEL_COLORS = {
+    "INFO": (COLOR_LOG_INFO_BG, COLOR_ACCENT),
+    "SUCCESS": (COLOR_LOG_SUCCESS_BG, COLOR_SUCCESS),
+    "WARNING": (COLOR_LOG_WARNING_BG, COLOR_WARNING),
+    "ERROR": (COLOR_LOG_ERROR_BG, COLOR_ERROR),
+}
 
 # 面の配色。画面の地は淡い灰色、各セクションは白いカードに細い枠線を付ける。
 COLOR_BG = "#f1f3f6"
@@ -882,6 +904,10 @@ class App(ttk.Frame):
         self._cancel_event = None
         # 経過時間。時計は1か所から取り、テストで差し替えられるようにする。
         self._clock = time.monotonic
+        # ログの行頭の時刻の取り出し口。テストで固定の時刻に差し替える。
+        self._now = datetime.datetime.now
+        # 書いた行（時刻の文字列, レベル, 本文）。絞り込みで書き直すために全部持つ。
+        self._log_entries = []
         self._elapsed_start = 0.0
         self._elapsed_after_id = None
         self._theme = _apply_theme(master)
@@ -1260,19 +1286,25 @@ class App(ttk.Frame):
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        # 見出しの行の右に、絞り込みとクリア。見た目だけで、押しても何もしない。
+        # 見出しの行の右に、レベルでの絞り込みとクリア。クリアは表示と保持している行を消す
+        # （絞り込みの選択と、ファイルに出す採用経路トレースは変えない）。
         header = self._card_header
         outline = "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
         self.log_clear_button = ttk.Button(
-            header, text="ログをクリア", style=outline, padding=(30, 4, 12, 4)
+            header,
+            text="ログをクリア",
+            style=outline,
+            padding=(30, 4, 12, 4),
+            command=self._on_log_clear,
         )
         self.log_clear_button.pack(side="right")
         self._add_button_icon(self.log_clear_button, "trash", COLOR_MUTED)
         self.log_filter = ttk.Combobox(
-            header, values=("すべて",), state="readonly", width=12
+            header, values=(LOG_FILTER_ALL,) + LOG_LEVELS, state="readonly", width=12
         )
         self.log_filter.current(0)
         self.log_filter.pack(side="right", padx=(0, 8))
+        self.log_filter.bind("<<ComboboxSelected>>", self._on_log_filter_changed)
 
         # ScrolledTextにttk版は無いのでtkのまま使い、枠線は外側のFrameで描く。
         # wrapは"none"にしないこと。ScrolledTextが用意するスクロールバーは
@@ -1300,6 +1332,10 @@ class App(ttk.Frame):
             spacing3=1,
         )
         self.log_area.pack(fill="both", expand=True)
+        for level, (background, foreground) in LOG_LEVEL_COLORS.items():
+            self.log_area.tag_configure(
+                f"log_{level}", background=background, foreground=foreground
+            )
 
         mono = _pick_font(self.master, MONO_FONT_CANDIDATES)
         if mono:
@@ -1396,7 +1432,7 @@ class App(ttk.Frame):
         try:
             self._handle_drop(getattr(event, "data", ""))
         except Exception as exc:
-            self._log(f"ドロップの処理に失敗しました: {exc}")
+            self._log(f"ドロップの処理に失敗しました: {exc}", level="ERROR")
         return getattr(event, "action", None)
 
     def _handle_drop(self, data):
@@ -1407,25 +1443,27 @@ class App(ttk.Frame):
         """
         paths = _parse_dropped_paths(data)
         if not paths:
-            self._log("ドロップされたファイルを認識できませんでした。")
+            self._log("ドロップされたファイルを認識できませんでした。", level="WARNING")
             return None
 
         if len(paths) > 1:
             self._log(
                 f"{len(paths)}件ドロップされました。最初の1件だけを使います: "
-                f"{os.path.basename(paths[0])}"
+                f"{os.path.basename(paths[0])}",
+                level="WARNING",
             )
 
         path = paths[0]
         if os.path.splitext(path)[1].lower() != EXCEL_SUFFIX:
             self._log(
                 f"Excelファイル（{EXCEL_SUFFIX}）ではないため読み込みません: "
-                f"{os.path.basename(path)}"
+                f"{os.path.basename(path)}",
+                level="WARNING",
             )
             return None
 
         self.excel_path.set(path)
-        self._log(f"ファイルを選択しました: {os.path.basename(path)}")
+        self._log(f"ファイルを選択しました: {os.path.basename(path)}", level="INFO")
         return path
 
     # -------------------------------------------------------------------- 操作
@@ -1459,7 +1497,7 @@ class App(ttk.Frame):
         try:
             return count_rows(excel_path)
         except Exception as exc:
-            self._log(f"判定済み行数を確認できませんでした（実行は継続します）: {exc}")
+            self._log(f"判定済み行数を確認できませんでした（実行は継続します）: {exc}", level="WARNING")
             return None
 
     def _resolve_skip_filled(self, excel_path):
@@ -1470,21 +1508,22 @@ class App(ttk.Frame):
 
         choice = FilledRowsDialog(self.master, counts).show()
         if choice == CHOICE_CANCEL:
-            self._log("実行をキャンセルしました。")
+            self._log("実行をキャンセルしました。", level="INFO")
             return None
         if choice == CHOICE_REJUDGE:
-            self._log(f"すべて再判定します（{counts.total}件）。")
+            self._log(f"すべて再判定します（{counts.total}件）。", level="INFO")
             return False
         self._log(
             f"{counts.total}行中 {counts.filled}行は判定済みのためスキップします"
-            f"（処理対象 {counts.pending}件）。"
+            f"（処理対象 {counts.pending}件）。",
+            level="INFO",
         )
         return True
 
     def _on_run(self):
         excel_path = self.excel_path.get()
         if not excel_path:
-            self._log("Excelファイルを選択してください")
+            self._log("Excelファイルを選択してください", level="WARNING")
             return
 
         skip_filled = self._resolve_skip_filled(excel_path)
@@ -1523,15 +1562,15 @@ class App(ttk.Frame):
         # 押した瞬間にボタンを落として「効いていない」ように見せない。実際の停止は
         # run() が次の行の切れ目で気づくまで待つことになるので、そのことも書く。
         self.cancel_button.config(state="disabled")
-        self._log("中断します（現在の行の処理を終えるまでお待ちください）")
+        self._log("中断します（現在の行の処理を終えるまでお待ちください）", level="WARNING")
         self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
         self._cancel_event.set()
 
     def _run_worker(self, excel_path, skip_filled=True, cancel_event=None, adoption_trace_file=None):
         self._reset_run_state()
-        self._log_threadsafe(f"実行開始: {excel_path}")
+        self._log_threadsafe(f"実行開始: {excel_path}", level="INFO")
         if adoption_trace_file is not None:
-            self._log_threadsafe(f"採用経路トレースを書き出します: {adoption_trace_file}")
+            self._log_threadsafe(f"採用経路トレースを書き出します: {adoption_trace_file}", level="INFO")
         try:
             total = run(
                 excel_path,
@@ -1544,16 +1583,17 @@ class App(ttk.Frame):
             # 完了と中断で表示を分けないと、途中で止めたのに完了したように見える。
             if cancel_event is not None and cancel_event.is_set():
                 self._log_threadsafe(
-                    f"中断しました（{total}件処理・保存済み、保存先: {excel_path}）"
+                    f"中断しました（{total}件処理・保存済み、保存先: {excel_path}）",
+                    level="WARNING",
                 )
                 self._set_status_threadsafe(f"中断しました（{total}件処理・保存済み）")
                 self.after(0, self._set_progress_done, False)
             else:
-                self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）")
+                self._log_threadsafe(f"完了しました（{total}件処理、保存先: {excel_path}）", level="SUCCESS")
                 self._set_status_threadsafe(f"完了しました（{total}件処理）")
                 self.after(0, self._set_progress_done, True)
         except Exception as exc:
-            self._log_threadsafe(f"エラーが発生しました: {exc}")
+            self._log_threadsafe(f"エラーが発生しました: {exc}", level="ERROR")
             self._set_status_threadsafe("エラーで中断しました")
             self.after(0, self._set_progress_done, False)
         finally:
@@ -1604,7 +1644,7 @@ class App(ttk.Frame):
     def _on_next_release(self):
         excel_path = self.excel_path.get()
         if not excel_path:
-            self._log("Excelファイルを選択してください")
+            self._log("Excelファイルを選択してください", level="WARNING")
             return
 
         self._cancel_event = threading.Event()
@@ -1621,7 +1661,7 @@ class App(ttk.Frame):
 
     def _next_release_worker(self, excel_path, cancel_event=None):
         self._reset_run_state(NEXT_SUMMARY_STATUSES)
-        self._log_threadsafe(f"次巻発売日の確認を開始: {excel_path}")
+        self._log_threadsafe(f"次巻発売日の確認を開始: {excel_path}", level="INFO")
         self._next_total = 0
         try:
             processed = next_release.run(
@@ -1636,18 +1676,19 @@ class App(ttk.Frame):
                 and processed < self._next_total
             ):
                 self._log_threadsafe(
-                    f"中断しました（{processed}件処理・保存済み、保存先: {excel_path}）"
+                    f"中断しました（{processed}件処理・保存済み、保存先: {excel_path}）",
+                    level="WARNING",
                 )
                 self._set_status_threadsafe(f"中断しました（{processed}件処理・保存済み）")
                 self.after(0, self._set_progress_done, False)
             else:
-                self._log_threadsafe(f"完了しました（{processed}件処理、保存先: {excel_path}）")
+                self._log_threadsafe(f"完了しました（{processed}件処理、保存先: {excel_path}）", level="SUCCESS")
                 self._set_status_threadsafe(f"完了しました（{processed}件処理）")
                 self.after(0, self._set_progress_done, True)
         except (RuntimeError, ValueError) as exc:
             # キー未設定（_load_keys の文面）・タイトル列なし（find_column の文面）。
             # どちらも文面にキーの値を含まないので、そのまま出す。
-            self._log_threadsafe(str(exc))
+            self._log_threadsafe(str(exc), level="ERROR")
             self._set_status_threadsafe(str(exc))
             self.after(0, self._set_progress_done, False)
         except PermissionError:
@@ -1655,12 +1696,12 @@ class App(ttk.Frame):
                 "Excel を保存できません。ファイルを Excel で開いたままになっていないか"
                 "確認してください"
             )
-            self._log_threadsafe(message)
+            self._log_threadsafe(message, level="ERROR")
             self._set_status_threadsafe(message)
             self.after(0, self._set_progress_done, False)
         except Exception as exc:
             # 例外の文面にはキーを含むURLが入りうるため、型の名前だけを出す。
-            self._log_threadsafe(f"エラーが発生しました: {type(exc).__name__}")
+            self._log_threadsafe(f"エラーが発生しました: {type(exc).__name__}", level="ERROR")
             self._set_status_threadsafe("エラーで中断しました")
             self.after(0, self._set_progress_done, False)
         finally:
@@ -1672,9 +1713,9 @@ class App(ttk.Frame):
         self._counts[key] = self._counts.get(key, 0) + 1
 
         if error is not None:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー {type(error).__name__}")
+            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー {type(error).__name__}", level="ERROR")
         else:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})")
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})", level="INFO")
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
@@ -1685,9 +1726,9 @@ class App(ttk.Frame):
         self._counts[key] = self._counts.get(key, 0) + 1
 
         if error is not None:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー ({error})")
+            self._log_threadsafe(f"[{index}/{total}] {title} -> エラー ({error})", level="ERROR")
         else:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})")
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})", level="INFO")
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
@@ -1770,15 +1811,49 @@ class App(ttk.Frame):
     def _set_status_threadsafe(self, message):
         self.after(0, self.status_text.set, message)
 
-    def _log_threadsafe(self, message):
+    def _log_threadsafe(self, message, level=LOG_DEFAULT_LEVEL):
         # tkinterウィジェットはメインスレッド以外から直接操作できないため、
         # ワーカースレッドからのログ出力は after() 経由でメインループに戻す。
-        self.after(0, self._log, message)
+        self.after(0, self._log, message, level)
 
-    def _log(self, message):
+    def _log(self, message, level=LOG_DEFAULT_LEVEL):
+        if level not in LOG_LEVELS:
+            raise ValueError(f"未知のログのレベル: {level!r}")
+        # 時刻はメインスレッドのここで取る（after(0) で戻るまでの遅れは秒の単位では無視できる）。
+        entry = (self._now().strftime(LOG_TIME_FORMAT), level, message)
+        self._log_entries.append(entry)
+        if self._log_entry_matches(entry):
+            self.log_area.config(state="normal")
+            self._write_log_entry(entry)
+            self.log_area.see("end")
+            self.log_area.config(state="disabled")
+
+    def _log_entry_matches(self, entry):
+        selected = self.log_filter.get()
+        return selected == LOG_FILTER_ALL or selected == entry[1]
+
+    def _write_log_entry(self, entry):
+        """1行を log_area の末尾に書く。state は呼び出し側が normal にしておく。"""
+        time_text, level, message = entry
+        self.log_area.insert("end", time_text + " ")
+        self.log_area.insert("end", level.ljust(LOG_LEVEL_WIDTH), f"log_{level}")
+        self.log_area.insert("end", " " + message + "\n")
+
+    def _on_log_filter_changed(self, _event=None):
+        """絞り込みの選択が変わったとき、保持している行から書き直す。"""
         self.log_area.config(state="normal")
-        self.log_area.insert("end", message + "\n")
+        self.log_area.delete("1.0", "end")
+        for entry in self._log_entries:
+            if self._log_entry_matches(entry):
+                self._write_log_entry(entry)
         self.log_area.see("end")
+        self.log_area.config(state="disabled")
+
+    def _on_log_clear(self):
+        """表示と保持している行を消す。絞り込みの選択は変えない。"""
+        self._log_entries.clear()
+        self.log_area.config(state="normal")
+        self.log_area.delete("1.0", "end")
         self.log_area.config(state="disabled")
 
 
