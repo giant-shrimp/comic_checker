@@ -572,6 +572,61 @@ def test_init_dnd_registers_every_drop_target_including_file_entry(app):
         binds[widget].assert_called_once_with("<<Drop>>", app._on_drop)
 
 
+def _init_dnd_enabled(app):
+    import types
+    from unittest.mock import MagicMock
+
+    fake_module = types.SimpleNamespace(DND_FILES="DND_FILES_SENTINEL")
+    patches = []
+    for widget in app._drop_targets:
+        patches.append(patch.object(widget, "drop_target_register", MagicMock(), create=True))
+        patches.append(patch.object(widget, "dnd_bind", MagicMock(), create=True))
+    for p in patches:
+        p.start()
+    try:
+        with patch.dict("sys.modules", {"tkinterdnd2": fake_module}):
+            return app._init_dnd()
+    finally:
+        for p in patches:
+            p.stop()
+
+
+def test_file_hint_is_empty_when_dnd_enabled_and_nothing_selected(app):
+    # 上の2行の案内と重複するため、D&Dが使えても未選択の file_hint は空。
+    assert _init_dnd_enabled(app) is True
+    assert app.file_hint.get() == ""
+
+
+def test_file_hint_shows_full_path_then_clears_when_dnd_enabled(app):
+    assert _init_dnd_enabled(app) is True
+    app.excel_path.set("/tmp/対象.xlsx")
+    assert app.file_hint.get() == "/tmp/対象.xlsx"
+    app.excel_path.set("")
+    assert app.file_hint.get() == ""
+
+
+def test_excel_icon_is_white_grid_on_green_square(app):
+    from comic_checker.gui import COLOR_ON_ACCENT, COLOR_SUCCESS, _icon_canvas
+
+    canvas = _icon_canvas(app, "excel", COLOR_SUCCESS, "#ffffff", size=40)
+    items = canvas.find_all()
+    green = [i for i in items if canvas.type(i) == "rectangle" and canvas.itemcget(i, "fill") == COLOR_SUCCESS]
+    assert len(green) == 1
+    horizontal = vertical = 0
+    for i in items:
+        if canvas.type(i) != "line":
+            continue
+        x0, y0, x1, y1 = canvas.coords(i)
+        assert canvas.itemcget(i, "fill") == COLOR_ON_ACCENT
+        assert x0 == x1 or y0 == y1  # 斜線は無い
+        if y0 == y1:
+            horizontal += 1
+        else:
+            vertical += 1
+    assert horizontal >= 1
+    assert vertical >= 1
+
+
 # ------------------------------------------------------ 配色・アイコン
 
 

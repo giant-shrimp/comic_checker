@@ -649,8 +649,12 @@ def _draw_icon(canvas, kind, colour, size=ICON_SIZE):
         )
     elif kind == "excel":
         canvas.create_rectangle(p(1), p(1), p(19), p(19), fill=COLOR_SUCCESS, outline=COLOR_SUCCESS)
-        canvas.create_line(p(6), p(6), p(14), p(14), fill=COLOR_ON_ACCENT, width=max(w, 2))
-        canvas.create_line(p(14), p(6), p(6), p(14), fill=COLOR_ON_ACCENT, width=max(w, 2))
+        # 白の格子（2列×3行の表）。線はすべて水平か垂直。40px で線幅2px。
+        gw = max(w // 2, 2)
+        canvas.create_rectangle(p(4), p(4), p(16), p(16), fill="", outline=COLOR_ON_ACCENT, width=gw)
+        canvas.create_line(p(4), p(8), p(16), p(8), fill=COLOR_ON_ACCENT, width=gw)
+        canvas.create_line(p(4), p(12), p(16), p(12), fill=COLOR_ON_ACCENT, width=gw)
+        canvas.create_line(p(10), p(4), p(10), p(16), fill=COLOR_ON_ACCENT, width=gw)
     elif kind == "refresh":
         canvas.create_arc(
             p(3), p(3), p(17), p(17), start=60, extent=270, style="arc", outline=colour, width=w + 1
@@ -1087,7 +1091,7 @@ class App(ttk.Frame):
             file_row, textvariable=self.file_label, state="readonly", width=28
         )
         self.file_entry.grid(row=0, column=0, sticky="w")
-        # フルパスは補助情報として小さく添える。D&Dが使えるかもここに出す。
+        # フルパスは補助情報として小さく添える。未選択のときは空（案内は上の2行が担う）。
         hint_label = ttk.Label(
             file_row,
             textvariable=self.file_hint,
@@ -1407,7 +1411,6 @@ class App(ttk.Frame):
         try:
             from tkinterdnd2 import DND_FILES
         except Exception:
-            self._set_dnd_hint(False)
             return False
         try:
             # 広げたドロップ欄の全体（file_entry を含む）を受け口にする。
@@ -1415,16 +1418,8 @@ class App(ttk.Frame):
                 widget.drop_target_register(DND_FILES)
                 widget.dnd_bind("<<Drop>>", self._on_drop)
         except (tk.TclError, AttributeError):
-            self._set_dnd_hint(False)
             return False
-        self._set_dnd_hint(True)
         return True
-
-    def _set_dnd_hint(self, enabled):
-        if not self.excel_path.get():
-            self.file_hint.set(
-                "ここに .xlsx をドラッグ＆ドロップできます" if enabled else ""
-            )
 
     def _on_drop(self, event):
         # tkdndからのコールバック。ここで例外を投げるとTcl側にエラーが出るため、
