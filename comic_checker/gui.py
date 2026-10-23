@@ -957,25 +957,87 @@ class App(ttk.Frame):
             pass
 
         self._build_nav()
-        self._content = ttk.Frame(self, style=self._style("App.TFrame"))
-        self._content.grid(row=0, column=1, sticky="nsew")
+        # 右側の画面は同じマスに重ねて置き、選択した1つだけを表示する。
+        # 「メイン」の画面（対象ファイル・操作・進捗・ログ）が self._content。
+        self._screen_host = ttk.Frame(self, style=self._style("App.TFrame"))
+        self._screen_host.grid(row=0, column=1, sticky="nsew")
+        self._screen_host.columnconfigure(0, weight=1)
+        self._screen_host.rowconfigure(0, weight=1)
+        self._content = self._new_screen()
         self._content.columnconfigure(0, weight=1)
         # ログ欄（row=3）だけが縦に伸びる。
         self._content.rowconfigure(3, weight=1)
+        self._screens = [self._content]
+        self._build_placeholder_screen("設定")
+        self._build_placeholder_screen("ヘルプ")
+        self._build_about_screen()
 
         self._build_file_section()
         self._build_run_section()
         self._build_progress_section()
         self._build_log_section()
         self._build_status_bar()
+        self._select_screen(0)
+
+    def _new_screen(self):
+        screen = ttk.Frame(self._screen_host, style=self._style("App.TFrame"))
+        screen.grid(row=0, column=0, sticky="nsew")
+        return screen
+
+    def _build_placeholder_screen(self, name):
+        """中身が未実装の画面。「準備中」の1行だけを出す。"""
+        screen = self._new_screen()
+        tk.Label(screen, text="準備中", background=self._surface_colour(COLOR_BG)).grid(
+            row=0, column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER
+        )
+        self._screens.append(screen)
+        return screen
+
+    def _build_about_screen(self):
+        """バージョン情報の画面。version_string() の値と、それをコピーするボタン。"""
+        screen = self._new_screen()
+        self.about_version_label = tk.Label(
+            screen, text=version_string(), background=self._surface_colour(COLOR_BG)
+        )
+        self.about_version_label.grid(row=0, column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER)
+        self.copy_version_button = ttk.Button(
+            screen, text="コピー", command=self._copy_version
+        )
+        self.copy_version_button.grid(row=1, column=0, sticky="w", padx=PAD_OUTER)
+        self._screens.append(screen)
+
+    def _copy_version(self):
+        """version_string() の値そのものをクリップボードへ入れる。"""
+        self.clipboard_clear()
+        self.clipboard_append(version_string())
+        self.update_idletasks()
+
+    def _select_screen(self, index):
+        """index の画面だけを表示し、メニューの選択表示を合わせる。"""
+        for number, screen in enumerate(self._screens):
+            if number == index:
+                screen.grid()
+            else:
+                screen.grid_remove()
+        self.selected_screen = index
+        for number, item in enumerate(self.nav_items):
+            selected = number == index
+            background = COLOR_ACCENT if selected else COLOR_NAV_BG
+            foreground = COLOR_ON_ACCENT if selected else "#2b3340"
+            item.configure(background=background, foreground=foreground)
+            icon = self._nav_icons[number]
+            icon.configure(background=background)
+            icon.delete("all")
+            _draw_icon(icon, NAV_ITEMS[number][1], foreground, 18)
 
     def _build_nav(self):
-        """窓の左の縦のメニュー。見た目だけで、押しても何もしない（機能は後で足す）。"""
+        """窓の左の縦のメニュー。項目を押すと、右側の画面がその項目の画面に切り替わる。"""
         nav = tk.Frame(self, width=NAV_WIDTH, background=COLOR_NAV_BG)
         nav.grid(row=0, column=0, sticky="nsew")
         nav.pack_propagate(False)
         self.nav_frame = nav
         self.nav_items = []
+        self._nav_icons = []
         for index, (label, icon) in enumerate(NAV_ITEMS):
             selected = index == 0
             background = COLOR_ACCENT if selected else COLOR_NAV_BG
@@ -991,10 +1053,12 @@ class App(ttk.Frame):
                 pady=10,
             )
             item.pack(fill="x", padx=8, pady=(16 if index == 0 else 2, 0))
-            _icon_canvas(item, icon, foreground, background, size=18).place(
-                x=14, rely=0.5, anchor="w"
-            )
+            icon_canvas = _icon_canvas(item, icon, foreground, background, size=18)
+            icon_canvas.place(x=14, rely=0.5, anchor="w")
+            for widget in (item, icon_canvas):
+                widget.bind("<Button-1>", lambda _event, number=index: self._select_screen(number))
             self.nav_items.append(item)
+            self._nav_icons.append(icon_canvas)
 
     def _add_button_icon(self, button, kind, colour):
         """ボタンの左の余白にアイコンを重ねる。アイコンを押してもボタンが押される。"""
