@@ -33,6 +33,22 @@ def screens(app):
     return app._screens
 
 
+def card_texts(screen):
+    """画面の中のカードを（見出し, 中身の文言の並び）で返す。上から順。"""
+    result = []
+    for outer in sorted(
+        screen.winfo_children(), key=lambda w: w.winfo_y() if w.winfo_ismapped() else 0
+    ):
+        if not isinstance(outer, tk.Frame):
+            continue
+        inner = outer.winfo_children()[0]
+        header, content = inner.winfo_children()
+        title = [str(w.cget("text")) for w in header.winfo_children() if "text" in w.keys()]
+        lines = [str(w.cget("text")) for w in content.winfo_children()]
+        result.append((title[0], lines))
+    return result
+
+
 def test_main_screen_is_selected_at_start(app):
     assert [visible(s) for s in screens(app)] == [True, False, False, False]
     assert app.run_button.winfo_toplevel() is app.winfo_toplevel()
@@ -63,9 +79,8 @@ def test_clicking_icon_also_switches(app):
 
 
 def test_placeholder_screens_show_only_preparing_line(app):
-    for index in (1, 2):
-        labels = [w for w in screens(app)[index].winfo_children()]
-        assert [str(w.cget("text")) for w in labels] == ["準備中"]
+    cards = card_texts(screens(app)[1])
+    assert cards == [("設定", ["準備中"])]
 
 
 def test_copy_button_puts_version_string_on_clipboard(app):
