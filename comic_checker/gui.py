@@ -4,7 +4,8 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, font as tkfont, ttk
+import webbrowser
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from comic_checker import next_release, rakuten_books_client, user_config, version_string
@@ -93,6 +94,46 @@ NAV_ITEMS = (
     ("ヘルプ", "help"),
     ("バージョン情報", "info"),
 )
+
+# 「ヘルプ」の画面のボタンで開く利用ガイドの URL。
+USER_GUIDE_URL = "https://github.com/giant-shrimp/comic_checker/blob/main/docs/user_guide.md"
+# 「ヘルプ」の画面のカード（見出し, アイコンの種類, 中身の行）。上から順に置く。
+HELP_CARDS = (
+    (
+        "使い方",
+        "doc",
+        (
+            "1. 「タイトル」列のある .xlsx を、「ファイルを選択…」ボタンかドラッグ＆ドロップで指定します。",
+            "2. 「実行」を押します。対象の Excel は閉じておいてください。",
+            "3. 終わると、結果は元の Excel に保存されています。",
+        ),
+    ),
+    (
+        "結果の見方",
+        "count",
+        (
+            "・完結／連載中：判定の結果です。",
+            "・判定不能：記事はありましたが、完結か連載中かを確信できませんでした。手動で確認してください。",
+            "・記事なし：日本語版 Wikipedia に記事がありませんでした。多くは異常ではありません。",
+            "・エラー：その行の処理中に問題が起きました。次の行は続けて処理します。",
+            "・「参照タイトル」列が入力したタイトルと違う行は、別の記事で判定しています。確認してください。",
+        ),
+    ),
+    (
+        "困ったときは",
+        "help",
+        (
+            "・すべて「エラー」になる：Excel を閉じているか、1行目に「タイトル」列があるか、インターネットにつながっているかを確かめてください。",
+            "・「処理対象の行がありません」と出る：すべての行が判定済みです。確認画面で「すべて再判定する」を選ぶと調べ直せます。",
+        ),
+    ),
+    (
+        "次巻発売日の確認",
+        "calendar",
+        ("・楽天ブックスのキーが必要です。「楽天APIキーの設定…」で設定してください。",),
+    ),
+)
+HELP_SCREEN_INDEX = 2
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
@@ -969,7 +1010,7 @@ class App(ttk.Frame):
         self._content.rowconfigure(3, weight=1)
         self._screens = [self._content]
         self._build_placeholder_screen("設定")
-        self._build_placeholder_screen("ヘルプ")
+        self._build_help_screen()
         self._build_about_screen()
 
         self._build_file_section()
@@ -985,25 +1026,116 @@ class App(ttk.Frame):
         return screen
 
     def _build_placeholder_screen(self, name):
-        """中身が未実装の画面。「準備中」の1行だけを出す。"""
+        """中身が未実装の画面。カード1枚に、見出し name と「準備中」の1行だけを出す。"""
         screen = self._new_screen()
-        tk.Label(screen, text="準備中", background=self._surface_colour(COLOR_BG)).grid(
-            row=0, column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER
-        )
+        screen.columnconfigure(0, weight=1)
+        icon = dict(NAV_ITEMS).get(name)
+        frame = self._make_card(0, name, icon=icon, parent=screen)
+        ttk.Label(frame, text="準備中", style=self._style("Card.TLabel")).pack(anchor="w")
         self._screens.append(screen)
         return screen
 
-    def _build_about_screen(self):
-        """バージョン情報の画面。version_string() の値と、それをコピーするボタン。"""
+    def _build_help_screen(self):
+        """ヘルプの画面。要点のカード4枚と、利用ガイドをブラウザで開くボタン。
+
+        縦に収まらないときはこの画面だけをスクロールする。横には広げず、文言を折り返す。
+        """
         screen = self._new_screen()
-        self.about_version_label = tk.Label(
-            screen, text=version_string(), background=self._surface_colour(COLOR_BG)
+        screen.columnconfigure(0, weight=1)
+        screen.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(
+            screen,
+            highlightthickness=0,
+            borderwidth=0,
+            background=self._surface_colour(COLOR_BG),
         )
-        self.about_version_label.grid(row=0, column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER)
+        scrollbar = ttk.Scrollbar(screen, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        body = ttk.Frame(canvas, style=self._style("App.TFrame"))
+        body.columnconfigure(0, weight=1)
+        window = canvas.create_window(0, 0, window=body, anchor="nw")
+        self.help_canvas = canvas
+        self.help_scrollbar = scrollbar
+        self.help_body = body
+        self._help_wrapped_labels = []
+        self.help_cards = []
+        for row, (title, icon, lines) in enumerate(HELP_CARDS):
+            frame = self._make_card(row, title, icon=icon, parent=body)
+            heading = self._card_header.winfo_children()[-1]
+            labels = []
+            for line in lines:
+                label = ttk.Label(frame, text=line, style=self._style("Card.TLabel"))
+                label.pack(anchor="w", fill="x", pady=(0, 2))
+                labels.append(label)
+            self._help_wrapped_labels.extend(labels)
+            self.help_cards.append((heading, labels))
+        self.help_guide_button = ttk.Button(
+            body, text="利用ガイドを開く（ブラウザ）", command=self._open_user_guide
+        )
+        self.help_guide_button.grid(
+            row=len(HELP_CARDS), column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER
+        )
+
+        def on_canvas_configure(event):
+            canvas.itemconfigure(window, width=event.width)
+            # カードの左右の余白・枠線・内側の余白を引いた幅で折り返す。
+            wrap = max(event.width - 2 * PAD_OUTER - 2 * PAD_INNER - 4, 100)
+            for label in self._help_wrapped_labels:
+                label.configure(wraplength=wrap)
+
+        def on_body_configure(_event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", on_canvas_configure)
+        body.bind("<Configure>", on_body_configure)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(sequence, self._on_help_wheel, add="+")
+        self._screens.append(screen)
+        return screen
+
+    def _on_help_wheel(self, event):
+        """ヘルプの画面を表示している間だけ、マウスホイールでその画面をスクロールする。"""
+        if self.selected_screen != HELP_SCREEN_INDEX:
+            return
+        if getattr(event, "num", None) == 4:
+            units = -1
+        elif getattr(event, "num", None) == 5:
+            units = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            units = -1 if delta > 0 else 1 if delta < 0 else 0
+        if units:
+            self.help_canvas.yview_scroll(units * 3, "units")
+
+    def _open_user_guide(self):
+        """利用ガイドを既定のブラウザで開く。開けなければ警告のダイアログで知らせる。"""
+        try:
+            opened = webbrowser.open(USER_GUIDE_URL)
+        except Exception:
+            opened = False
+        if not opened:
+            messagebox.showwarning(
+                "利用ガイドを開けません",
+                "ブラウザを開けませんでした。次の URL をブラウザに貼り付けて開いてください。\n"
+                + USER_GUIDE_URL,
+            )
+
+    def _build_about_screen(self):
+        """バージョン情報の画面。アプリ名・version_string() の値と、それをコピーするボタン。"""
+        screen = self._new_screen()
+        screen.columnconfigure(0, weight=1)
+        frame = self._make_card(0, "バージョン情報", icon="info", parent=screen)
+        ttk.Label(frame, text="コミックチェッカー", style=self._style("Card.TLabel")).pack(anchor="w")
+        self.about_version_label = ttk.Label(
+            frame, text=version_string(), style=self._style("Card.TLabel")
+        )
+        self.about_version_label.pack(anchor="w", pady=(4, 8))
         self.copy_version_button = ttk.Button(
-            screen, text="コピー", command=self._copy_version
+            frame, text="コピー", command=self._copy_version
         )
-        self.copy_version_button.grid(row=1, column=0, sticky="w", padx=PAD_OUTER)
+        self.copy_version_button.pack(anchor="w")
         self._screens.append(screen)
 
     def _copy_version(self):
@@ -1072,7 +1204,7 @@ class App(ttk.Frame):
         icon.bind("<Button-1>", press)
         return icon
 
-    def _make_card(self, row, title, icon=None, sticky="ew", pady=(PAD_OUTER, 0)):
+    def _make_card(self, row, title, icon=None, sticky="ew", pady=(PAD_OUTER, 0), parent=None):
         """白い面と細い枠線のカードを置き、中身を入れるフレームを返す。
 
         titleがNoneなら見出しは付けない。見出しの行は self._card_header に残す
@@ -1086,7 +1218,7 @@ class App(ttk.Frame):
                 highlightbackground=COLOR_BORDER,
                 highlightcolor=COLOR_BORDER,
             )
-        outer = tk.Frame(self._content, **options)
+        outer = tk.Frame(self._content if parent is None else parent, **options)
         outer.grid(row=row, column=0, sticky=sticky, padx=PAD_OUTER, pady=pady)
         inner = ttk.Frame(outer, style=self._style("Card.TFrame"), padding=PAD_INNER)
         inner.pack(fill="both", expand=True)
