@@ -1189,6 +1189,7 @@ class App(ttk.Frame):
         previous = getattr(self, "selected_screen", None)
         if previous == SETTINGS_SCREEN_INDEX and index != SETTINGS_SCREEN_INDEX:
             self.key_form.clear_entries()
+            self.key_form.message.set("")
         for number, screen in enumerate(self._screens):
             if number == index:
                 screen.grid()

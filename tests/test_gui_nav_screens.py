@@ -106,6 +106,16 @@ def test_leaving_settings_screen_clears_entries(app):
         assert entry.get() == ""
 
 
+def test_leaving_settings_screen_clears_message(app):
+    click(app, 1)
+    next(iter(app.key_form.entries.values())).insert(0, "架空の入力")
+    with patch("comic_checker.gui.user_config.save_values"):
+        app.key_form.save()
+    assert app.key_form.message.get() == "保存しました"
+    click(app, 2)
+    assert app.key_form.message.get() == ""
+
+
 def test_help_scrollbar_hidden_when_content_fits(app):
     click(app, 2)
     app.master.geometry("1000x4000")
