@@ -76,7 +76,7 @@ export MANBA_SEARCH_API_KEY=<コピーした値>
 [楽天ウェブサービス](https://webservice.rakuten.co.jp/)でアプリを登録し、アプリID（applicationId）とアクセスキー（accessKey）を取得してください。設定方法は次の2つで、キーごとに環境変数が優先されます。
 
 1. 環境変数 `RAKUTEN_APP_ID`・`RAKUTEN_ACCESS_KEY` に設定する。
-2. GUIの「楽天APIキーの設定…」で入力して保存する。保存先はWindowsなら `%APPDATA%\comic_checker\config.json`、それ以外なら `~/.config/comic_checker/config.json` です。
+2. GUIの「設定」の画面（左のメニューの「設定」、またはメインの「楽天APIキーの設定…」ボタンから開く）で入力して保存する。保存先はWindowsなら `%APPDATA%\comic_checker\config.json`、それ以外なら `~/.config/comic_checker/config.json` です。
 
 設定ファイルには暗号化せず平文で保存します（Windows以外では所有者だけが読める権限 0o600 にします）。キーの値はログ・画面・エラーの文面に出しません。
 
