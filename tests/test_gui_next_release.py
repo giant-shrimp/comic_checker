@@ -56,6 +56,8 @@ def test_button_starts_next_release_with_cancel_event(app):
         app.master.update()
     mock_run.assert_called_once_with(
         "/tmp/list.xlsx",
+        sheet=None,
+        title_column="タイトル",
         on_progress=app._on_next_progress,
         cancel_event=kwargs["kwargs"]["cancel_event"],
     )
@@ -110,7 +112,7 @@ def test_completion_and_cancel_messages(app):
     event = threading.Event()
     event.set()
 
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(1, 5, "架空の作品A", "未確認", None)
         on_progress(2, 5, "架空の作品B", "未確認", None)
         return 2
@@ -124,7 +126,7 @@ def test_cancel_during_last_row_is_reported_as_complete(app):
 
     event = threading.Event()
 
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(1, 2, "架空の作品A", "未確認", None)
         on_progress(2, 2, "架空の作品B", "未確認", None)
         event.set()  # 最後の行の処理中に中断が要求された
@@ -140,7 +142,7 @@ def test_cancel_during_last_row_is_reported_as_complete(app):
 
 
 def test_summary_uses_next_release_statuses(app):
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(1, 5, "架空甲", "次巻あり", "2030年1月5日", error=None)
         on_progress(2, 5, "架空乙", "未定", "未定", error=None)
         on_progress(3, 5, "架空丙", "要確認", "要確認", error=None)
@@ -166,7 +168,7 @@ def test_summary_of_complete_check_is_unchanged_after_next_release(app):
 
 
 def test_row_error_log_shows_type_name_only(app):
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(
             1, 1, "架空甲", "エラー", "エラー",
             error=ConnectionError(f"https://example.invalid/?applicationId={SECRET_ID}"),
@@ -181,7 +183,7 @@ def test_row_error_log_shows_type_name_only(app):
 
 
 def test_progress_line_for_normal_row(app):
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(1, 1, "架空甲", "次巻あり", "2030年1月5日", error=None)
         return 1
 
@@ -303,7 +305,7 @@ def test_key_button_opens_settings_screen(app):
 def test_next_release_chips_are_colour_coded(app):
     from tkinter import ttk
 
-    def fake_run(path, on_progress=None, cancel_event=None):
+    def fake_run(path, on_progress=None, cancel_event=None, sheet=None, title_column="タイトル"):
         on_progress(1, 4, "架空甲", "次巻あり", "2030年1月5日", error=None)
         on_progress(2, 4, "架空乙", "未定", "未定", error=None)
         on_progress(3, 4, "架空丙", "要確認", "要確認", error=None)

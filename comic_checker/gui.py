@@ -136,6 +136,12 @@ HELP_CARDS = (
 SETTINGS_SCREEN_INDEX = 1
 HELP_SCREEN_INDEX = 2
 
+# 「読み取る列とシート」の設定を config.json に保存するときの項目名（user_config.py は変えない）。
+KEY_TITLE_COLUMN = "title_column"
+KEY_SHEET = "sheet"
+# タイトル列名の既定（未保存・空欄のとき）。CLI の --title-column の既定と同じ。
+DEFAULT_TITLE_COLUMN = "タイトル"
+
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
     "App.TFrame": "TFrame",
@@ -933,6 +939,92 @@ class RakutenKeyForm(ttk.Frame):
         self.refresh_status()
 
 
+def load_read_target():
+    """保存済みの (タイトル列名, シート名) を返す。
+
+    未保存・空欄のときは、タイトル列名は既定の「タイトル」、シート名は None
+    （Excel を開いたときに選ばれているシート）。
+    """
+    return (
+        user_config.get_value(KEY_TITLE_COLUMN) or DEFAULT_TITLE_COLUMN,
+        user_config.get_value(KEY_SHEET),
+    )
+
+
+class ReadTargetForm(ttk.Frame):
+    """読み取るタイトル列名とシート名を入力して保存する部品。
+
+    「設定」の画面のカードに埋め込む。秘密ではないので伏せ字にせず、
+    画面を開いたときは保存済みの値を入力欄に入れる。
+    空欄も空文字として保存する（列名は既定に戻り、シートはアクティブシートになる）。
+    """
+
+    def __init__(self, master, styles=None, button_style="TButton"):
+        styles = styles or {}
+        frame_style = styles.get("frame", "TFrame")
+        label_style = styles.get("label", "TLabel")
+        super().__init__(master, style=frame_style)
+        self.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            self,
+            text=(
+                "タイトル列名は1行目の見出しの名前です．"
+                "シート名を空欄にすると，Excel を開いたときに選ばれているシートを使います．"
+            ),
+            justify="left",
+            style=label_style,
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self.entries = {}
+        for i, (key, label) in enumerate(
+            ((KEY_TITLE_COLUMN, "タイトル列名"), (KEY_SHEET, "シート名"))
+        ):
+            row = 1 + i
+            ttk.Label(self, text=label, style=label_style).grid(
+                row=row, column=0, sticky="w", pady=(10, 0)
+            )
+            entry = ttk.Entry(self, width=40)
+            entry.grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=(10, 0))
+            self.entries[key] = entry
+
+        self.message = tk.StringVar(value="")
+        ttk.Label(self, textvariable=self.message, style=label_style).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(10, 0)
+        )
+
+        buttons = ttk.Frame(self, style=frame_style)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        self.save_button = ttk.Button(
+            buttons, text="保存", command=self.save, style=button_style
+        )
+        self.save_button.pack(side="left")
+
+        self.reset_entries()
+
+    def reset_entries(self):
+        """入力欄を保存済みの値に戻す（未保存なら「タイトル」と空欄）。"""
+        title_column, sheet = load_read_target()
+        for key, value in (
+            (KEY_TITLE_COLUMN, title_column),
+            (KEY_SHEET, sheet or ""),
+        ):
+            entry = self.entries[key]
+            entry.delete(0, "end")
+            entry.insert(0, value)
+
+    def save(self):
+        values = {key: entry.get().strip() for key, entry in self.entries.items()}
+        try:
+            user_config.save_values(values)
+        except OSError:
+            self.message.set("保存できませんでした。保存先のフォルダの権限を確認してください")
+        else:
+            self.message.set("保存しました")
+            # 空欄で保存した列名は既定に戻るので、入力欄にもそれを見せる。
+            self.reset_entries()
+
+
 class App(ttk.Frame):
     """Excelファイルを選択して読み込みを実行するGUI画面。"""
 
@@ -1037,7 +1129,7 @@ class App(ttk.Frame):
         return "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
 
     def _build_settings_screen(self):
-        """設定の画面。楽天APIキーの設定のカード1枚。"""
+        """設定の画面。楽天APIキーの設定と、読み取る列とシートのカード2枚。"""
         screen = self._new_screen()
         screen.columnconfigure(0, weight=1)
         frame = self._make_card(0, "楽天APIキーの設定", icon="calendar", parent=screen)
@@ -1051,6 +1143,16 @@ class App(ttk.Frame):
             button_style=self._outline_style(),
         )
         self.key_form.pack(fill="x", anchor="w")
+        frame = self._make_card(1, "読み取る列とシート", icon="excel", parent=screen)
+        self.target_form = ReadTargetForm(
+            frame,
+            styles={
+                "frame": self._style("Card.TFrame"),
+                "label": self._style("Card.TLabel"),
+            },
+            button_style=self._outline_style(),
+        )
+        self.target_form.pack(fill="x", anchor="w")
         self._screens.append(screen)
         return screen
 
@@ -1190,6 +1292,8 @@ class App(ttk.Frame):
         if previous == SETTINGS_SCREEN_INDEX and index != SETTINGS_SCREEN_INDEX:
             self.key_form.clear_entries()
             self.key_form.message.set("")
+            self.target_form.reset_entries()
+            self.target_form.message.set("")
         for number, screen in enumerate(self._screens):
             if number == index:
                 screen.grid()
@@ -1724,7 +1828,7 @@ class App(ttk.Frame):
         if path:
             self.excel_path.set(path)
 
-    def _scan_rows(self, excel_path):
+    def _scan_rows(self, excel_path, title_column=DEFAULT_TITLE_COLUMN, sheet=None):
         """実行前に判定済み行数を数える。数えられなければNoneを返す（Issue #32）。
 
         列が無い・ファイルが壊れている等で数えられなくても、警告をあきらめて従来どおり
@@ -1732,14 +1836,14 @@ class App(ttk.Frame):
         起きれば、そちらのエラー処理が本来のメッセージを出す）。
         """
         try:
-            return count_rows(excel_path)
+            return count_rows(excel_path, sheet=sheet, title_column=title_column)
         except Exception as exc:
             self._log(f"判定済み行数を確認できませんでした（実行は継続します）: {exc}", level="WARNING")
             return None
 
-    def _resolve_skip_filled(self, excel_path):
+    def _resolve_skip_filled(self, excel_path, title_column=DEFAULT_TITLE_COLUMN, sheet=None):
         """実行前確認を経て skip_filled を決める。実行しない場合は None を返す。"""
-        counts = self._scan_rows(excel_path)
+        counts = self._scan_rows(excel_path, title_column=title_column, sheet=sheet)
         if counts is None or not should_warn_about_filled_rows(counts):
             return True
 
@@ -1763,7 +1867,11 @@ class App(ttk.Frame):
             self._log("Excelファイルを選択してください", level="WARNING")
             return
 
-        skip_filled = self._resolve_skip_filled(excel_path)
+        # 保存済みの列名・シート名もメインスレッドで読み、ワーカーへは引数で渡す。
+        title_column, sheet = load_read_target()
+        skip_filled = self._resolve_skip_filled(
+            excel_path, title_column=title_column, sheet=sheet
+        )
         if skip_filled is None:
             return
 
@@ -1788,6 +1896,8 @@ class App(ttk.Frame):
                 "skip_filled": skip_filled,
                 "cancel_event": self._cancel_event,
                 "adoption_trace_file": adoption_trace_file,
+                "title_column": title_column,
+                "sheet": sheet,
             },
             daemon=True,
         ).start()
@@ -1803,7 +1913,15 @@ class App(ttk.Frame):
         self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
         self._cancel_event.set()
 
-    def _run_worker(self, excel_path, skip_filled=True, cancel_event=None, adoption_trace_file=None):
+    def _run_worker(
+        self,
+        excel_path,
+        skip_filled=True,
+        cancel_event=None,
+        adoption_trace_file=None,
+        title_column=DEFAULT_TITLE_COLUMN,
+        sheet=None,
+    ):
         self._reset_run_state()
         self._log_threadsafe(f"実行開始: {excel_path}", level="INFO")
         if adoption_trace_file is not None:
@@ -1811,6 +1929,8 @@ class App(ttk.Frame):
         try:
             total = run(
                 excel_path,
+                sheet=sheet,
+                title_column=title_column,
                 on_progress=self._on_progress,
                 skip_filled=skip_filled,
                 cancel_event=cancel_event,
@@ -1885,6 +2005,7 @@ class App(ttk.Frame):
             self._log("Excelファイルを選択してください", level="WARNING")
             return
 
+        title_column, sheet = load_read_target()
         self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
         self.next_button.config(state="disabled")
@@ -1893,17 +2014,26 @@ class App(ttk.Frame):
         self._start_elapsed()
         threading.Thread(
             target=self._next_release_worker,
-            kwargs={"excel_path": excel_path, "cancel_event": self._cancel_event},
+            kwargs={
+                "excel_path": excel_path,
+                "cancel_event": self._cancel_event,
+                "title_column": title_column,
+                "sheet": sheet,
+            },
             daemon=True,
         ).start()
 
-    def _next_release_worker(self, excel_path, cancel_event=None):
+    def _next_release_worker(
+        self, excel_path, cancel_event=None, title_column=DEFAULT_TITLE_COLUMN, sheet=None
+    ):
         self._reset_run_state(NEXT_SUMMARY_STATUSES)
         self._log_threadsafe(f"次巻発売日の確認を開始: {excel_path}", level="INFO")
         self._next_total = 0
         try:
             processed = next_release.run(
                 excel_path,
+                sheet=sheet,
+                title_column=title_column,
                 on_progress=self._on_next_progress,
                 cancel_event=cancel_event,
             )
