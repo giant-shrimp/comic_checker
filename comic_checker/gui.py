@@ -969,8 +969,8 @@ class ReadTargetForm(ttk.Frame):
         ttk.Label(
             self,
             text=(
-                "タイトル列名は1行目の見出しの名前です．"
-                "シート名を空欄にすると，Excel を開いたときに選ばれているシートを使います．"
+                "タイトル列名は1行目の見出しの名前です。"
+                "シート名を空欄にすると、Excel を開いたときに選ばれているシートを使います。"
             ),
             justify="left",
             style=label_style,
