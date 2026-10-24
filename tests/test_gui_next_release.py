@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from comic_checker import user_config
-from comic_checker.gui import App, RakutenKeyDialog
+from comic_checker.gui import App
 
 SECRET_ID = "secret-app-id-9911"
 SECRET_KEY = "secret-access-key-9922"
@@ -225,22 +225,22 @@ def test_other_exception_shows_type_name_only(app):
     assert str(app.next_button["state"]) == "normal"
 
 
-# ---------------------------------------------------------------- キー設定のウィンドウ
+# ---------------------------------------------------------------- 設定の画面のキー設定
 
 
-def test_key_dialog_entries_are_masked_and_empty(app):
+def test_key_form_entries_are_masked_and_empty(app):
     user_config.save_values({user_config.KEY_RAKUTEN_APP_ID: SECRET_ID})
-    dialog = RakutenKeyDialog(app.master)
+    dialog = app.key_form
+    dialog.refresh_status()
     for entry in dialog.entries.values():
         assert entry.cget("show") == "*"
         assert entry.get() == ""
     assert dialog.status_vars[user_config.KEY_RAKUTEN_APP_ID].get().startswith("設定済み")
     assert dialog.status_vars[user_config.KEY_RAKUTEN_ACCESS_KEY].get().startswith("未設定")
-    dialog.destroy()
 
 
-def test_key_dialog_save_clears_entries_and_hides_values(app):
-    dialog = RakutenKeyDialog(app.master)
+def test_key_form_save_clears_entries_and_hides_values(app):
+    dialog = app.key_form
     dialog.entries[user_config.KEY_RAKUTEN_APP_ID].insert(0, SECRET_ID)
     dialog.entries[user_config.KEY_RAKUTEN_ACCESS_KEY].insert(0, SECRET_KEY)
     dialog.save()
@@ -257,51 +257,47 @@ def test_key_dialog_save_clears_entries_and_hides_values(app):
         assert SECRET_KEY not in text
     assert dialog.message.get() == "保存しました"
     assert all(v.get() == "設定済み" for v in dialog.status_vars.values())
-    dialog.destroy()
 
 
-def test_key_dialog_blank_field_keeps_existing_value(app):
+def test_key_form_blank_field_keeps_existing_value(app):
     user_config.save_values({user_config.KEY_RAKUTEN_APP_ID: SECRET_ID})
-    dialog = RakutenKeyDialog(app.master)
+    dialog = app.key_form
     dialog.entries[user_config.KEY_RAKUTEN_ACCESS_KEY].insert(0, SECRET_KEY)
     dialog.save()
     assert user_config.get_value(user_config.KEY_RAKUTEN_APP_ID) == SECRET_ID
     assert user_config.get_value(user_config.KEY_RAKUTEN_ACCESS_KEY) == SECRET_KEY
-    dialog.destroy()
 
 
-def test_key_dialog_all_blank_changes_nothing(app):
-    dialog = RakutenKeyDialog(app.master)
+def test_key_form_all_blank_changes_nothing(app):
+    dialog = app.key_form
     dialog.save()
     assert not user_config.config_path().exists()
     assert "何も変更しませんでした" in dialog.message.get()
-    dialog.destroy()
 
 
-def test_key_dialog_save_failure_hides_values(app):
-    dialog = RakutenKeyDialog(app.master)
+def test_key_form_save_failure_hides_values(app):
+    dialog = app.key_form
     dialog.entries[user_config.KEY_RAKUTEN_APP_ID].insert(0, SECRET_ID)
     with patch.object(user_config, "save_values", side_effect=OSError(SECRET_ID)):
         dialog.save()
     assert SECRET_ID not in dialog.message.get()
     assert "保存できませんでした" in dialog.message.get()
-    dialog.destroy()
 
 
-def test_key_dialog_notes_env_priority(app, monkeypatch):
+def test_key_form_notes_env_priority(app, monkeypatch):
     monkeypatch.setenv("RAKUTEN_APP_ID", "env-app-id-value")
-    dialog = RakutenKeyDialog(app.master)
+    dialog = app.key_form
+    dialog.refresh_status()
     text = dialog.status_vars[user_config.KEY_RAKUTEN_APP_ID].get()
     assert "環境変数 RAKUTEN_APP_ID" in text
     assert "優先" in text
     assert "env-app-id-value" not in text
-    dialog.destroy()
 
 
-def test_key_button_opens_dialog(app):
-    with patch("comic_checker.gui.RakutenKeyDialog", MagicMock()) as dialog_cls:
-        app._open_key_dialog()
-    dialog_cls.assert_called_once_with(app.master)
+def test_key_button_opens_settings_screen(app):
+    assert app.selected_screen == 0
+    app.key_button.invoke()
+    assert app.selected_screen == 1
 
 
 def test_next_release_chips_are_colour_coded(app):

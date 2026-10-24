@@ -78,9 +78,60 @@ def test_clicking_icon_also_switches(app):
     assert app.selected_screen == 1
 
 
-def test_placeholder_screens_show_only_preparing_line(app):
-    cards = card_texts(screens(app)[1])
-    assert cards == [("設定", ["準備中"])]
+def test_settings_screen_has_rakuten_key_card(app):
+    cards = [
+        outer
+        for outer in screens(app)[1].winfo_children()
+        if isinstance(outer, tk.Frame)
+    ]
+    assert len(cards) == 1
+    header, content = cards[0].winfo_children()[0].winfo_children()
+    titles = [str(w.cget("text")) for w in header.winfo_children() if "text" in w.keys()]
+    assert titles == ["楽天APIキーの設定"]
+    assert content.winfo_children() == [app.key_form]
+
+
+def test_showing_settings_screen_calls_refresh_status(app):
+    with patch.object(app.key_form, "refresh_status") as refresh:
+        click(app, 1)
+    refresh.assert_called_once_with()
+
+
+def test_leaving_settings_screen_clears_entries(app):
+    click(app, 1)
+    for entry in app.key_form.entries.values():
+        entry.insert(0, "架空の入力")
+    click(app, 2)
+    for entry in app.key_form.entries.values():
+        assert entry.get() == ""
+
+
+def test_help_scrollbar_hidden_when_content_fits(app):
+    click(app, 2)
+    app.master.geometry("1000x4000")
+    app.update()
+    assert not app.help_scrollbar.winfo_ismapped()
+
+
+def test_help_scrollbar_shown_when_content_does_not_fit(app):
+    click(app, 2)
+    app.master.geometry("1000x200")
+    app.update()
+    assert app.help_scrollbar.winfo_ismapped()
+
+
+def test_secondary_buttons_use_outline_style(app):
+    expected = "Outline.TButton" if app._theme.get("secondary_button") else "TButton"
+    assert expected == app._outline_style()
+    for button in (app.copy_version_button, app.help_guide_button, app.key_form.save_button):
+        assert str(button.cget("style")) == expected
+
+
+def test_outline_style_is_used_when_available(app):
+    app._theme["secondary_button"] = True
+    assert app._outline_style() == "Outline.TButton"
+    app._theme["secondary_button"] = False
+    assert app._outline_style() == "TButton"
 
 
 def test_copy_button_puts_version_string_on_clipboard(app):

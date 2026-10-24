@@ -133,6 +133,7 @@ HELP_CARDS = (
         ("・楽天ブックスのキーが必要です。「楽天APIキーの設定…」で設定してください。",),
     ),
 )
+SETTINGS_SCREEN_INDEX = 1
 HELP_SCREEN_INDEX = 2
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
@@ -832,9 +833,10 @@ class FilledRowsDialog(tk.Toplevel):
         return self.choice
 
 
-class RakutenKeyDialog(tk.Toplevel):
-    """楽天ブックス書籍検索APIのキー（アプリID・アクセスキー）を入力して保存する小窓。
+class RakutenKeyForm(ttk.Frame):
+    """楽天ブックス書籍検索APIのキー（アプリID・アクセスキー）を入力して保存する部品。
 
+    「設定」の画面のカードに埋め込む。
     キーの値は画面にもログにも出さない。入力欄は伏せ字で、既存の値は入れない。
     表示するのは「設定済み／未設定」と、環境変数が優先される場合はその旨だけ。
     空欄のまま保存したキーは変更しない。保存時にAPIは呼ばない。
@@ -846,54 +848,55 @@ class RakutenKeyDialog(tk.Toplevel):
         (user_config.KEY_RAKUTEN_ACCESS_KEY, rakuten_books_client.ACCESS_KEY_ENV, "アクセスキー"),
     )
 
-    def __init__(self, master):
-        super().__init__(master)
-        self.title("楽天APIキーの設定")
-        self.resizable(False, False)
-        self.transient(master)
-
-        body = ttk.Frame(self, padding=(16, 14, 16, 12))
-        body.pack(fill="both", expand=True)
-        body.columnconfigure(1, weight=1)
+    def __init__(self, master, styles=None, button_style="TButton"):
+        """styles は部品ごとのスタイル名（frame・label・hint）。無ければ通常のスタイル。"""
+        styles = styles or {}
+        frame_style = styles.get("frame", "TFrame")
+        label_style = styles.get("label", "TLabel")
+        hint_style = styles.get("hint", "Hint.TLabel")
+        super().__init__(master, style=frame_style)
+        self.columnconfigure(1, weight=1)
 
         ttk.Label(
-            body,
+            self,
             text=(
                 "楽天ウェブサービスで取得したキーを入力してください。\n"
                 "キーは平文で設定ファイルに保存されます。"
                 "空欄のまま保存したキーは変更しません。"
             ),
             justify="left",
+            style=label_style,
         ).grid(row=0, column=0, columnspan=2, sticky="w")
 
         self.entries = {}
         self.status_vars = {}
         for i, (key, _env, label) in enumerate(self.FIELDS):
             row = 1 + i * 2
-            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=(10, 0))
-            entry = ttk.Entry(body, show="*", width=40)
+            ttk.Label(self, text=label, style=label_style).grid(
+                row=row, column=0, sticky="w", pady=(10, 0)
+            )
+            entry = ttk.Entry(self, show="*", width=40)
             entry.grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=(10, 0))
             self.entries[key] = entry
             var = tk.StringVar()
             self.status_vars[key] = var
-            ttk.Label(body, textvariable=var, style="Hint.TLabel").grid(
+            ttk.Label(self, textvariable=var, style=hint_style).grid(
                 row=row + 1, column=1, sticky="w", padx=(8, 0)
             )
 
         self.message = tk.StringVar(value="")
-        ttk.Label(body, textvariable=self.message).grid(
+        ttk.Label(self, textvariable=self.message, style=label_style).grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(10, 0)
         )
 
-        buttons = ttk.Frame(body)
+        buttons = ttk.Frame(self, style=frame_style)
         buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        self.save_button = ttk.Button(buttons, text="保存", command=self.save)
+        self.save_button = ttk.Button(
+            buttons, text="保存", command=self.save, style=button_style
+        )
         self.save_button.pack(side="left")
-        ttk.Button(buttons, text="閉じる", command=self.destroy).pack(side="left", padx=(8, 0))
 
-        self.bind("<Escape>", lambda _e: self.destroy())
         self.refresh_status()
-        _center_window(self)
 
     def refresh_status(self):
         """「設定済み／未設定」と、環境変数が優先される場合の注記を更新する。"""
@@ -902,6 +905,11 @@ class RakutenKeyDialog(tk.Toplevel):
             if os.environ.get(env_name):
                 text += f"（環境変数 {env_name} が設定されているため、環境変数の値が優先されます）"
             self.status_vars[key].set(text)
+
+    def clear_entries(self):
+        """保存していない入力を空にする。"""
+        for entry in self.entries.values():
+            entry.delete(0, "end")
 
     def save(self):
         values = {}
@@ -920,8 +928,7 @@ class RakutenKeyDialog(tk.Toplevel):
         else:
             self.message.set("保存しました")
         finally:
-            for entry in self.entries.values():
-                entry.delete(0, "end")
+            self.clear_entries()
             values.clear()
         self.refresh_status()
 
@@ -1009,7 +1016,7 @@ class App(ttk.Frame):
         # ログ欄（row=3）だけが縦に伸びる。
         self._content.rowconfigure(3, weight=1)
         self._screens = [self._content]
-        self._build_placeholder_screen("設定")
+        self._build_settings_screen()
         self._build_help_screen()
         self._build_about_screen()
 
@@ -1025,13 +1032,25 @@ class App(ttk.Frame):
         screen.grid(row=0, column=0, sticky="nsew")
         return screen
 
-    def _build_placeholder_screen(self, name):
-        """中身が未実装の画面。カード1枚に、見出し name と「準備中」の1行だけを出す。"""
+    def _outline_style(self):
+        """メインの「ファイルを選択…」と同じ枠線のボタンのスタイル名。作れない環境では TButton。"""
+        return "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
+
+    def _build_settings_screen(self):
+        """設定の画面。楽天APIキーの設定のカード1枚。"""
         screen = self._new_screen()
         screen.columnconfigure(0, weight=1)
-        icon = dict(NAV_ITEMS).get(name)
-        frame = self._make_card(0, name, icon=icon, parent=screen)
-        ttk.Label(frame, text="準備中", style=self._style("Card.TLabel")).pack(anchor="w")
+        frame = self._make_card(0, "楽天APIキーの設定", icon="calendar", parent=screen)
+        self.key_form = RakutenKeyForm(
+            frame,
+            styles={
+                "frame": self._style("Card.TFrame"),
+                "label": self._style("Card.TLabel"),
+                "hint": self._style("CardHint.TLabel"),
+            },
+            button_style=self._outline_style(),
+        )
+        self.key_form.pack(fill="x", anchor="w")
         self._screens.append(screen)
         return screen
 
@@ -1072,7 +1091,10 @@ class App(ttk.Frame):
             self._help_wrapped_labels.extend(labels)
             self.help_cards.append((heading, labels))
         self.help_guide_button = ttk.Button(
-            body, text="利用ガイドを開く（ブラウザ）", command=self._open_user_guide
+            body,
+            text="利用ガイドを開く（ブラウザ）",
+            command=self._open_user_guide,
+            style=self._outline_style(),
         )
         self.help_guide_button.grid(
             row=len(HELP_CARDS), column=0, sticky="w", padx=PAD_OUTER, pady=PAD_OUTER
@@ -1085,10 +1107,24 @@ class App(ttk.Frame):
             for label in self._help_wrapped_labels:
                 label.configure(wraplength=wrap)
 
+        def update_scrollbar():
+            # 中身が窓に収まっているときはスクロールバーを隠す。
+            if body.winfo_reqheight() <= canvas.winfo_height():
+                scrollbar.grid_remove()
+            else:
+                scrollbar.grid()
+
+        self._update_help_scrollbar = update_scrollbar
+
         def on_body_configure(_event):
             canvas.configure(scrollregion=canvas.bbox("all"))
+            update_scrollbar()
 
-        canvas.bind("<Configure>", on_canvas_configure)
+        def on_canvas_configure_all(event):
+            on_canvas_configure(event)
+            update_scrollbar()
+
+        canvas.bind("<Configure>", on_canvas_configure_all)
         body.bind("<Configure>", on_body_configure)
         for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             self.bind_all(sequence, self._on_help_wheel, add="+")
@@ -1133,7 +1169,7 @@ class App(ttk.Frame):
         )
         self.about_version_label.pack(anchor="w", pady=(4, 8))
         self.copy_version_button = ttk.Button(
-            frame, text="コピー", command=self._copy_version
+            frame, text="コピー", command=self._copy_version, style=self._outline_style()
         )
         self.copy_version_button.pack(anchor="w")
         self._screens.append(screen)
@@ -1145,13 +1181,22 @@ class App(ttk.Frame):
         self.update_idletasks()
 
     def _select_screen(self, index):
-        """index の画面だけを表示し、メニューの選択表示を合わせる。"""
+        """index の画面だけを表示し、メニューの選択表示を合わせる。
+
+        設定の画面から離れるときは保存していない入力を空にし、表示するときは
+        「設定済み／未設定」を読み直す。
+        """
+        previous = getattr(self, "selected_screen", None)
+        if previous == SETTINGS_SCREEN_INDEX and index != SETTINGS_SCREEN_INDEX:
+            self.key_form.clear_entries()
         for number, screen in enumerate(self._screens):
             if number == index:
                 screen.grid()
             else:
                 screen.grid_remove()
         self.selected_screen = index
+        if index == SETTINGS_SCREEN_INDEX:
+            self.key_form.refresh_status()
         for number, item in enumerate(self.nav_items):
             selected = number == index
             background = COLOR_ACCENT if selected else COLOR_NAV_BG
@@ -1395,10 +1440,10 @@ class App(ttk.Frame):
         ).pack(side="left", padx=(12, 0))
 
         outline = "Outline.TButton" if has_secondary else "TButton"
-        key_button = ttk.Button(
+        self.key_button = key_button = ttk.Button(
             frame,
             text="楽天APIキーの設定…",
-            command=self._open_key_dialog,
+            command=self._open_key_settings,
             style=outline,
             padding=(34, 6, 14, 6),
         )
@@ -1829,8 +1874,9 @@ class App(ttk.Frame):
 
     # ------------------------------------------------ 次巻発売日の確認
 
-    def _open_key_dialog(self):
-        RakutenKeyDialog(self.master)
+    def _open_key_settings(self):
+        """「設定」の画面に切り替える（楽天APIキーの設定がある）。"""
+        self._select_screen(SETTINGS_SCREEN_INDEX)
 
     def _on_next_release(self):
         excel_path = self.excel_path.get()
