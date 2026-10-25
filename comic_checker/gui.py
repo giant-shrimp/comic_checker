@@ -1425,7 +1425,7 @@ class App(ttk.Frame):
         guide2.grid(row=1, column=1, sticky="ew")
         title_hint = ttk.Label(
             drop_inner,
-            text="「タイトル」列のある .xlsx を選んで実行してください。列名とシートは「設定」で変えられます。",
+            text="「タイトル」列のある .xlsx を選んでください（列名は「設定」で変更可）。",
             style=self._style("CardHint.TLabel"),
             anchor="w",
         )
