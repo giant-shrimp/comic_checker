@@ -102,9 +102,10 @@ def test_labels_at_minimum_size_follow_line_break_rules(app):
 def test_narrow_canvas_breaks_text_and_zeroes_wraplength(app):
     app.winfo_toplevel().geometry("1049x688")
     show_help(app)
-    app.help_canvas.configure(width=300)
-    app.help_canvas.event_generate("<Configure>", width=300, height=400)
+    # 保留中の実際の Configure を先に処理しきる。合成イベントは同期で処理されるので、
+    # 送った後は update を呼ばない（呼ぶと実際の幅で折り返し直される環境がある）。
     app.update()
+    app.help_canvas.event_generate("<Configure>", width=300, height=400)
     labels = [label for _heading, labels in app.help_cards for label in labels]
     assert any("\n" in str(label.cget("text")) for label in labels)
     assert all(int(str(label.cget("wraplength"))) == 0 for label in labels)
