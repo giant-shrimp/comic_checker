@@ -31,7 +31,8 @@ def book(tmp_path):
     path = tmp_path / "list.xlsx"
     wb = Workbook()
     wb.active.title = "シートA"
-    wb.create_sheet("シートB")
+    wb.active.append(["タイトル"])
+    wb.create_sheet("シートB").append(["タイトル"])
     wb.save(path)
     return str(path)
 
@@ -87,8 +88,10 @@ def test_existing_sheet_starts_worker_with_sheet(app, book, method_name):
 @ENTRY_POINTS
 def test_no_saved_sheet_does_not_open_workbook(app, book, method_name):
     app.excel_path.set(book)
-    with patch("comic_checker.gui.load_workbook") as loader:
-        thread_cls, _count = invoke(app, method_name)
+    # シートの確認だけを見る（列の確認はブックを開くため止める。Issue #553）。
+    with patch("comic_checker.gui.find_missing_title_column", return_value=False):
+        with patch("comic_checker.gui.load_workbook") as loader:
+            thread_cls, _count = invoke(app, method_name)
     loader.assert_not_called()
     thread_cls.assert_called_once()
 
