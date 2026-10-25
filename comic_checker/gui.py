@@ -148,6 +148,9 @@ DEFAULT_TITLE_COLUMN = "タイトル"
 MISSING_SHEET_MESSAGE = (
     "シート「{sheet}」が見つかりません。「設定」の画面のシート名を確かめてください。"
 )
+MISSING_TITLE_COLUMN_MESSAGE = (
+    "列「{column}」が1行目に見つかりません。「設定」の画面のタイトル列名を確かめてください。"
+)
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
@@ -972,6 +975,27 @@ def find_missing_sheet(excel_path, sheet):
         return False
     try:
         return sheet not in wb.sheetnames
+    finally:
+        wb.close()
+
+
+def find_missing_title_column(excel_path, title_column, sheet):
+    """タイトル列名が対象のシートの1行目に無ければ True を返す（Issue #553）。
+
+    開けなかったとき・シート名が無いとき（それは find_missing_sheet に任せる）は
+    False を返し、これまでどおりの処理に任せる。1行目が無い（空のシート）ときは True。
+    """
+    try:
+        wb = load_workbook(excel_path, read_only=True)
+    except Exception:
+        return False
+    try:
+        if sheet and sheet not in wb.sheetnames:
+            return False
+        ws = wb[sheet] if sheet else wb.active
+        for row in ws.iter_rows(min_row=1, max_row=1, values_only=True):
+            return title_column not in row
+        return True
     finally:
         wb.close()
 
@@ -1892,6 +1916,12 @@ class App(ttk.Frame):
         self._log(message, level="ERROR")
         self.status_text.set(message)
 
+    def _show_missing_title_column(self, title_column):
+        """タイトル列名が1行目に無いことを、ログと状態表示に出す（Issue #553）。"""
+        message = MISSING_TITLE_COLUMN_MESSAGE.format(column=title_column)
+        self._log(message, level="ERROR")
+        self.status_text.set(message)
+
     def _on_run(self):
         excel_path = self.excel_path.get()
         if not excel_path:
@@ -1902,6 +1932,9 @@ class App(ttk.Frame):
         title_column, sheet = load_read_target()
         if find_missing_sheet(excel_path, sheet):
             self._show_missing_sheet(sheet)
+            return
+        if find_missing_title_column(excel_path, title_column, sheet):
+            self._show_missing_title_column(title_column)
             return
         skip_filled = self._resolve_skip_filled(
             excel_path, title_column=title_column, sheet=sheet
@@ -2042,6 +2075,9 @@ class App(ttk.Frame):
         title_column, sheet = load_read_target()
         if find_missing_sheet(excel_path, sheet):
             self._show_missing_sheet(sheet)
+            return
+        if find_missing_title_column(excel_path, title_column, sheet):
+            self._show_missing_title_column(title_column)
             return
         self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
