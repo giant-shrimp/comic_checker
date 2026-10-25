@@ -8,6 +8,8 @@ import webbrowser
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from openpyxl import load_workbook
+
 from comic_checker import next_release, rakuten_books_client, user_config, version_string
 from comic_checker.main import _default_adoption_trace_path, count_rows, run
 
@@ -143,6 +145,9 @@ KEY_TITLE_COLUMN = "title_column"
 KEY_SHEET = "sheet"
 # タイトル列名の既定（未保存・空欄のとき）。CLI の --title-column の既定と同じ。
 DEFAULT_TITLE_COLUMN = "タイトル"
+MISSING_SHEET_MESSAGE = (
+    "シート「{sheet}」が見つかりません。「設定」の画面のシート名を確かめてください。"
+)
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
@@ -951,6 +956,24 @@ def load_read_target():
         user_config.get_value(KEY_TITLE_COLUMN) or DEFAULT_TITLE_COLUMN,
         user_config.get_value(KEY_SHEET),
     )
+
+
+def find_missing_sheet(excel_path, sheet):
+    """保存したシート名が Excel に無ければ True を返す（Issue #551）。
+
+    シート名が未指定ならブックを開かず False。開けなかったとき（ファイルが無い・
+    壊れているなど）も False を返し、これまでどおりの処理に任せる。
+    """
+    if not sheet:
+        return False
+    try:
+        wb = load_workbook(excel_path, read_only=True)
+    except Exception:
+        return False
+    try:
+        return sheet not in wb.sheetnames
+    finally:
+        wb.close()
 
 
 class ReadTargetForm(ttk.Frame):
@@ -1863,6 +1886,12 @@ class App(ttk.Frame):
         )
         return True
 
+    def _show_missing_sheet(self, sheet):
+        """保存したシート名が Excel に無いことを、ログと状態表示に出す（Issue #551）。"""
+        message = MISSING_SHEET_MESSAGE.format(sheet=sheet)
+        self._log(message, level="ERROR")
+        self.status_text.set(message)
+
     def _on_run(self):
         excel_path = self.excel_path.get()
         if not excel_path:
@@ -1871,6 +1900,9 @@ class App(ttk.Frame):
 
         # 保存済みの列名・シート名もメインスレッドで読み、ワーカーへは引数で渡す。
         title_column, sheet = load_read_target()
+        if find_missing_sheet(excel_path, sheet):
+            self._show_missing_sheet(sheet)
+            return
         skip_filled = self._resolve_skip_filled(
             excel_path, title_column=title_column, sheet=sheet
         )
@@ -2008,6 +2040,9 @@ class App(ttk.Frame):
             return
 
         title_column, sheet = load_read_target()
+        if find_missing_sheet(excel_path, sheet):
+            self._show_missing_sheet(sheet)
+            return
         self._cancel_event = threading.Event()
         self.run_button.config(state="disabled")
         self.next_button.config(state="disabled")
