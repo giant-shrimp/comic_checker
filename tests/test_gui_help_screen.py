@@ -160,7 +160,7 @@ def test_about_card_has_heading_name_version_and_copy(app):
 def test_settings_card_heading_is_rakuten_key(app):
     titles = [
         str(w.cget("text"))
-        for outer in app._screens[1].winfo_children()
+        for outer in app.settings_body.winfo_children()
         if isinstance(outer, tk.Frame)
         for w in outer.winfo_children()[0].winfo_children()[0].winfo_children()
         if "text" in w.keys()
