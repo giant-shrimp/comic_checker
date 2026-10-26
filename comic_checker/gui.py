@@ -19,6 +19,7 @@ from comic_checker.main import _default_adoption_trace_path, count_rows, run
 SUMMARY_STATUSES = ("完結", "連載中", "判定不能", "記事なし", "エラー")
 # 次巻発売日の確認で並べる集計（next_release.run() が on_progress へ渡す status 値）。
 NEXT_SUMMARY_STATUSES = ("次巻あり", "未定", "要確認", "ヒットなし", "エラー")
+LOG_WARNING_STATUSES = ("判定不能", "要確認")
 OTHER_STATUS_LABEL = "その他"
 
 # アクセントカラー。彩度を抑えた実用寄りの色にしてある（判定結果を読む画面なので、
@@ -2036,7 +2037,7 @@ class App(ttk.Frame):
         # 押した瞬間にボタンを落として「効いていない」ように見せない。実際の停止は
         # run() が次の行の切れ目で気づくまで待つことになるので、そのことも書く。
         self.cancel_button.config(state="disabled")
-        self._log("中断します（現在の行の処理を終えるまでお待ちください）", level="WARNING")
+        self._log("中断します（現在の行の処理を終えるまでお待ちください）", level="INFO")
         self.status_text.set("中断します（現在の行の処理を終えるまでお待ちください）")
         self._cancel_event.set()
 
@@ -2216,7 +2217,8 @@ class App(ttk.Frame):
         if error is not None:
             self._log_threadsafe(f"[{index}/{total}] {title} -> エラー {type(error).__name__}", level="ERROR")
         else:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})", level="INFO")
+            level = "WARNING" if status in LOG_WARNING_STATUSES else "INFO"
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})", level=level)
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
@@ -2229,7 +2231,8 @@ class App(ttk.Frame):
         if error is not None:
             self._log_threadsafe(f"[{index}/{total}] {title} -> エラー ({error})", level="ERROR")
         else:
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})", level="INFO")
+            level = "WARNING" if status in LOG_WARNING_STATUSES else "INFO"
+            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})", level=level)
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
