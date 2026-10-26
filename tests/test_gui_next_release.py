@@ -42,7 +42,9 @@ def run_worker(app, side_effect=None, return_value=0, cancel_event=None):
 # ---------------------------------------------------------------- ボタンと実行
 
 
-def test_button_starts_next_release_with_cancel_event(app):
+def test_button_starts_next_release_with_cancel_event(app, monkeypatch):
+    monkeypatch.setenv("RAKUTEN_APP_ID", "dummy-app-id")
+    monkeypatch.setenv("RAKUTEN_ACCESS_KEY", "dummy-access-key")
     app.excel_path.set("/tmp/list.xlsx")
     with patch("comic_checker.gui.threading.Thread") as thread_cls:
         app._on_next_release()
@@ -63,7 +65,9 @@ def test_button_starts_next_release_with_cancel_event(app):
     )
 
 
-def test_both_run_buttons_disabled_while_running(app):
+def test_both_run_buttons_disabled_while_running(app, monkeypatch):
+    monkeypatch.setenv("RAKUTEN_APP_ID", "dummy-app-id")
+    monkeypatch.setenv("RAKUTEN_ACCESS_KEY", "dummy-access-key")
     app.excel_path.set("/tmp/list.xlsx")
     with patch("comic_checker.gui.threading.Thread"):
         app._on_next_release()

@@ -199,6 +199,9 @@ MISSING_SHEET_MESSAGE = (
 MISSING_TITLE_COLUMN_MESSAGE = (
     "列「{column}」が1行目に見つかりません。「設定」の画面のタイトル列名を確かめてください。"
 )
+MISSING_RAKUTEN_KEYS_MESSAGE = (
+    "楽天APIキーが設定されていません。「設定」の画面でアプリIDとアクセスキーを保存してください。"
+)
 
 # カード用スタイルが作れない環境で使う、通常のスタイル名。
 _PLAIN_STYLES = {
@@ -1007,6 +1010,18 @@ def load_read_target():
         user_config.get_value(KEY_TITLE_COLUMN) or DEFAULT_TITLE_COLUMN,
         user_config.get_value(KEY_SHEET),
     )
+
+
+def has_rakuten_keys():
+    """楽天APIキーが読めれば True を返す（Issue #565）。
+
+    環境変数 → 設定ファイルの順で読む今の決まりを、rakuten_books_client に任せる。
+    """
+    try:
+        rakuten_books_client._load_keys()
+    except RuntimeError:
+        return False
+    return True
 
 
 def find_missing_sheet(excel_path, sheet):
@@ -2214,6 +2229,11 @@ class App(ttk.Frame):
         excel_path = self.excel_path.get()
         if not excel_path:
             self._log("Excelファイルを選択してください", level="WARNING")
+            return
+
+        if not has_rakuten_keys():
+            self._log(MISSING_RAKUTEN_KEYS_MESSAGE, level="ERROR")
+            self.status_text.set(MISSING_RAKUTEN_KEYS_MESSAGE)
             return
 
         title_column, sheet = load_read_target()
