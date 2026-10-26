@@ -76,6 +76,9 @@ DROP_AREA_HEIGHT = 80
 DROP_AREA_MARGIN = 16
 RUN_STATE_DOT_SIZE = 12
 NAV_WIDTH = 180
+# 設定の画面の「詳しいログ」カード（Issue #39 の採用経路のログ）。
+ADOPTION_TRACE_LABEL = "採用経路のログを出力する"
+ADOPTION_TRACE_HINT = "開発者向けです。オンにして「実行」すると、Excel と同じフォルダに採用経路のログを書き出します。"
 ICON_SIZE = 20
 # 窓の大きさ。初期値はこの大きさで、画面の作業領域（画面の大きさからタスクバーと
 # タイトルバーの分を引いたもの）より大きければ収まるように縮める。
@@ -1228,6 +1231,19 @@ class App(ttk.Frame):
         screen.grid(row=0, column=0, sticky="nsew")
         return screen
 
+    def required_size(self):
+        """窓に必要な大きさ (幅, 高さ)。表示していない画面も数える。
+
+        Canvas の中身は Tk の必要な大きさに数えられないので、各画面の必要な幅
+        （左のメニューの幅を足したもの）の最大を幅とする。
+        """
+        self.update_idletasks()
+        width = max(
+            [self.winfo_reqwidth()]
+            + [NAV_WIDTH + screen.winfo_reqwidth() for screen in self._screens]
+        )
+        return width, self.winfo_reqheight()
+
     def _outline_style(self):
         """メインの「ファイルを選択…」と同じ枠線のボタンのスタイル名。作れない環境では TButton。"""
         return "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
@@ -1297,6 +1313,26 @@ class App(ttk.Frame):
             button_style=self._outline_style(),
         )
         self.target_form.pack(fill="x", anchor="w")
+        frame = self._make_card(2, "詳しいログ", icon="doc", parent=body)
+        # Issue #39: 採用経路のログ（開発者向け、既定オフ、値は保存しない）。
+        self.adoption_trace_check = ttk.Checkbutton(
+            frame,
+            text=ADOPTION_TRACE_LABEL,
+            variable=self.adoption_trace,
+            style=self._style("Card.TCheckbutton"),
+        )
+        self.adoption_trace_check.pack(anchor="w")
+        ttk.Label(
+            frame,
+            text=ADOPTION_TRACE_HINT,
+            style=self._style("CardHint.TLabel"),
+        ).pack(anchor="w", pady=(2, 0))
+        # Canvas の中身は Tk の必要な大きさに数えられないので、必要な幅を設定しておく。
+        try:
+            body.update_idletasks()
+            canvas.configure(width=body.winfo_reqwidth())
+        except tk.TclError:
+            pass
         self._screens.append(screen)
         return screen
 
@@ -1625,7 +1661,8 @@ class App(ttk.Frame):
         try:
             drop_inner.update_idletasks()
             self._drop_canvas.configure(
-                height=max(drop_inner.winfo_reqheight() + DROP_AREA_MARGIN, DROP_AREA_HEIGHT)
+                height=max(drop_inner.winfo_reqheight() + DROP_AREA_MARGIN, DROP_AREA_HEIGHT),
+                width=drop_inner.winfo_reqwidth() + 2 * PAD_INNER + 8,
             )
         except tk.TclError:
             pass
@@ -1699,14 +1736,6 @@ class App(ttk.Frame):
             style="Cancel.TButton",
         )
         self.cancel_button.pack(side="left", padx=(8, 0))
-
-        # Issue #39: 採用経路トレース（デバッグ用、既定オフ）。
-        ttk.Checkbutton(
-            frame,
-            text="採用経路のログを出力する",
-            variable=self.adoption_trace,
-            style=self._style("Card.TCheckbutton"),
-        ).pack(side="left", padx=(12, 0))
 
         outline = "Outline.TButton" if has_secondary else "TButton"
         self.key_button = key_button = ttk.Button(
@@ -2427,11 +2456,12 @@ def main():
 
     # 窓の大きさ。最小は、ログ欄を最小の行数にした部品の必要な大きさ。
     root.update_idletasks()
+    required_width, required_height = app.required_size()
     initial, minimum = _compute_window_sizes(
         root.winfo_screenwidth(),
         root.winfo_screenheight(),
-        app.winfo_reqwidth(),
-        app.winfo_reqheight(),
+        required_width,
+        required_height,
     )
     root.minsize(*minimum)
     root.geometry(f"{initial[0]}x{initial[1]}")

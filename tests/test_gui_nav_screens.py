@@ -84,7 +84,7 @@ def test_settings_screen_has_rakuten_key_card(app):
         for outer in app.settings_body.winfo_children()
         if isinstance(outer, tk.Frame)
     ]
-    assert len(cards) == 2
+    assert len(cards) == 3
     header, content = cards[0].winfo_children()[0].winfo_children()
     titles = [str(w.cget("text")) for w in header.winfo_children() if "text" in w.keys()]
     assert titles == ["楽天APIキーの設定"]
@@ -93,6 +93,10 @@ def test_settings_screen_has_rakuten_key_card(app):
     titles = [str(w.cget("text")) for w in header.winfo_children() if "text" in w.keys()]
     assert titles == ["読み取る列とシート"]
     assert content.winfo_children() == [app.target_form]
+    header, content = cards[2].winfo_children()[0].winfo_children()
+    titles = [str(w.cget("text")) for w in header.winfo_children() if "text" in w.keys()]
+    assert titles == ["詳しいログ"]
+    assert content.winfo_children()[0] == app.adoption_trace_check
 
 
 def test_showing_settings_screen_calls_refresh_status(app):
