@@ -1233,10 +1233,50 @@ class App(ttk.Frame):
         return "Outline.TButton" if self._theme.get("secondary_button") else "TButton"
 
     def _build_settings_screen(self):
-        """設定の画面。楽天APIキーの設定と、読み取る列とシートのカード2枚。"""
+        """設定の画面。楽天APIキーの設定と、読み取る列とシートのカード2枚。
+
+        縦に収まらないときはこの画面だけをスクロールする。横にはスクロールしない。
+        """
         screen = self._new_screen()
         screen.columnconfigure(0, weight=1)
-        frame = self._make_card(0, "楽天APIキーの設定", icon="calendar", parent=screen)
+        screen.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(
+            screen,
+            highlightthickness=0,
+            borderwidth=0,
+            background=self._surface_colour(COLOR_BG),
+        )
+        scrollbar = ttk.Scrollbar(screen, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        body = ttk.Frame(canvas, style=self._style("App.TFrame"))
+        body.columnconfigure(0, weight=1)
+        window = canvas.create_window(0, 0, window=body, anchor="nw")
+        self.settings_canvas = canvas
+        self.settings_scrollbar = scrollbar
+        self.settings_body = body
+
+        def update_scrollbar():
+            # 中身が窓に収まっているときはスクロールバーを隠す。
+            if body.winfo_reqheight() <= canvas.winfo_height():
+                scrollbar.grid_remove()
+            else:
+                scrollbar.grid()
+
+        def on_canvas_configure(event):
+            canvas.itemconfigure(window, width=event.width)
+            update_scrollbar()
+
+        def on_body_configure(_event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            update_scrollbar()
+
+        canvas.bind("<Configure>", on_canvas_configure)
+        body.bind("<Configure>", on_body_configure)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(sequence, self._on_settings_wheel, add="+")
+        frame = self._make_card(0, "楽天APIキーの設定", icon="calendar", parent=body)
         self.key_form = RakutenKeyForm(
             frame,
             styles={
@@ -1247,7 +1287,7 @@ class App(ttk.Frame):
             button_style=self._outline_style(),
         )
         self.key_form.pack(fill="x", anchor="w")
-        frame = self._make_card(1, "読み取る列とシート", icon="excel", parent=screen)
+        frame = self._make_card(1, "読み取る列とシート", icon="excel", parent=body)
         self.target_form = ReadTargetForm(
             frame,
             styles={
@@ -1259,6 +1299,20 @@ class App(ttk.Frame):
         self.target_form.pack(fill="x", anchor="w")
         self._screens.append(screen)
         return screen
+
+    def _on_settings_wheel(self, event):
+        """設定の画面を表示している間だけ、マウスホイールでその画面をスクロールする。"""
+        if self.selected_screen != SETTINGS_SCREEN_INDEX:
+            return
+        if getattr(event, "num", None) == 4:
+            units = -1
+        elif getattr(event, "num", None) == 5:
+            units = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            units = -1 if delta > 0 else 1 if delta < 0 else 0
+        if units:
+            self.settings_canvas.yview_scroll(units * 3, "units")
 
     def _build_help_screen(self):
         """ヘルプの画面。要点のカード4枚と、利用ガイドをブラウザで開くボタン。

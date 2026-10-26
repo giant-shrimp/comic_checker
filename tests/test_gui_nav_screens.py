@@ -81,7 +81,7 @@ def test_clicking_icon_also_switches(app):
 def test_settings_screen_has_rakuten_key_card(app):
     cards = [
         outer
-        for outer in screens(app)[1].winfo_children()
+        for outer in app.settings_body.winfo_children()
         if isinstance(outer, tk.Frame)
     ]
     assert len(cards) == 2
