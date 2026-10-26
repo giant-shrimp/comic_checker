@@ -99,6 +99,50 @@ NAV_ITEMS = (
 
 # 「ヘルプ」の画面のボタンで開く利用ガイドの URL。
 USER_GUIDE_URL = "https://github.com/giant-shrimp/comic_checker/blob/main/docs/user_guide.md"
+# 折り返しで行の頭に置かない文字と、行の末尾に置かない文字。
+NO_LINE_START ="、。，．・：；？！…ー」』）】〕〉》"
+NO_LINE_END = "「『（【〔〈《"
+
+
+def _is_word_char(char):
+    return (char.isascii() and char.isalnum()) or char in "._-"
+
+
+def _breaks_rule(text, cut):
+    """text を cut の位置で区切ると禁則に当たるか。"""
+    before, after = text[cut - 1], text[cut]
+    if after in NO_LINE_START or before in NO_LINE_END:
+        return True
+    return _is_word_char(before) and _is_word_char(after)
+
+
+def wrap_text(text, measure, width):
+    """text を幅 width（measure が返すピクセル）に収まるよう、改行（\\n）で区切る。
+
+    Tk の wraplength は句読点や閉じかっこが行の頭に来ることを避けないので、
+    区切る位置を自分で決める。改行を除くと元の text と同じになる。
+    """
+    lines = []
+    rest = text
+    while rest and measure(rest) > width:
+        fit = 1
+        while fit < len(rest) and measure(rest[: fit + 1]) <= width:
+            fit += 1
+        cut = fit
+        if fit < len(rest):
+            while cut > 1 and _breaks_rule(rest, cut):
+                cut -= 1
+            if cut <= 1 and _breaks_rule(rest, cut):
+                cut = fit
+        while cut < len(rest) and rest[cut].isspace():
+            cut += 1
+        lines.append(rest[:cut])
+        rest = rest[cut:]
+    if rest:
+        lines.append(rest)
+    return "\n".join(lines)
+
+
 # 「ヘルプ」の画面のカード（見出し, アイコンの種類, 中身の行）。上から順に置く。
 HELP_CARDS = (
     (
@@ -1125,6 +1169,16 @@ class App(ttk.Frame):
         """
         return name if self._theme.get("card") else _PLAIN_STYLES[name]
 
+    def _help_font(self):
+        """ヘルプのカードの文言の幅を測るフォント。最初に要ったときに1つ作り、使い回す。"""
+        if self._help_measure_font is None:
+            spec = ttk.Style(self).lookup(self._style("Card.TLabel"), "font") or "TkDefaultFont"
+            try:
+                self._help_measure_font = tkfont.Font(root=self, font=spec)
+            except tk.TclError:
+                self._help_measure_font = tkfont.Font(root=self, font="TkDefaultFont")
+        return self._help_measure_font
+
     def _surface_colour(self, card_colour):
         """tk（ttkでない）部品の背景色。カードの配色が無い環境では既定の地色にする。"""
         if self._theme.get("card"):
@@ -1230,6 +1284,8 @@ class App(ttk.Frame):
         self.help_scrollbar = scrollbar
         self.help_body = body
         self._help_wrapped_labels = []
+        self._help_label_texts = {}
+        self._help_measure_font = None
         self.help_cards = []
         for row, (title, icon, lines) in enumerate(HELP_CARDS):
             frame = self._make_card(row, title, icon=icon, parent=body)
@@ -1239,6 +1295,7 @@ class App(ttk.Frame):
                 label = ttk.Label(frame, text=line, style=self._style("Card.TLabel"))
                 label.pack(anchor="w", fill="x", pady=(0, 2))
                 labels.append(label)
+                self._help_label_texts[label] = line
             self._help_wrapped_labels.extend(labels)
             self.help_cards.append((heading, labels))
         self.help_guide_button = ttk.Button(
@@ -1255,8 +1312,11 @@ class App(ttk.Frame):
             canvas.itemconfigure(window, width=event.width)
             # カードの左右の余白・枠線・内側の余白を引いた幅で折り返す。
             wrap = max(event.width - 2 * PAD_OUTER - 2 * PAD_INNER - 4, 100)
+            measure = self._help_font().measure
             for label in self._help_wrapped_labels:
-                label.configure(wraplength=wrap)
+                label.configure(
+                    text=wrap_text(self._help_label_texts[label], measure, wrap), wraplength=0
+                )
 
         def update_scrollbar():
             # 中身が窓に収まっているときはスクロールバーを隠す。
