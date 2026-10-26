@@ -165,4 +165,4 @@ def test_settings_card_heading_is_rakuten_key(app):
         for w in outer.winfo_children()[0].winfo_children()[0].winfo_children()
         if "text" in w.keys()
     ]
-    assert titles == ["楽天APIキーの設定", "読み取る列とシート"]
+    assert titles == ["楽天APIキーの設定", "読み取る列とシート", "詳しいログ"]
