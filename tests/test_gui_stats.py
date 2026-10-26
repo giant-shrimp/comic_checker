@@ -17,6 +17,13 @@ class FakeClock:
         return self.now
 
 
+@pytest.fixture(autouse=True)
+def _rakuten_keys_in_env(monkeypatch):
+    # 「次巻発売日を確認」は処理を始める前にキーを確かめる（Issue #565）。値は架空。
+    monkeypatch.setenv("RAKUTEN_APP_ID", "dummy-app-id")
+    monkeypatch.setenv("RAKUTEN_ACCESS_KEY", "dummy-access-key")
+
+
 @pytest.fixture
 def app():
     root = tk.Tk()
