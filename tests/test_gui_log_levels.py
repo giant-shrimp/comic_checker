@@ -106,3 +106,41 @@ def test_warning_filter_shows_only_rows_to_check(app):
     assert "作品C -> 判定不能" in text
     assert "作品A -> 完結" not in text
     assert "作品D -> 記事なし" not in text
+
+
+def test_run_interruption_log_is_warning(app):
+    cancel_event = threading.Event()
+
+    def fake_run(excel_path, on_progress=None, **kwargs):
+        on_progress(1, 5, "作品A", "完結", "作品A", error=None)
+        on_progress(2, 5, "作品B", "連載中", "作品B", error=None)
+        cancel_event.set()
+        return 2
+
+    with patch("comic_checker.gui.run", side_effect=fake_run):
+        app._run_worker(excel_path="/tmp/対象.xlsx", cancel_event=cancel_event)
+        app.master.update()
+
+    assert entries(app)[-1] == (
+        "WARNING",
+        "中断しました（2件処理・保存済み、保存先: /tmp/対象.xlsx）",
+    )
+
+
+def test_next_release_interruption_log_is_warning(app):
+    cancel_event = threading.Event()
+
+    def fake_run(excel_path, on_progress=None, **kwargs):
+        on_progress(1, 5, "作品A", "次巻あり", "2026-12-01", error=None)
+        on_progress(2, 5, "作品B", "未定", "", error=None)
+        cancel_event.set()
+        return 2
+
+    with patch("comic_checker.gui.next_release.run", side_effect=fake_run):
+        app._next_release_worker(excel_path="/tmp/対象.xlsx", cancel_event=cancel_event)
+        app.master.update()
+
+    assert entries(app)[-1] == (
+        "WARNING",
+        "中断しました（2件処理・保存済み、保存先: /tmp/対象.xlsx）",
+    )
