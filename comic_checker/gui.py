@@ -322,6 +322,18 @@ def filled_rows_message(counts):
     return "\n".join(lines)
 
 
+def format_result_line(index, total, title, status, detail):
+    """1行ごとの結果のログの文を作る（Issue #569）。
+
+    detail（参照タイトル、または次巻の発売日）は、空のときと結果の値と同じときは
+    かっこごと出さない。「記事なし ()」や「未定 (未定)」のような表示を避けるため。
+    """
+    line = f"[{index}/{total}] {title} -> {status}"
+    if detail and detail != status:
+        line += f" ({detail})"
+    return line
+
+
 def _format_elapsed(seconds):
     """経過秒数を「mm:ss」で返す。1時間以上は「h:mm:ss」。"""
     total = max(int(seconds), 0)
@@ -2329,7 +2341,7 @@ class App(ttk.Frame):
             self._log_threadsafe(f"[{index}/{total}] {title} -> エラー {type(error).__name__}", level="ERROR")
         else:
             level = "WARNING" if status in LOG_WARNING_STATUSES else "INFO"
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({next_sales_date})", level=level)
+            self._log_threadsafe(format_result_line(index, total, title, status, next_sales_date), level=level)
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
@@ -2343,7 +2355,7 @@ class App(ttk.Frame):
             self._log_threadsafe(f"[{index}/{total}] {title} -> エラー ({error})", level="ERROR")
         else:
             level = "WARNING" if status in LOG_WARNING_STATUSES else "INFO"
-            self._log_threadsafe(f"[{index}/{total}] {title} -> {status} ({matched_title})", level=level)
+            self._log_threadsafe(format_result_line(index, total, title, status, matched_title), level=level)
 
         self._set_status_threadsafe(f"処理中… {index}/{total} 件（{title}）")
         self.after(0, self._update_progress, index, total)
