@@ -1,0 +1,72 @@
+{
+    "created_at_jst": "2026-10-28T23:45:00+09:00",
+    "purpose": "Wikipedia で判定できない行（主に「記事なし」）を減らすため、BOOK☆WALKER の検索結果の「完結」の札を情報源に足す。実装（comic_checker/ の変更）の前に、利用者の実際の一覧の全行で、W（今のまま）・①（記事なしの行だけ BOOK☆WALKER）・③（BOOK☆WALKER を先に見て、決められない行だけ Wikipedia）の3つを、凍結した正解ラベルと比べる。この登録の時点では、73行に対する judge() と BOOK☆WALKER の測定はまだ行っていない。",
+    "completion_definition": "コミックにおいて最終巻が発売されていれば完結（ユーザの定義）。連載が終わっていても最終巻が未発売なら完結ではない。BOOK☆WALKER の「完結」の札はこの定義と同じ意味（最終巻の配信）。Wikipedia の「完結」は連載の終了を指すことがあり、この定義とずれうる。",
+    "1_population": {
+        "description": "ユーザが定期購入している実際の一覧（73行）。番号は一覧の上からの順（1〜73）。",
+        "file": "リポジトリの外（司令塔の作業ディレクトリ <D>/bw_measure/list73.txt）。1行に「番号|一覧の文字列」。実在の作品名を含み、個人の購入リストなので、リポジトリには入れない。",
+        "line_count": 73,
+        "sha256_whole": "40f9c137f5be1274f2ea47a9a13d297d7dcf76ffd7257618d95cf0cf172ee46d",
+        "sha256_method": "printf '%s' \"$(cat <file>)\" | sha256sum（末尾の改行を除いた全体）",
+        "contamination": [
+            "この一覧は、2026-08 の M6-E-1（Wikipedia 経路）の調整に使った73行のシートと同じもの（docs/known_limitations.md の「the real 73-row sheet used to tune M6-E-1」）。W と ① の Wikipedia 部分の成績は、この一覧では実力より良く出うる。",
+            "BOOK☆WALKER の読み取り（scripts/measure_bookwalker_fallback.py の parse_results 以下）は、2026-10-28 に番号 2・8・9・11・12・13・14 の7行の検索結果ページを見て作った。この7行は BOOK☆WALKER 側から見て汚染されている。7行を除いた66行の集計も併せて報告する。"
+        ]
+    },
+    "2_labels": {
+        "rules_file": "docs/bookwalker_measurement_2026-10/labeling_rules_v1.md",
+        "rules_sha256_whole": "55f8e9e9f97ba0b82871447c993ae17f29ccff908b0b39a2340a7fc3a5a1fd3c",
+        "file": "リポジトリの外（<D>/bw_measure/labels73.txt）。1行に「番号|ラベル」。根拠と URL の明細も同じ場所に置く。",
+        "sha256_whole": "e74f039fa76451c413415c792c53089242870c57967a5e53a5f76aa6577b8e2a",
+        "counts": {
+            "完結": 11,
+            "連載中": 62,
+            "判定不能": 0
+        },
+        "procedure": "2026-10-28 に、BOOK☆WALKER と Wikipedia を使わずに、出版社の公式サイト・他の電子書店などで規則 v1 を当てた。規則で判定不能になった6行（番号 14・20・24・58・71・72）は、同日にユーザの確認で連載中に確定した。ラベルは judge() と BOOK☆WALKER の結果を見る前に凍結した。",
+        "reference_date": "2026-10-28",
+        "deadline": "測定は 2026-11-05 までに実行する。番号46は最終巻が 2026-11-06、番号7は 2026-12-04 に発売予定で、基準日の時点では連載中とラベルした。発売後に測ると BOOK☆WALKER が完結を返し、正解と食い違う。期限を過ぎたら、この登録のまま測らず、基準日とラベルを付け直した新しい登録を作る。"
+    },
+    "3_exclusion_rules": {
+        "policy": "除外は一切行わない。73行すべてを数える。記事なし・一致なし・複数一致・エラーも出力のカテゴリとしてそのまま数える。"
+    },
+    "4_method": {
+        "script": "scripts/measure_bookwalker_fallback.py（この登録と同じコミットで凍結）",
+        "wikipedia": "comic_checker.wikipedia_client.judge(title) の status（実行時点の main のコード。use_infobox は既定の True）。",
+        "bookwalker": "検索 https://bookwalker.jp/search/?word=<q>。q は注記を外した題（_strip_annotations）。本来の検索結果（t-main-column 直下の最初の o-contents-section）のうち、マンガの札（a-tag-comic）がある項目だけを見る。題は末尾のレーベル名のかっこを1つ外して NFKC で比べる。比べる相手は _title_variants(title) の順で、最初に1件以上一致した変種だけを使う。一致が0件なら、後置注記も外した題（_strip_trailing_note）で2回目の検索をする（1行につき多くて2回）。1件一致して完結の札（a-tag-comp）があれば「完結」、札が無ければ「連載中」、0件は「一致なし」、2件以上は「複数一致」、通信の失敗は「エラー」。",
+        "configurations": {
+            "W": "Wikipedia の答えのまま。",
+            "①": "Wikipedia が記事なしで、BOOK☆WALKER が完結か連載中なら BOOK☆WALKER の答え。それ以外は Wikipedia の答え。",
+            "③": "BOOK☆WALKER が完結か連載中ならその答え。一致なし・複数一致・エラーなら Wikipedia の答え。"
+        },
+        "network": "BOOK☆WALKER は1回ごとに3秒待つ。429 は待ってやり直す（最大6回）。User-Agent は wikipedia_client と同じ連絡先つき。Wikipedia は wikipedia_client._api_get の待機（1秒）とやり直しをそのまま使う。",
+        "environment": "司令塔の PC の .venv（Python 3.8.10）。"
+    },
+    "5_metrics": {
+        "buckets": {
+            "A_correct": "正答。ラベルと出力が同じ。",
+            "D_error": "誤答。ラベルが完結か連載中で、出力がもう一方を断定した。",
+            "E_missed": "取りこぼし。ラベルが完結か連載中で、出力が判定不能か記事なし。",
+            "F_unverifiable": "検証不能。ラベルが判定不能で、出力が断定した（今回はラベルに判定不能が無いので0件になる）。"
+        },
+        "sub_counts": {
+            "偽完結": "D のうち、出力が完結（ラベルは連載中）。最も避けたい誤り。",
+            "偽連載中": "D のうち、出力が連載中（ラベルは完結）。"
+        },
+        "reported_sets": [
+            "73行すべて",
+            "汚染された7行（番号 2・8・9・11・12・13・14）を除いた66行"
+        ]
+    },
+    "6_decision_rules": {
+        "primary_set": "73行すべて。66行の集計で判断が変わる場合は、その事実を報告し、ユーザの判断を仰ぐ。",
+        "adopt_①": "D(①) ≤ D(W) かつ A(①) > A(W) なら、① を実装する Issue に進む。",
+        "consider_③": "D(③) < D(①) かつ A(③) ≥ A(①) なら、① の実装の後に、順番を ③ に入れ替える Issue を別に立てる。",
+        "otherwise": "① の条件を満たさなければ実装しない。偽完結が1件でも増えた場合は、その行を明細で示してユーザの判断を仰ぐ。"
+    },
+    "7_known_weaknesses": [
+        "一致が0件のときの2回目の検索は、全角空白の後ろを外した題を使う。後ろが版の名前のとき、BOOK☆WALKER にその版のシリーズが無いと、別の版（元のシリーズ）に一致しうる。",
+        "BOOK☆WALKER の完結の札は、最終巻の配信から札が付くまでに遅れがありうる。その間は連載中と答える（偽連載中の側に倒れる）。",
+        "検索結果のページの作り（クラス名）が変わると読めなくなる。そのときは一致なしになる（fail-closed）。"
+    ]
+}
