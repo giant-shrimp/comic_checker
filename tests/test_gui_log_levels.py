@@ -52,8 +52,8 @@ def test_run_row_log_levels(app):
         ("INFO", "[1/6] 作品A -> 完結 (作品A)"),
         ("INFO", "[2/6] 作品B -> 連載中 (作品B)"),
         ("WARNING", "[3/6] 作品C -> 判定不能 (作品C)"),
-        ("INFO", "[4/6] 作品D -> 記事なし ()"),
-        ("INFO", "[5/6] 作品E -> 不明 ()"),
+        ("INFO", "[4/6] 作品D -> 記事なし"),
+        ("INFO", "[5/6] 作品E -> 不明"),
         ("ERROR", "[6/6] 作品F -> エラー (boom)"),
     ]
 
@@ -73,9 +73,9 @@ def test_next_release_row_log_levels(app):
 
     assert row_entries(app) == [
         ("INFO", "[1/5] 作品A -> 次巻あり (2026-12-01)"),
-        ("INFO", "[2/5] 作品B -> 未定 ()"),
-        ("WARNING", "[3/5] 作品C -> 要確認 ()"),
-        ("INFO", "[4/5] 作品D -> ヒットなし ()"),
+        ("INFO", "[2/5] 作品B -> 未定"),
+        ("WARNING", "[3/5] 作品C -> 要確認"),
+        ("INFO", "[4/5] 作品D -> ヒットなし"),
         ("ERROR", "[5/5] 作品E -> エラー RuntimeError"),
     ]
 
