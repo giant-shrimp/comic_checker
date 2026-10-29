@@ -22,7 +22,7 @@ Issue #40 で`_api_get`にリクエスト間隔（1秒）と429時のバック�
 """
 import pytest
 
-from comic_checker import user_config, wikipedia_client
+from comic_checker import bookwalker_client, user_config, wikipedia_client
 
 
 def pytest_configure(config):
@@ -30,6 +30,11 @@ def pytest_configure(config):
         "markers",
         "real_wait_settings: 待機の間隔・バックオフを本番の値のまま使う"
         "（待機そのものを検証するテスト用）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "bookwalker_fetch: BOOK☆WALKER の取得関数（fetch_search_page）を差し替えない"
+        "（requests.get をモックして取得関数そのものを検証するテスト用）",
     )
 
 
@@ -52,3 +57,27 @@ def _no_real_waiting(request, monkeypatch):
         return
     monkeypatch.setattr(wikipedia_client, "API_REQUEST_INTERVAL", 0)
     monkeypatch.setattr(wikipedia_client, "API_RETRY_BACKOFF_SECONDS", 0)
+
+
+@pytest.fixture(autouse=True)
+def _no_bookwalker_network(request, monkeypatch):
+    """BOOK☆WALKER へは通信しない。待機も実時間0にする。
+
+    Wikipedia が記事なしの行では `main._judge_row` が BOOK☆WALKER を見に行く。
+    `judge` だけをモックしている既存のテストが本物の bookwalker.jp に問い合わせないよう、
+    既定では取得関数を「取得できない」（RuntimeError）に差し替える。そのとき `lookup` は
+    エラーを返し、行は記事なしのまま変わらない。
+
+    取得関数そのものを検証するテストは `@pytest.mark.bookwalker_fetch` を付けて、
+    `requests.get` を自分でモックする。
+    """
+    if "real_wait_settings" not in request.keywords:
+        monkeypatch.setattr(bookwalker_client, "REQUEST_INTERVAL_SECONDS", 0)
+        monkeypatch.setattr(bookwalker_client, "RETRY_BACKOFF_SECONDS", 0)
+    if "bookwalker_fetch" in request.keywords:
+        return
+
+    def refuse(query):
+        raise RuntimeError("テストでは BOOK☆WALKER に通信しない")
+
+    monkeypatch.setattr(bookwalker_client, "fetch_search_page", refuse)
