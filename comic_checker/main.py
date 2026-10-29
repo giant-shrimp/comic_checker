@@ -4,13 +4,14 @@ import traceback
 from pathlib import Path
 from typing import NamedTuple
 
-from comic_checker import positive_int, version_string, wikipedia_client
+from comic_checker import bookwalker_client, positive_int, version_string, wikipedia_client
 from comic_checker.excel_io import ensure_column, find_column, open_workbook
 
 DEFAULT_STATE_FILE = ".manba_state.json"
 
 WIKIPEDIA_SOURCE = "Wikipedia"
 MANBA_SOURCE = "manba.co.jp"
+BOOKWALKER_SOURCE = bookwalker_client.SOURCE
 
 
 def _import_manba_client():
@@ -68,6 +69,16 @@ def parse_args(argv=None):
         help="判定結果が既に入っている行はスキップする（デフォルト:有効）",
     )
     parser.add_argument("--no-skip-filled", dest="skip_filled", action="store_false")
+    parser.add_argument(
+        "--no-bookwalker",
+        dest="use_bookwalker",
+        action="store_false",
+        default=True,
+        help=(
+            "Wikipediaで記事なしだった行を、BOOK☆WALKERの検索結果の「完結」の札で"
+            "判定し直すのをやめる（デフォルト:判定し直す）"
+        ),
+    )
     parser.add_argument(
         "--fallback-to-manba",
         action="store_true",
@@ -212,10 +223,12 @@ def _collect_rows(ws, title_col, status_col, header_row, skip_filled):
     return rows
 
 
-def _judge_row(title, fallback_to_manba, get_manba_client):
+def _judge_row(title, fallback_to_manba, get_manba_client, use_bookwalker=True):
     """1件分の判定を行い、((status, source, matched_title, url, evidence), trace) を返す。
 
-    Wikipediaで完結/連載中が判定できればそれを採用する。判定不能/記事なしの場合、
+    Wikipediaで完結/連載中が判定できればそれを採用する。記事なしの場合、use_bookwalker が
+    真であれば BOOK☆WALKER の検索結果を見て、完結/連載中が決まればそれを採用する
+    （一致なし・複数一致・エラーなら記事なしのまま）。それでも判定不能/記事なしの場合、
     fallback_to_manba が真であれば get_manba_client() 経由でmanba.co.jpにフォールバック
     する。get_manba_client() はManbaClientを遅延生成し、以降の呼び出しでは使い回す。
 
@@ -235,6 +248,20 @@ def _judge_row(title, fallback_to_manba, get_manba_client):
         wiki_result.adoption_trusted,
         wiki_result.adoption_probe,
     )
+
+    if use_bookwalker and wiki_result.status == wikipedia_client.STATUS_NOT_FOUND:
+        bw_result = bookwalker_client.lookup(title)
+        if bw_result.status in bookwalker_client.DECIDED_STATUSES:
+            return (
+                (
+                    bw_result.status,
+                    BOOKWALKER_SOURCE,
+                    bw_result.matched_title,
+                    bw_result.url,
+                    bw_result.evidence,
+                ),
+                (None, None, None),
+            )
 
     if wiki_result.status in ("完結", "連載中") or not fallback_to_manba:
         return wiki_row, wiki_trace
@@ -265,6 +292,7 @@ def run(
     url_column="参照URL",
     skip_filled=True,
     fallback_to_manba=False,
+    use_bookwalker=True,
     headless=True,
     state_file=DEFAULT_STATE_FILE,
     min_delay=3.0,
@@ -296,6 +324,9 @@ def run(
 
     **中断してもそこまでの結果は保存する。** 判定結果の5セルは1行ぶんまとめて書くので、
     中断地点に半端な行は残らない。skip_filled=True の次回実行が続きから再開できる。
+
+    use_bookwalker が真（既定）の場合、Wikipediaで記事なしだった行は BOOK☆WALKER の
+    検索結果で判定し直す（`_judge_row`）。
 
     fallback_to_manba が真の場合のみ、Wikipediaで判定不能だった行についてManbaClientを
     （最初に必要になった時点で一度だけ）起動し、以降の該当行で使い回す。
@@ -364,7 +395,7 @@ def run(
             trace = (None, None, None)
             try:
                 (status, source, matched_title, url, evidence), trace = _judge_row(
-                    title, fallback_to_manba, get_manba_client
+                    title, fallback_to_manba, get_manba_client, use_bookwalker
                 )
             except Exception as exc:
                 status, source, matched_title, url, evidence = "エラー", "", "", "", ""
@@ -437,6 +468,7 @@ def main(argv=None):
         url_column=args.url_column,
         skip_filled=args.skip_filled,
         fallback_to_manba=args.fallback_to_manba,
+        use_bookwalker=args.use_bookwalker,
         headless=args.headless,
         state_file=args.state_file,
         min_delay=args.min_delay,

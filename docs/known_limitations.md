@@ -556,6 +556,42 @@ introduced — their measurement date is unknown, and their freshness is not gua
   state, so it is deliberately left alone. Still a separate problem from #33 (the worker
   thread reading Tk variables directly), though both live in `_run_worker`.
 
+### BOOK☆WALKER path (Wikipedia `記事なし` rows only, on by default)
+
+`main._judge_row` asks `bookwalker_client.lookup()` only when Wikipedia returned
+`記事なし`; `--no-bookwalker` (CLI) / `use_bookwalker=False` (`run()`) turns it off. It reads
+the search result page `https://bookwalker.jp/search/?word=<title>` with plain `requests`
+and the stdlib `html.parser` (no new dependency in the light EXE build), waiting 3 s before
+every request. Measured on the user's real 73-row list (pre-registered,
+`docs/bookwalker_measurement_2026-10/`): correct answers 38 → 58, wrong answers 1 → 4. The
+pre-registered adoption rule (wrong answers must not increase) was **not** met; the path was
+adopted on the user's explicit decision that a higher correct rate matters more. Read
+`result.md` there before tuning anything.
+
+- **Only the real search results are read.** The page also has a "検索キーワードに関連がある
+  作品" shelf (`p-related-search-shelf`) full of unrelated series, some tagged 完結. The parser
+  takes only the first `o-contents-section` directly under `t-main-column`. If BOOK☆WALKER
+  changes these class names, every lookup becomes `一致なし` and rows stay `記事なし`
+  (fail-closed) — that is the first thing to check if the path suddenly stops helping.
+- **No 完結 tag does not mean ongoing.** Three series in the measurement had their final
+  volume out since 2023–2024 and still carried no `a-tag-comp` tag on the search page; they
+  were answered `連載中`. This is a property of BOOK☆WALKER's data, not of the parser — the
+  matched series were the right ones. The `判定根拠` column says `完結の札なし（シリーズN冊）`
+  so the row can be spot-checked.
+- **The 完結 tag can appear before the final volume is released.** In the measurement a
+  series got the tag while its final volume was still a pre-order (counted in
+  `シリーズN冊`). Under the user's definition (complete = final volume released) that is a
+  false `完結` for a few days or weeks.
+- **Matching is exact after removing one trailing label bracket and NFKC.** A bracket that
+  contains an edition word (`新装版`, `完全版`, … `EDITION_WORDS`) is kept, so an edition
+  series does not match the plain title (PR #572 review). Two matching manga series →
+  `複数一致` → the row stays `記事なし`. When nothing matches, a second search drops the text
+  after a full-width space / wave dash (`_strip_trailing_note`); for a title whose trailing
+  part is an edition name this can land on the base series.
+- **Errors are silent in the Excel.** `エラー` (HTTP failure, 429 after 6 attempts) keeps the
+  Wikipedia row (`記事なし`) unchanged. In the measurement the last two rows hit `エラー`;
+  the cause was not recorded.
+
 ### manba.co.jp fallback path (`--fallback-to-manba` only)
 
 Everything below only applies when a row falls back to manba.co.jp — it never affects a

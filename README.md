@@ -18,6 +18,11 @@ WikipediaのMediaWiki APIにはCloudflare等のボット対策がなく、単純
 Cloudflareのボット対策下にあるため、こちらはPlaywright（ヘッドレスブラウザ）で
 実際にページを開いてアクセスします）。
 
+Wikipediaで記事なしだった行は、既定で [BOOK☆WALKER](https://bookwalker.jp/) の検索結果も
+見て、作品に「完結」の札があれば完結、無ければ連載中と判定します（`requests` だけで取得し、
+HTMLは標準ライブラリで読みます。1回ごとに3秒待ちます）。`--no-bookwalker` で無効にできます。
+測定の記録は `docs/bookwalker_measurement_2026-10/` にあります。
+
 ## セットアップ
 
 ### 1. Python仮想環境の作成
@@ -95,8 +100,8 @@ python -m comic_checker.main path/to/対象.xlsx
 | 列名 | 内容 |
 |---|---|
 | 連載状況 | `完結` / `連載中` / `判定不能` / `記事なし` / `ヒットなし` / `不明` / `エラー` |
-| 判定方法 | 判定に使った情報源（`Wikipedia` / `manba.co.jp`） |
-| 判定根拠 | Wikipedia判定時、根拠になったリード文の抜粋（manba.co.jp判定時は空） |
+| 判定方法 | 判定に使った情報源（`Wikipedia` / `BOOK☆WALKER` / `manba.co.jp`） |
+| 判定根拠 | Wikipedia判定時、根拠になったリード文の抜粋。BOOK☆WALKER判定時は完結の札の有無とシリーズの冊数（manba.co.jp判定時は空） |
 | 参照タイトル | 判定に使った記事・作品ページ上のタイトル（一致確認用） |
 | 参照URL | 判定に使ったページのURL |
 
@@ -112,6 +117,8 @@ python -m comic_checker.main path/to/対象.xlsx
 --status-column        判定結果を書き込む列名（デフォルト: 連載状況）
 --sheet                 対象シート名（省略時はアクティブシート）
 --no-skip-filled        判定済みの行も再判定する（デフォルトは既判定行をスキップ）
+--no-bookwalker         Wikipediaで記事なしだった行を、BOOK☆WALKERの検索結果の「完結」の札で
+                        判定し直すのをやめる（デフォルトは判定し直す）
 --fallback-to-manba     Wikipediaで判定不能だった行をmanba.co.jp経由で判定し直す
                         （デフォルトは無効。有効時のみ以下のオプション・環境変数が必要）
 --no-headless           （--fallback-to-manba時のみ）ブラウザを表示して実行する（動作確認用）
