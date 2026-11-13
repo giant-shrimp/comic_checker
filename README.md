@@ -222,6 +222,10 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
+合否の基準は `./scripts/verify.sh` の終了コードです。pytest に加えて追加の検査
+（テストへの skip/xfail の追加の検出など）を行い、CI（`.github/workflows/verify.yml`）も
+同じスクリプトを実行します。
+
 ## Windows向けEXEとして配布する場合
 
 Pythonをインストールしていないwindows PCでもダブルクリックで動くように、PyInstallerで
